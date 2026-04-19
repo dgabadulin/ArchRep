@@ -1,0 +1,528 @@
+<template>
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ isEdit ? 'Редактирование системы' : 'Новая система' }}</h1>
+      <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">← Возврат</router-link>
+      <router-link v-else to="/systems" class="btn btn-secondary">← К списку</router-link>
+    </div>
+
+    <template v-if="isEdit">
+      <div class="tabs">
+        <button :class="['tab', { active: activeTab === 'data' }]" @click="activeTab = 'data'">Данные системы</button>
+        <button :class="['tab', { active: activeTab === 'tech' }]" @click="activeTab = 'tech'; loadTechStack()">Технологический стек</button>
+        <button :class="['tab', { active: activeTab === 'integrations' }]" @click="activeTab = 'integrations'; loadIntegrationFlows()">Интеграции</button>
+      </div>
+    </template>
+
+    <div v-if="loading && isEdit && activeTab === 'data'" class="loading">Загрузка...</div>
+    <form v-else-if="activeTab === 'data' || !isEdit" class="card form" @submit.prevent="submit">
+      <div class="form-grid">
+        <div class="field">
+          <label>Код <span class="req">*</span></label>
+          <input v-model="form.code" required :maxlength="sysCodeMaxLen" placeholder="Напр. SUD3" />
+        </div>
+        <div class="field">
+          <label>Краткое наименование <span class="req">*</span></label>
+          <input v-model="form.name" required placeholder="Напр. СУД.Keycloak" />
+        </div>
+        <div class="field field-wide">
+          <label>Полное наименование</label>
+          <input v-model="form.fullname" placeholder="Модуль Keycloak системы СУД" />
+        </div>
+        <div class="field">
+          <label>Родительская система</label>
+          <select v-model="form.parent_ar_systems_id">
+            <option :value="null">—</option>
+            <option v-for="p in parentSystems" :key="p.id" :value="p.id">{{ p.display_name || p.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Статус</label>
+          <select v-model="form.ar_system_statuses_id">
+            <option :value="null">—</option>
+            <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.display_name || s.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Внешняя система</label>
+          <select v-model="form.external_system">
+            <option :value="false">Нет</option>
+            <option :value="true">Да</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Вендор</label>
+          <select v-model="form.vendor_ar_partners_id">
+            <option :value="null">—</option>
+            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Поставщик</label>
+          <select v-model="form.supplier_ar_partners_id">
+            <option :value="null">—</option>
+            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Партнёр по поддержке</label>
+          <select v-model="form.supporter_ar_partners_id">
+            <option :value="null">—</option>
+            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Владелец (направление)</label>
+          <select v-model="form.ar_system_owners_id">
+            <option :value="null">—</option>
+            <option v-for="o in owners" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Тип хостинга</label>
+          <select v-model="form.ar_system_hosting_types_id">
+            <option :value="null">—</option>
+            <option v-for="h in hostingTypes" :key="h.id" :value="h.id">{{ h.display_name || h.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ответственный от ИТ</label>
+          <input v-model="form.it_lead" />
+        </div>
+        <div class="field">
+          <label>Ответственный от бизнеса</label>
+          <input v-model="form.business_lead" />
+        </div>
+        <div class="field field-wide">
+          <label>Описание</label>
+          <textarea v-model="form.description" rows="3"></textarea>
+        </div>
+        <div class="field field-wide">
+          <label>Примечание</label>
+          <input v-model="form.comment" />
+        </div>
+      </div>
+      <div v-if="submitError" class="error">{{ submitError }}</div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">Отмена</router-link>
+        <router-link v-else to="/systems" class="btn btn-secondary">Отмена</router-link>
+      </div>
+    </form>
+
+    <!-- Вкладка "Технологический стек" (только при редактировании) -->
+    <div v-else-if="isEdit && activeTab === 'tech'" class="card tech-stack">
+      <EntityLinksTableGraph
+        :loading="techStackLoading"
+        :relations="techStackGraphRelations"
+        :center-node-id="systemTechGraphCenterNodeId"
+        graph-height="780px"
+      >
+        <template #hint>
+          Технологический стек из метамодели. На графе отображаются только связи из таблицы слева; тип связи задаётся
+          на сервере (корневая ИС / модуль).
+        </template>
+        <template #toolbar>
+          <div class="tech-add">
+            <select v-model="selectedTechnologyId" class="tech-select">
+              <option value="">— Выберите технологию —</option>
+              <option v-for="t in availableTechnologies" :key="t.id" :value="t.id">{{ t.display_name || t.name }}</option>
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" :disabled="!selectedTechnologyId || techSaving" @click="addTechnologyLink">
+              {{ techSaving ? 'Добавление...' : 'Добавить связь' }}
+            </button>
+          </div>
+        </template>
+        <template #table>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Технология</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="link in systemTechnologies" :key="link.id">
+                <td>{{ link.technology_name }}</td>
+                <td>
+                  <button type="button" class="btn-link danger" @click="removeTechnologyLink(link.id)">Удалить</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!techStackLoading && systemTechnologies.length === 0" class="empty">
+            Нет связанных технологий. Выберите технологию из каталога и добавьте связь.
+          </p>
+        </template>
+      </EntityLinksTableGraph>
+    </div>
+
+    <!-- Вкладка "Интеграции" (только просмотр) -->
+    <div v-else-if="isEdit && activeTab === 'integrations'" class="card integrations-tab">
+      <p class="tab-hint">Интеграционные потоки, где эта система — источник или получатель.</p>
+      <div v-if="integrationFlowsError" class="error integration-flows-err">{{ integrationFlowsError }}</div>
+      <div v-else-if="integrationsLoading" class="loading">Загрузка...</div>
+      <table v-else class="table">
+        <thead>
+          <tr>
+            <th>Система источник</th>
+            <th>Система получатель</th>
+            <th>Тип события</th>
+            <th>Передаваемые данные</th>
+            <th>Способ передачи</th>
+            <th>Статус</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in integrationFlows" :key="row.id">
+            <td>
+              <router-link v-if="row.source_ar_systems_id" :to="`/systems/${row.source_ar_systems_id}/edit`" class="link">{{ row.source_name ?? '—' }}</router-link>
+              <span v-else>—</span>
+            </td>
+            <td>
+              <router-link v-if="row.target_ar_systems_id" :to="`/systems/${row.target_ar_systems_id}/edit`" class="link">{{ row.target_name ?? '—' }}</router-link>
+              <span v-else>—</span>
+            </td>
+            <td>{{ row.event_type_name ?? '—' }}</td>
+            <td>{{ row.transferred_data ?? '—' }}</td>
+            <td>{{ row.transfer_method ?? '—' }}</td>
+            <td>{{ row.status_name ?? '—' }}</td>
+            <td>
+              <router-link :to="`/integrations/${row.id}/edit`" class="link">Изменить</router-link>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="!integrationsLoading && integrationFlows.length === 0" class="empty">Нет интеграционных потоков с участием этой системы.</p>
+    </div>
+
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useUnsavedGuard } from '../composables/useUnsavedGuard'
+import { api } from '../api/client'
+import { getConfig } from '@/config/params'
+import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
+import { nodeId } from '../utils/entityTypeConfig'
+
+const sysCodeMaxLen = computed(() => (getConfig().SYS_CODE_MAXLEN ?? 32) | 0)
+
+const route = useRoute()
+const router = useRouter()
+const id = computed(() => route.params.id)
+const isEdit = computed(() => !!id.value)
+
+const returnToConclusion = computed(() => route.query.returnTo === 'decision-applied-edit' || route.query.returnTo === 'decision-applied-new')
+const returnConclusionPath = computed(() => {
+  const q = {}
+  if (route.query.payload) q.payload = route.query.payload
+  if (route.query.appliedId) q.appliedId = route.query.appliedId
+  const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
+  return { path, query: q }
+})
+
+const loading = ref(false)
+const saving = ref(false)
+const submitError = ref('')
+const isDirty = ref(false)
+const initialLoadDone = ref(false)
+const parentSystems = ref([])
+const statuses = ref([])
+const vendors = ref([])
+const owners = ref([])
+const hostingTypes = ref([])
+
+const activeTab = ref('data')
+const systemTechnologies = ref([])
+const allTechnologies = ref([])
+const techStackLoading = ref(false)
+const techSaving = ref(false)
+const selectedTechnologyId = ref('')
+const newTechModal = ref(false)
+const newTechForm = ref({ name: '', vendor_ar_partners_id: null })
+const newTechSaving = ref(false)
+const newTechError = ref('')
+const integrationFlows = ref([])
+const integrationsLoading = ref(false)
+const integrationFlowsError = ref('')
+
+const availableTechnologies = computed(() => {
+  const linkedIds = new Set(systemTechnologies.value.map(l => l.technologies_id))
+  return allTechnologies.value.filter(t => !linkedIds.has(t.id))
+})
+
+/** Связи для графа (только строки таблицы стека; формат метамодели). */
+const techStackGraphRelations = computed(() => {
+  if (!id.value || !systemTechnologies.value.length) return []
+  return systemTechnologies.value.map((l) => ({
+    id: l.id,
+    from_entity_type: l.from_entity_type || 'system',
+    from_entity_id: Number(l.systems_id),
+    to_entity_type: 'technology',
+    to_entity_id: Number(l.technologies_id),
+    relation_type: l.relation_type || 'system_technology',
+    relation_type_name: l.relation_type_name,
+  }))
+})
+
+const systemTechGraphCenterNodeId = computed(() => {
+  if (!id.value) return null
+  const ft = systemTechnologies.value[0]?.from_entity_type || (form.parent_ar_systems_id != null ? 'subsystem' : 'system')
+  return nodeId(ft, Number(id.value))
+})
+
+const form = reactive({
+  code: '', name: '', fullname: '', parent_ar_systems_id: null, parent_name: '',
+  ar_system_statuses_id: null, vendor_ar_partners_id: null, supplier_ar_partners_id: null,
+  supporter_ar_partners_id: null, description: '', it_lead: '', business_lead: '',
+  ar_system_owners_id: null, ar_system_hosting_types_id: null, comment: '',
+  external_system: false,
+})
+
+function formSnapshot() {
+  return {
+    code: form.code,
+    name: form.name,
+    fullname: form.fullname,
+    parent_ar_systems_id: form.parent_ar_systems_id,
+    parent_name: form.parent_name,
+    ar_system_statuses_id: form.ar_system_statuses_id,
+    vendor_ar_partners_id: form.vendor_ar_partners_id,
+    supplier_ar_partners_id: form.supplier_ar_partners_id,
+    supporter_ar_partners_id: form.supporter_ar_partners_id,
+    description: form.description,
+    it_lead: form.it_lead,
+    business_lead: form.business_lead,
+    ar_system_owners_id: form.ar_system_owners_id,
+    ar_system_hosting_types_id: form.ar_system_hosting_types_id,
+    comment: form.comment,
+    external_system: form.external_system,
+  }
+}
+
+const lastLoadedSnapshot = ref(null)
+
+function emptyForm() {
+  form.code = ''; form.name = ''; form.fullname = ''; form.parent_ar_systems_id = null; form.parent_name = ''
+  form.ar_system_statuses_id = null; form.vendor_ar_partners_id = null; form.supplier_ar_partners_id = null
+  form.supporter_ar_partners_id = null; form.description = ''; form.it_lead = ''; form.business_lead = ''
+  form.ar_system_owners_id = null; form.ar_system_hosting_types_id = null; form.comment = ''
+  form.external_system = false
+}
+
+function mapToForm(row) {
+  if (!row) return
+  form.code = row.code ?? ''; form.name = row.name ?? ''; form.fullname = row.fullname ?? ''
+  form.parent_ar_systems_id = row.parent_ar_systems_id ?? null; form.parent_name = row.parent_name ?? ''
+  form.ar_system_statuses_id = row.ar_system_statuses_id ?? null
+  form.vendor_ar_partners_id = row.vendor_ar_partners_id ?? null
+  form.supplier_ar_partners_id = row.supplier_ar_partners_id ?? null
+  form.supporter_ar_partners_id = row.supporter_ar_partners_id ?? null
+  form.description = row.description ?? ''; form.it_lead = row.it_lead ?? ''; form.business_lead = row.business_lead ?? ''
+  form.ar_system_owners_id = row.ar_system_owners_id ?? null
+  form.ar_system_hosting_types_id = row.ar_system_hosting_types_id ?? null
+  form.comment = row.comment ?? ''
+  form.external_system = !!row.external_system
+}
+
+async function loadRefs() {
+  const [parents, st, v, o, h] = await Promise.all([
+    api.getParentSystems(), api.getSystemStatuses(), api.getVendors(), api.getOwners(), api.getHostingTypes(),
+  ])
+  parentSystems.value = parents; statuses.value = st; vendors.value = v; owners.value = o; hostingTypes.value = h
+}
+
+onMounted(async () => {
+  await loadRefs()
+  if (isEdit.value) {
+    loading.value = true
+    try {
+      const row = await api.getSystem(id.value)
+      mapToForm(row)
+      lastLoadedSnapshot.value = formSnapshot()
+    } catch (e) {
+      submitError.value = e.body?.error || e.message || 'Ошибка загрузки'
+    } finally { loading.value = false }
+  } else {
+    emptyForm()
+    lastLoadedSnapshot.value = formSnapshot()
+  }
+  initialLoadDone.value = true
+})
+
+function isFormChanged() {
+  const cur = formSnapshot()
+  const prev = lastLoadedSnapshot.value
+  if (!prev) return false
+  return Object.keys(cur).some(k => {
+    const a = cur[k]
+    const b = prev[k]
+    if (a === b) return false
+    if (a == null && b == null) return false
+    return String(a) !== String(b)
+  })
+}
+
+watch(() => ({ ...form }), () => {
+  if (!initialLoadDone.value) return
+  isDirty.value = isFormChanged()
+}, { deep: true })
+
+watch(id, () => { if (!isEdit.value) emptyForm() })
+
+async function loadTechStack() {
+  if (!isEdit.value || !id.value) return
+  techStackLoading.value = true
+  try {
+    const [links, techs] = await Promise.all([
+      api.getSystemsTechnologies({ system_id: id.value }),
+      api.getTechnologies(),
+    ])
+    systemTechnologies.value = links
+    allTechnologies.value = techs
+  } catch (e) {
+    submitError.value = e.message || 'Ошибка загрузки технологий'
+  } finally {
+    techStackLoading.value = false
+  }
+}
+
+async function loadIntegrationFlows() {
+  if (!isEdit.value || !id.value) return
+  integrationsLoading.value = true
+  integrationFlowsError.value = ''
+  try {
+    integrationFlows.value = await api.getIntegrationFlows({ system_id: id.value })
+  } catch (e) {
+    const msg = e.body?.error || e.message || 'Ошибка загрузки интеграций'
+    integrationFlowsError.value = msg
+    integrationFlows.value = []
+  } finally {
+    integrationsLoading.value = false
+  }
+}
+
+async function addTechnologyLink() {
+  if (!selectedTechnologyId.value || !id.value) return
+  techSaving.value = true
+  try {
+    await api.createSystemTechnology({ systems_id: id.value, technologies_id: selectedTechnologyId.value })
+    selectedTechnologyId.value = ''
+    await loadTechStack()
+  } catch (e) {
+    submitError.value = e.body?.error || e.message || 'Ошибка добавления связи'
+  } finally {
+    techSaving.value = false
+  }
+}
+
+async function removeTechnologyLink(linkId) {
+  if (!confirm('Удалить связь с технологией?')) return
+  try {
+    await api.deleteSystemTechnology(linkId)
+    await loadTechStack()
+  } catch (e) {
+    submitError.value = e.message || 'Ошибка удаления'
+  }
+}
+
+/** Для FK в API: пустой выбор → null (иначе node-pg падает на undefined после JSON.stringify) */
+function fkOrNull(v) {
+  if (v == null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+async function submit(opts = {}) {
+  submitError.value = ''
+  saving.value = true
+  try {
+    const body = {
+      code: form.code.trim(),
+      name: form.name.trim(),
+      fullname: form.fullname?.trim() || undefined,
+      parent_ar_systems_id: fkOrNull(form.parent_ar_systems_id),
+      ar_system_statuses_id: fkOrNull(form.ar_system_statuses_id),
+      vendor_ar_partners_id: fkOrNull(form.vendor_ar_partners_id),
+      supplier_ar_partners_id: fkOrNull(form.supplier_ar_partners_id),
+      supporter_ar_partners_id: fkOrNull(form.supporter_ar_partners_id),
+      description: form.description?.trim() || undefined,
+      it_lead: form.it_lead?.trim() || undefined,
+      business_lead: form.business_lead?.trim() || undefined,
+      ar_system_owners_id: fkOrNull(form.ar_system_owners_id),
+      ar_system_hosting_types_id: fkOrNull(form.ar_system_hosting_types_id),
+      comment: form.comment?.trim() || undefined,
+      external_system: form.external_system,
+      technologies: '', // поле убрано с формы, передаём пустую строку для API
+    }
+    if (isEdit.value) {
+      await api.updateSystem(id.value, body)
+      isDirty.value = false
+      lastLoadedSnapshot.value = formSnapshot()
+      if (!opts.skipNavigate) router.push('/systems')
+    } else {
+      const res = await api.createSystem(body)
+      isDirty.value = false
+      if (!opts.skipNavigate) {
+        if (returnToConclusion.value && route.query.payload != null) {
+          const q = { payload: route.query.payload }
+          if (route.query.appliedId) q.appliedId = route.query.appliedId
+          q.newSystemId = res.id
+          const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
+          router.push({ path, query: q })
+        } else {
+          router.push(`/systems/${res.id}/edit`)
+        }
+      }
+    }
+  } catch (e) {
+    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    throw e
+  } finally { saving.value = false }
+}
+
+useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
+</script>
+
+<style scoped>
+.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.page-head h1 { margin: 0; font-size: 1.35rem; color: #0f172a; }
+.btn { padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; display: inline-block; }
+.btn-primary { background: #0284c7; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #0369a1; }
+.btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+.btn-secondary { background: #e2e8f0; color: #475569; }
+.btn-secondary:hover { background: #cbd5e1; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; padding: 1.5rem; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.25rem; }
+.field-wide { grid-column: 1 / -1; }
+.field label { display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.9rem; color: #374151; }
+.field input, .field select, .field textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.95rem; }
+.req { color: #b91c1c; }
+.error { color: #b91c1c; margin-top: 0.5rem; }
+.actions { margin-top: 1.5rem; display: flex; gap: 0.75rem; }
+.loading { padding: 1rem; }
+
+.tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
+.tab { padding: 0.5rem 1rem; border: 1px solid #d4c4b0; background: #fff; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.tab:hover { background: #faf8f5; }
+.tab.active { background: #cb997e; color: #fff; border-color: #cb997e; }
+
+.tech-stack { margin-top: 0; }
+.tech-stack :deep(.entity-links-toolbar) { border-bottom-color: #e5dccf; }
+.tech-add { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.tech-select { min-width: 220px; padding: 0.5rem 0.6rem; border: 1px solid #d4c4b0; border-radius: 6px; font-size: 0.9rem; }
+.btn-sm { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e5dccf; }
+.table th { background: #faf8f5; font-weight: 600; color: #5c5349; }
+.btn-link.danger { background: none; border: none; color: #b91c1c; cursor: pointer; text-decoration: underline; font-size: 0.9rem; }
+.empty { padding: 1rem; color: #5c5349; }
+.tab-hint { font-size: 0.9rem; color: #5c5349; margin-bottom: 1rem; }
+.integration-flows-err { margin-bottom: 1rem; }
+.integrations-tab { margin-top: 0; }
+</style>

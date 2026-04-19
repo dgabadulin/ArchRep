@@ -1,0 +1,36 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Env (secrets)
+.env
+.env.*
+!.env.example
+
+# PostgreSQL dumps / large exports
+*.dump
+dump-*.sql
+DB/dump-*.sql
+
+# Docker
+.dockerenv
+docker-compose.override.yml
+volumes/
+
+# Логи
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# utils
+hotlist.cmd
+
+# Локальный деплой с учётными данными (не для репозитория)
+deploy_local.bat
+
+# Временные файлы / экспорты графа
+temp/

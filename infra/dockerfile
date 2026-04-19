@@ -1,0 +1,22 @@
+# Сборка фронта (Vue v3, Vite), затем backend + статика в одном образе
+# Контекст сборки: корень репозитория (docker build -f infra/dockerfile .)
+# Статика: корень сайта /
+
+FROM node:20-alpine AS frontend-v3-build
+WORKDIR /app/frontend-v3
+COPY frontend-v3/package.json frontend-v3/package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
+COPY frontend-v3 .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev 2>/dev/null || npm install
+
+COPY backend ./backend
+COPY --from=frontend-v3-build /app/frontend-v3-dist ./frontend-v3-dist
+
+EXPOSE 5000
+CMD ["node", "backend/index.js"]
