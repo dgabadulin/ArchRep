@@ -1,0 +1,19 @@
+services:
+  ar-api:
+    build:
+      context: ..
+      dockerfile: infra/dockerfile
+    image: ar-api-image
+    container_name: ar-api-container
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      SERVER_PORT: "3000"
+    networks:
+      - ar-network
+
+networks:
+  ar-network:
+    external: true

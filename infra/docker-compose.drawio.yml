@@ -1,0 +1,19 @@
+# Draw.io (diagrams.net) — подключение к той же внешней сети, что и ar-api.
+# Создание сети (один раз): docker network create ar-network
+# Запуск: docker compose -f infra/docker-compose.drawio.yml up -d
+# Из каталога infra: docker compose -f docker-compose.drawio.yml up -d
+
+services:
+  drawio:
+    image: jgraph/drawio:latest
+    container_name: ar-drawio
+    restart: unless-stopped
+    # Уберите или измените ports, если доступ только через другой контейнер (nginx) в ar-network
+    ports:
+      - "8080:8080"
+    networks:
+      - ar-network
+
+networks:
+  ar-network:
+    external: true
