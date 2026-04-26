@@ -37,7 +37,7 @@ set DEPLOY_SSH_TARGET_HOST=your_app_server_hostname
 **2.** Запуск:
 
 ```cmd
-infra\deploy.bat
+infra\prod\deploy.bat
 ```
 
 или, если в PATH есть `npm`:
@@ -51,7 +51,7 @@ npm run deploy
 1. Копирует на сервер в `~/%DEPLOY_REMOTE_DIR%/` (по умолчанию `~/isar/`): `backend`, `frontend-v3`, `infra`, `package.json`, `package-lock.json`, `.dockerignore`.
 2. При наличии локального `.env.production` в корне — копирует его на сервер (файл не должен попадать в Git).
 3. По SSH запускает на сервере:  
-   `docker build -f infra/dockerfile -t ar-api-image .`  
+   `docker build -f infra/common/dockerfile -t ar-api-image .`  
    затем останавливает и удаляет старый контейнер и запускает новый с образом `ar-api-image` (порт 3000, сеть `ar-network`).
 
 **Требования:**

@@ -1,6 +1,6 @@
 # Развёртывание Draw.io (diagrams.net) в Docker и подключение к сети `ar-network`
 
-Инструкция для собственного инстанса Draw.io, доступного контейнерам приложения ИСАР по одной Docker-сети с API (как в `infra/docker-compose.yml`).
+Инструкция для собственного инстанса Draw.io, доступного контейнерам приложения ИСАР по одной Docker-сети с API (как в `infra/demo/docker-compose.yml`).
 
 ## Именование сети
 
@@ -63,19 +63,18 @@ docker run -d --name ar-drawio --restart unless-stopped ^
 
 ## Шаг 3. Вариант через Compose (рекомендуется для постоянной эксплуатации)
 
-Готовый фрагмент лежит в репозитории: `infra/docker-compose.drawio.yml`.
+Готовый фрагмент включён в demo-стек: `infra/demo/docker-compose.yml` (сервис `drawio`).
 
-Запуск **рядом** с основным стеком (из каталога `infra/`):
+Запуск **рядом** с основным стеком (из корня репозитория):
 
 ```bash
-cd infra
-docker compose -f docker-compose.drawio.yml up -d
+docker compose -f infra/demo/docker-compose.yml --env-file infra/demo/env.demo up -d drawio
 ```
 
 Остановка:
 
 ```bash
-docker compose -f docker-compose.drawio.yml down
+docker compose -f infra/demo/docker-compose.yml --env-file infra/demo/env.demo stop drawio
 ```
 
 `down` **не удаляет** внешнюю сеть `ar-network`.
@@ -170,5 +169,5 @@ server {
 
 ## Связанные материалы в проекте
 
-- Сеть API: `infra/docker-compose.yml` (`ar-api` в `ar-network`).
+- Сеть API: `infra/demo/docker-compose.yml` (`ar-api` и `drawio` в `ar-network`).
 - Обсуждение встраивания Draw.io: `docs/architecture-diagram-component.md` (раздел Draw.io).
