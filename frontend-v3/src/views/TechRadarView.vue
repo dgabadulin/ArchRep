@@ -4,15 +4,22 @@
       <h1>Тех.радар</h1>
     </div>
     <iframe
+      v-if="radarUrl"
       class="radar-iframe"
       :src="radarUrl"
       title="Технологический радар"
     />
+    <p v-else class="radar-empty">
+      Источник для технологического радара не определен, задайте URL в системном параметре TECH_RADAR_EMBED_URL
+    </p>
   </div>
 </template>
 
 <script setup>
-const radarUrl = 'https://radar.st.tech/?documentId=https://radar.st.tech/radar/platforma-a.csv'
+import { computed } from 'vue'
+import { getConfig } from '@/config/params'
+
+const radarUrl = computed(() => String(getConfig().TECH_RADAR_EMBED_URL || '').trim())
 </script>
 
 <style scoped>
@@ -25,5 +32,16 @@ const radarUrl = 'https://radar.st.tech/?documentId=https://radar.st.tech/radar/
   border: 1px solid #e5dccf;
   border-radius: 8px;
   background: #fff;
+}
+.radar-empty {
+  flex: 1;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e5dccf;
+  border-radius: 8px;
+  background: #faf8f5;
+  color: #5c5348;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 </style>

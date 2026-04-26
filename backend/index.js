@@ -247,6 +247,8 @@ const PUBLIC_CONFIG_DEFAULTS = {
   SYS_CODE_MAXLEN: 32,
   /** Базовый URL Draw.io/diagrams.net для embed (например https://host/drawio). Пусто — фронт покажет подсказку. */
   DRAWIO_EMBED_BASE: '',
+  /** Полный URL iframe «Тех.радар». Только из БД (`ar_settings_parameters`) или env `TECH_RADAR_EMBED_URL`; в коде дефолта нет. */
+  TECH_RADAR_EMBED_URL: '',
   /** Стили узлов/рёбер/раскладки для генерации mxfile (issue #53); переопределение в ar_settings_parameters value_type=json. */
   DRAWIO_NODE_STYLE: DEFAULT_DRAWIO_NODE_STYLE,
   DRAWIO_EDGE_STYLE: DEFAULT_DRAWIO_EDGE_STYLE,
@@ -277,6 +279,10 @@ app.get('/api/config', (req, res) => {
   const drawioEnv = process.env.DRAWIO_EMBED_BASE;
   if (drawioEnv != null && String(drawioEnv).trim() !== '') {
     out.DRAWIO_EMBED_BASE = String(drawioEnv).trim();
+  }
+  const techRadarEnv = process.env.TECH_RADAR_EMBED_URL;
+  if (techRadarEnv != null && String(techRadarEnv).trim() !== '') {
+    out.TECH_RADAR_EMBED_URL = String(techRadarEnv).trim();
   }
   res.json(out);
 });

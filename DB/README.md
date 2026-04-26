@@ -16,6 +16,32 @@
 
 ---
 
+## Миграции через `node-pg-migrate`
+
+- Боевые миграции хранятся в `DB/migrations/`.
+- Конфиг: `.pgmrc` (история миграций — таблица `public.pgmigrations` в целевой БД).
+- Базовая команда:
+
+```bash
+npm run db:migrate
+```
+
+Для demo-деплоя команда запускается автоматически из `infra/demo/remote_demo_deploy.sh` в режимах `full` и `api-only`.
+
+---
+
+## Параметр `TECH_RADAR_EMBED_URL` (страница «Тех.радар»)
+
+В приложении **нет** захардкоженного URL: значение только из **`ar_settings_parameters`** или env **`TECH_RADAR_EMBED_URL`**. Для уже развёрнутой БД (в т.ч. после старого дампа без этой строки):
+
+```bash
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_tech_radar_embed_url_parameter.sql
+```
+
+Скрипт идемпотентен (`ON CONFLICT (code) DO NOTHING`). После выполнения — **перезапуск backend**.
+
+---
+
 ## Issue #32: модули систем (subsystem) в анализаторе
 
 Для уже развёрнутой БД (параметры заведены без `subsystem`) выполните по очереди:

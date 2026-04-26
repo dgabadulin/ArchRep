@@ -21,11 +21,18 @@ projects/
 │   │   └── archrep_test.sql
 │   └── README.md
 ├── infra/
-│   ├── docker-compose.yml    # build: context: .., dockerfile: infra/dockerfile
-│   ├── dockerfile
+│   ├── common/
+│   │   └── dockerfile
+│   ├── demo/
+│   │   ├── docker-compose.yml
+│   │   ├── env.demo
+│   │   └── deploy_demo.bat
+│   ├── prod/
+│   │   ├── deploy.bat
+│   │   ├── linux_deploy.bat
+│   │   └── docker-compose.yml
 │   ├── .env.example
-│   ├── restart.bat
-│   └── linux_deploy.bat
+│   └── restart.bat
 ├── DB/                       # прежнее место DDL (дубликат в db/schema), дампы в .gitignore
 ├── docs/
 │   ├── PROJECT_STRUCTURE.md
@@ -33,7 +40,7 @@ projects/
 └── public/                   # legacy: echarts.min.js (при необходимости — в backend/public)
 ```
 
-**Запуск:** из корня `npm start` или `docker compose -f infra/docker-compose.yml up --build -d`.
+**Запуск:** из корня `npm start` или `docker compose -f infra/prod/docker-compose.yml up --build -d`.
 
 ---
 
@@ -97,7 +104,7 @@ projects/
    Добавить `backend/`, `frontend/`, `db/`, `infra/`, положить в них краткие README. Обновить этот файл и корневой README. Код пока не переносить.
 
 2. **Перенести инфраструктуру в `infra/`**  
-   Переместить `docker-compose.yml`, `dockerfile`, `restart.bat`, `linux_deploy.bat`, `remote_script.sh` в `infra/`. В `docker-compose` указать `context: .` и путь к `dockerfile: infra/dockerfile`; в Dockerfile оставить сборку из корня (COPY нужных частей) или переключить context на корень и копировать `backend/` и общий `package.json`. После переноса проверить `docker compose up --build`.
+   Разделить `infra` на `common/`, `demo/`, `prod/`; общий Dockerfile хранить в `infra/common/dockerfile`. Для compose в подпапках использовать `build.context: ../..` и `dockerfile: infra/common/dockerfile`. После переноса проверить `docker compose -f infra/prod/docker-compose.yml up --build`.
 
 3. **Перенести БД-артефакты в `db/`**  
    Создать `db/schema/`, перенести туда `DB/archrep_test.sql` и при необходимости другие DDL. Большие дампы оставить в `.gitignore`. При желании завести `db/scripts/` для скриптов очистки/выгрузки.

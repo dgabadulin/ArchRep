@@ -11,8 +11,8 @@ docker rm ar-api-container >nul 2>&1
 echo Удаление старого образа ar-api-image...
 docker rmi ar-api-image >nul 2>&1 || exit /b 0
 
-echo Сборка нового образа (infra/dockerfile)...
-docker build -f infra/dockerfile -t ar-api-image .
+echo Сборка нового образа (infra/common/dockerfile)...
+docker build -f infra/common/dockerfile -t ar-api-image .
 if %ERRORLEVEL% neq 0 (
     echo Ошибка при сборке образа.
     exit /b 1

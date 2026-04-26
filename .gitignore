@@ -31,6 +31,9 @@ hotlist.cmd
 
 # Локальный деплой с учётными данными (не для репозитория)
 deploy_local.bat
+deploy_demo.bat
+deploy_demo_full.bat
+deploy_demo_api.bat
 
 # Временные файлы / экспорты графа
 temp/

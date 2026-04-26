@@ -20,7 +20,7 @@
 - `.env.example` — шаблон переменных; скопируйте в `.env.development` / `.env.production` локально (эти файлы не коммитятся).
 - `backend/` — код API (index.js, queries.js, views, public).
 - `db/schema/` — DDL схемы (например `archrep_test.sql`).
-- `infra/` — docker-compose, dockerfile, **deploy.bat** (деплой по SSH при заданных `DEPLOY_SSH_*`), restart.bat; шаблон env — корневой `.env.example`.
+- `infra/` — инфраструктура по подпапкам: `common/` (dockerfile), `prod/` (deploy), `demo/` (demo compose и env); шаблон env — корневой `.env.example`.
 - `DB/` — прежнее место DDL (дубликат в `db/schema/`); дампы по-прежнему в .gitignore.
 - `docs/` — документация, промпты.
 
@@ -59,7 +59,7 @@ npm ci
 cd ..
 ```
 
-Сборка Docker-образа (`infra/dockerfile`) сама выполняет `npm ci` внутри контейнера для корня и для `frontend-v3`.
+Сборка Docker-образа (`infra/common/dockerfile`) сама выполняет `npm ci` внутри контейнера для корня и для `frontend-v3`.
 
 ### 2. Настройка переменных окружения
 
@@ -93,10 +93,10 @@ NODE_ENV=development node backend/index.js
 Из **корня репозитория**:
 
 ```bash
-docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/prod/docker-compose.yml up --build -d
 ```
 
-Пересборка и перезапуск контейнера (Windows): запусти `infra/restart.bat` (скрипт сам перейдёт в корень и соберёт образ по `infra/dockerfile`).
+Пересборка и перезапуск контейнера (Windows): запусти `infra/restart.bat` (скрипт сам перейдёт в корень и соберёт образ по `infra/common/dockerfile`).
 
 ### 5. Деплой на свой сервер по SSH (одна команда)
 
@@ -111,7 +111,7 @@ set DEPLOY_SSH_TARGET_HOST=your_server_hostname
 Затем из корня репозитория:
 
 ```cmd
-infra\deploy.bat
+infra\prod\deploy.bat
 ```
 
 или `npm run deploy`. Скрипт копирует проект на сервер, собирает образ (backend + собранный frontend) и запускает контейнер на порту 3000. Настройка SSH без пароля — **[infra/README-deploy-ssh.txt](infra/README-deploy-ssh.txt)**. Подробнее — **[docs/GITFLOW.md](docs/GITFLOW.md)**.

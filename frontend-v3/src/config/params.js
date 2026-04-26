@@ -20,6 +20,8 @@ const DEFAULTS = {
   SYS_CODE_MAXLEN: 32,
   /** Базовый URL Draw.io для embed (из /api/config). */
   DRAWIO_EMBED_BASE: '',
+  /** URL iframe «Тех.радар» (из /api/config); до загрузки конфига — пусто. */
+  TECH_RADAR_EMBED_URL: '',
 }
 
 let config = null
