@@ -1,9 +1,9 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>Акторы</h1>
+      <h1>Заинтересованные лица</h1>
       <div class="head-actions">
-        <router-link to="/actors/new" class="btn btn-primary">Добавить актора</router-link>
+        <router-link to="/actors/new" class="btn btn-primary">Добавить</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" disabled title="Экспорт в Excel для раздела пока не реализован">
             Экспорт в Excel
@@ -66,9 +66,8 @@ import TableToolbar from '../components/TableToolbar.vue'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 
 const columns = [
-  { key: 'code', label: 'Код', defaultVisible: true },
   { key: 'name', label: 'Наименование', defaultVisible: true },
-  { key: 'actor_type_name', label: 'Тип', defaultVisible: true },
+  { key: 'actor_type_name', label: 'Тип заинтересованного лица', defaultVisible: true },
   { key: 'organization_unit_name', label: 'Орг. единица', defaultVisible: true },
   { key: 'actions', label: '', defaultVisible: true },
 ]
@@ -79,7 +78,7 @@ const visibleCols = ref(getVisibleColumns('actors', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
-const sortPref = getSortPref('actors', 'name', 'asc')
+const sortPref = getSortPref('actors', 'name', 'asc', columns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 

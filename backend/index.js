@@ -2342,15 +2342,15 @@ app.get('/api/togaf/organization-units/:id', async (req, res) => {
 });
 app.post('/api/togaf/organization-units', async (req, res) => {
   try {
-    const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
-    const r = await pool.query(queries.togaf_organization_units_insert, [b.code, b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id]);
+    const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.togaf_organization_units_insert, [b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id]);
     res.status(201).json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/togaf/organization-units/:id', async (req, res) => {
   try {
-    const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
-    const r = await pool.query(queries.togaf_organization_units_update, [b.code, b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id, req.params.id]);
+    const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.togaf_organization_units_update, [b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id, req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -2371,10 +2371,10 @@ app.get('/api/togaf/actors/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_actors_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.post('/api/togaf/actors', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_actors_insert, [b.code, b.name, b.description, b.organization_unit_id, b.actor_type_id, b.source]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actors_insert, [b.name, b.description, b.organization_unit_id, b.actor_type_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/togaf/actors/:id', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_actors_update, [b.code, b.name, b.description, b.organization_unit_id, b.actor_type_id, b.source, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actors_update, [b.name, b.description, b.organization_unit_id, b.actor_type_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.delete('/api/togaf/actors/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_actors_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -2393,10 +2393,10 @@ app.get('/api/togaf/business-services/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_services_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.post('/api/togaf/business-services', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_business_services_insert, [b.code, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_insert, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/togaf/business-services/:id', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_business_services_update, [b.code, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_update, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.delete('/api/togaf/business-services/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_services_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -2415,10 +2415,10 @@ app.get('/api/togaf/business-functions/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_functions_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.post('/api/togaf/business-functions', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_business_functions_insert, [b.code, b.name, b.description, b.parent_id, b.ar_organization_units_id, b.source, b.category]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_functions_insert, [b.name, b.description, b.parent_id, b.ar_organization_units_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/togaf/business-functions/:id', async (req, res) => {
-  try { const b = req.body || {}; if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' }); const r = await pool.query(queries.togaf_business_functions_update, [b.code, b.name, b.description, b.parent_id, b.ar_organization_units_id, b.source, b.category, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_functions_update, [b.name, b.description, b.parent_id, b.ar_organization_units_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.delete('/api/togaf/business-functions/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_functions_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }

@@ -104,7 +104,7 @@ const loading = ref(true)
 const error = ref('')
 const excelLoading = ref(false)
 const form = ref(null)
-const sortPref = getSortPref('principles', 'name', 'asc')
+const sortPref = getSortPref('principles', 'name', 'asc', principleColumns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 

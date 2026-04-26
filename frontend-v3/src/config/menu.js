@@ -15,7 +15,7 @@ export const menuItems = [
     icon: 'briefcase',
     children: [
       { label: 'Организационные единицы', path: '/organization-units', icon: 'org' },
-      { label: 'Акторы', path: '/actors', icon: 'user' },
+      { label: 'Заинтересованные лица', path: '/actors', icon: 'user' },
       { label: 'Продукты', path: '/business-services', icon: 'service' },
       { label: 'Бизнес-способности', path: '/business-functions', icon: 'function' },
       { label: 'Цели и задачи', path: '/goals', icon: 'target' },

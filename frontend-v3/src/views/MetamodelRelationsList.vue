@@ -80,7 +80,7 @@ const visibleCols = ref(getVisibleColumns('metamodel-relations', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
-const sortPref = getSortPref('metamodel-relations', 'relation_type', 'asc')
+const sortPref = getSortPref('metamodel-relations', 'relation_type', 'asc', columns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 

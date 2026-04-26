@@ -220,7 +220,7 @@
         </table>
         <p v-if="orgUnitCategories.length === 0" class="empty">Нет записей</p>
       </template>
-      <!-- Типы акторов (TOGAF) -->
+      <!-- Типы заинтересованных лиц (TOGAF) -->
       <template v-else-if="activeTab === 'actorTypes'">
         <div class="table-actions">
           <button type="button" class="btn btn-sm btn-primary" @click="openActorTypeForm()">Добавить</button>
@@ -494,7 +494,7 @@
     </div>
     <div v-if="actorTypeForm" class="modal-overlay">
       <div class="modal">
-        <h3>{{ actorTypeForm.id ? 'Изменить тип актора' : 'Новый тип актора' }}</h3>
+        <h3>{{ actorTypeForm.id ? 'Изменить тип заинтересованного лица' : 'Новый тип заинтересованного лица' }}</h3>
         <div class="form-row"><label>Код</label><input v-model="actorTypeForm.code" placeholder="необязательно" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="actorTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="actorTypeForm.description" /></div>
@@ -610,7 +610,7 @@ const tabs = [
   { id: 'integrationFlowEventTypes', label: 'Тип события (интеграции)' },
   { id: 'integrationFlowStatuses', label: 'Статусы интеграционных потоков' },
   { id: 'orgUnitCategories', label: 'Категории орг. единиц' },
-  { id: 'actorTypes', label: 'Типы акторов' },
+  { id: 'actorTypes', label: 'Типы заинтересованных лиц' },
   { id: 'businessServiceStatuses', label: 'Статусы бизнес-сервисов' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
@@ -871,7 +871,7 @@ async function deleteAdrRelationStatus(id) { if (confirm('Удалить?')) { a
 async function deleteIntegrationFlowEventType(id) { if (confirm('Удалить?')) { await api.deleteIntegrationFlowEventType(id); await loadTab() } }
 async function deleteIntegrationFlowStatus(id) { if (confirm('Удалить?')) { await api.deleteIntegrationFlowStatus(id); await loadTab() } }
 async function deleteCategory(id) { if (confirm('Удалить категорию?')) { await togafApi.refs.deleteOrganizationUnitCategory(id); await loadTab() } }
-async function deleteActorType(id) { if (confirm('Удалить тип актора?')) { await togafApi.refs.deleteActorType(id); await loadTab() } }
+async function deleteActorType(id) { if (confirm('Удалить тип заинтересованного лица?')) { await togafApi.refs.deleteActorType(id); await loadTab() } }
 async function deleteBusinessServiceStatus(id) { if (confirm('Удалить статус?')) { await togafApi.refs.deleteBusinessServiceStatus(id); await loadTab() } }
 async function saveGapType() {
   if (!gapTypeForm.value?.name) return

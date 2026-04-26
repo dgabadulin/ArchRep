@@ -55,7 +55,7 @@ function formatTitle(segment, index, parts, _fullPath) {
     catalog: 'Справочник дашбордов',
     full: 'Просмотр',
     'organization-units': 'Организационные единицы',
-    actors: 'Акторы',
+    actors: 'Заинтересованные лица',
     'business-services': 'Бизнес-сервисы',
     'business-functions': 'Бизнес-функции',
     'metamodel-relations': 'Связи метамодели',

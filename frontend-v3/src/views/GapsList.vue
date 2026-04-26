@@ -91,7 +91,7 @@ const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
 const excelLoading = ref(false)
-const sortPref = getSortPref('architecture-debt', 'code', 'asc')
+const sortPref = getSortPref('architecture-debt', 'code', 'asc', gapColumns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 
