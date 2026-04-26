@@ -408,27 +408,81 @@ function resetGraph() {
 </script>
 
 <style scoped>
-.page-head { margin-bottom: 1rem; }
-.page-head h1 { margin: 0; font-size: 1.35rem; color: #2d2a26; }
-.picker-card { padding: 1.25rem; max-width: 640px; }
-.picker-hint { margin: 0 0 1rem; color: #5c5349; font-size: 0.9rem; }
-.picker-row { margin-bottom: 1rem; }
-.picker-label { display: block; font-weight: 500; margin-bottom: 0.35rem; color: #2d2a26; }
-.picker-search { width: 100%; max-width: 320px; margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #d4c4b0; font-size: 0.9rem; }
-.picker-select { padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #d4c4b0; font-size: 0.9rem; min-width: 220px; }
-.picker-list-wrap { max-height: 280px; overflow-y: auto; border: 1px solid #e5dccf; border-radius: 6px; padding: 0.5rem; background: #faf8f5; }
-.picker-list { display: flex; flex-direction: column; gap: 0.25rem; }
-.picker-item { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem; }
-.picker-item input { flex-shrink: 0; }
-.loading-inline, .empty-inline { margin: 0; padding: 0.5rem; color: #5c5349; font-size: 0.9rem; }
-.picker-actions { margin-top: 1rem; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; border: none; cursor: pointer; }
-.btn-primary { background: #cb997e; color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #b8866b; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: #e5dccf; color: #2d2a26; }
-.btn-secondary:hover { background: #d4c4b0; }
-.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5dccf; }
-.graph-actions { margin-bottom: 0.75rem; }
-.graph-warning { margin-bottom: 0.5rem; color: #b45309; font-size: 0.9rem; }
+.picker-card {
+  padding: 1.25rem;
+  max-width: 640px;
+}
+.picker-hint {
+  margin: 0 0 1rem;
+  color: var(--ar-muted);
+  font-size: 0.9rem;
+}
+.picker-row {
+  margin-bottom: 1rem;
+}
+.picker-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  color: var(--ar-text);
+}
+.picker-search {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--ar-radius-sm);
+  border: 1px solid var(--ar-border);
+  font-size: 0.9rem;
+  background: var(--ar-surface);
+}
+.picker-select {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--ar-radius-sm);
+  border: 1px solid var(--ar-border);
+  font-size: 0.9rem;
+  min-width: 220px;
+  background: var(--ar-surface);
+}
+.picker-list-wrap {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  padding: 0.5rem;
+  background: var(--ar-table-head-bg);
+}
+.picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.picker-item input {
+  flex-shrink: 0;
+}
+.loading-inline,
+.empty-inline {
+  margin: 0;
+  padding: 0.5rem;
+  color: var(--ar-muted);
+  font-size: 0.9rem;
+}
+.picker-actions {
+  margin-top: 1rem;
+}
+.graph-actions {
+  margin-bottom: 0.75rem;
+}
+.graph-warning {
+  margin-bottom: 0.5rem;
+  color: #b45309;
+  font-size: 0.9rem;
+}
 </style>

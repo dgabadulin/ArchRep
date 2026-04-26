@@ -302,7 +302,7 @@ watch(
 .modal-sub {
   margin: 0 0 12px;
   font-size: 0.95rem;
-  color: #5c5349;
+  color: var(--ar-muted);
 }
 .dual-grid {
   display: grid;
@@ -321,14 +321,15 @@ watch(
   width: 100%;
   min-height: 220px;
   padding: 6px;
-  border: 1px solid #d4c4b0;
-  border-radius: 6px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-surface);
 }
 .dual-select:focus,
 .dual-select:focus-visible {
   outline: none;
-  border-color: #d4c4b0;
-  box-shadow: none;
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 2px var(--ar-accent-muted);
 }
 .dual-btns {
   display: flex;
@@ -341,9 +342,9 @@ watch(
   margin: 0;
   padding: 6px;
   min-height: 220px;
-  border: 1px solid #d4c4b0;
-  border-radius: 6px;
-  background: #faf8f5;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-table-head-bg);
 }
 .dual-right-item {
   display: flex;
@@ -354,13 +355,13 @@ watch(
   border-radius: 4px;
 }
 .dual-right-item:hover {
-  background: #f0e6dc;
+  background: var(--ar-row-hover);
 }
 .dual-cb {
   flex-shrink: 0;
 }
 .dual-drag-hint {
-  color: #8b7355;
+  color: var(--ar-muted);
   cursor: grab;
   user-select: none;
 }
@@ -370,7 +371,7 @@ watch(
 .dual-empty {
   margin: 8px;
   font-size: 0.9rem;
-  color: #8b7355;
+  color: var(--ar-muted);
 }
 .modal-nested {
   z-index: 200;
@@ -380,7 +381,7 @@ watch(
   max-width: 400px;
 }
 .error {
-  color: #b91c1c;
+  color: var(--ar-danger);
   margin: 8px 0;
   white-space: pre-wrap;
   word-break: break-word;
@@ -388,17 +389,18 @@ watch(
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(26, 29, 46, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 150;
 }
 .modal {
-  background: #fff;
+  background: var(--ar-surface);
   padding: 1.25rem;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: var(--ar-radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--ar-border);
 }
 .modal h3 {
   margin: 0 0 0.5rem;
@@ -424,24 +426,10 @@ watch(
 .modal-input {
   width: 100%;
   padding: 0.5rem;
-  border: 1px solid #d4c4b0;
-  border-radius: 6px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
   box-sizing: border-box;
-}
-.btn {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.btn-primary {
-  background: #cb997e;
-  color: #fff;
-}
-.btn-secondary {
-  background: #e5dccf;
-  color: #2d2a26;
+  background: var(--ar-surface);
 }
 .btn-sm {
   padding: 0.35rem 0.65rem;

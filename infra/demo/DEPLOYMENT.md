@@ -181,7 +181,7 @@ call "%~dp0infra\demo\deploy.bat"
 
    Скрипт:
 
-  - копирует на сервер в `~/%DEPLOY_REMOTE_DIR%/` каталоги **`backend`**, **`frontend-v3`**, **`infra`**, **`db`**, **`DB`**, а также **`package.json`**, **`package-lock.json`**, **`.dockerignore`**, **`.pgmrc`**;
+  - копирует на сервер в `~/%DEPLOY_REMOTE_DIR%/` каталоги **`backend`**, **`frontend-v3`**, **`infra`**, **`db`**, **`DB`**, а также **`package.json`**, **`package-lock.json`**, **`.dockerignore`**, **`pgmrc.json`**;
    - нормализует CR/LF у `remote_demo_deploy.sh` и `env.demo` на сервере;
   - запускает **`remote_demo_deploy.sh`** в выбранном режиме:
     - `full`: Postgres + Draw.io → ожидание готовности → роль `postgres` для совместимости с дампом → (только при `ALLOW_DB_RESEED=true`) `DROP DATABASE archrep` → импорт `DB/schema/demo/dump-archrep.sql` → `npm install --include=dev` + `node-pg-migrate up` → запуск API;

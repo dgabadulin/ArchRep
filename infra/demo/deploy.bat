@@ -106,7 +106,7 @@ echo [1/3] Копирование проекта на %DEPLOY_SSH_TARGET_HOST% .
 
 cd /d "%LOCAL_DIR%"
 
-scp !SSH_OPTS! -r backend frontend-v3 infra db package.json package-lock.json .dockerignore DB .pgmrc "%REMOTE%:%DEPLOY_REMOTE_DIR%/"
+scp !SSH_OPTS! -r backend frontend-v3 infra db package.json package-lock.json .dockerignore DB pgmrc.json "%REMOTE%:%DEPLOY_REMOTE_DIR%/"
 
 if %ERRORLEVEL% neq 0 (
 

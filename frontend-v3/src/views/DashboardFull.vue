@@ -39,10 +39,10 @@ const entry = computed(() => getDashboard(slug.value))
 .page-head h1 {
   margin: 0;
   font-size: 1.35rem;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 .lead {
-  color: #5c5349;
+  color: var(--ar-muted);
   font-size: 0.95rem;
   line-height: 1.45;
   margin: 0 0 1rem;
@@ -53,31 +53,14 @@ const entry = computed(() => getDashboard(slug.value))
   min-height: 420px;
   display: flex;
   flex-direction: column;
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-lg);
   overflow: hidden;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: var(--ar-surface);
+  box-shadow: var(--ar-shadow-card);
 }
 .msg.error {
-  color: #a94442;
+  color: var(--ar-danger);
   margin-bottom: 1rem;
-}
-.btn {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  text-decoration: none;
-  font-size: 0.9rem;
-  border: none;
-  cursor: pointer;
-  display: inline-block;
-  text-align: center;
-}
-.btn-secondary {
-  background: #e5dccf;
-  color: #2d2a26;
-}
-.btn-secondary:hover {
-  background: #d4c4b0;
 }
 </style>

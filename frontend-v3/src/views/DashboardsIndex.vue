@@ -42,10 +42,10 @@ import { dashboards } from '../dashboards/registry'
 .page-head h1 {
   margin: 0;
   font-size: 1.35rem;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 .lead {
-  color: #5c5349;
+  color: var(--ar-muted);
   font-size: 0.95rem;
   line-height: 1.45;
   margin: 0 0 1.25rem;
@@ -62,10 +62,10 @@ import { dashboards } from '../dashboards/registry'
   box-sizing: border-box;
   width: min(100%, max(22rem, 50vw));
   padding: 1rem 1.25rem;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  border: 1px solid #e5dccf;
+  background: var(--ar-surface);
+  border-radius: var(--ar-radius-lg);
+  box-shadow: var(--ar-shadow-card);
+  border: 1px solid var(--ar-border);
 }
 .card-top {
   display: flex;
@@ -81,16 +81,17 @@ import { dashboards } from '../dashboards/registry'
 .card-title {
   margin: 0 0 0.25rem;
   font-size: 1.1rem;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 .card-category {
   font-size: 0.8rem;
-  color: #8b6914;
+  color: var(--ar-link);
+  font-weight: 600;
 }
 .card-desc {
   margin: 0 0 0.75rem;
   font-size: 0.88rem;
-  color: #5c5349;
+  color: var(--ar-muted);
   line-height: 1.4;
 }
 /* Превью на всю ширину карточки; высота — половина окна */
@@ -99,10 +100,10 @@ import { dashboards } from '../dashboards/registry'
   height: 50vh;
   min-height: 220px;
   max-height: 85vh;
-  border: 1px solid #e5dccf;
-  border-radius: 6px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
   overflow: hidden;
-  background: #faf8f5;
+  background: var(--ar-table-head-bg);
   display: flex;
   flex-direction: column;
 }
@@ -115,32 +116,6 @@ import { dashboards } from '../dashboards/registry'
   }
 }
 .btn-sm {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.85rem;
   flex-shrink: 0;
-}
-.btn {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  text-decoration: none;
-  font-size: 0.9rem;
-  border: none;
-  cursor: pointer;
-  display: inline-block;
-  text-align: center;
-}
-.btn-primary {
-  background: #cb997e;
-  color: #fff;
-}
-.btn-primary:hover {
-  background: #b8866b;
-}
-.btn-secondary {
-  background: #e5dccf;
-  color: #2d2a26;
-}
-.btn-secondary:hover {
-  background: #d4c4b0;
 }
 </style>

@@ -119,16 +119,47 @@ watch(id, load)
 </script>
 
 <style scoped>
-.page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-.page-head h1 { margin: 0; font-size: 1.25rem; }
-.form { max-width: 500px; background: #fff; padding: 1.25rem; border-radius: 8px; border: 1px solid #e5dccf; }
-.form-row { margin-bottom: 1rem; }
-.form-row label { display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.9rem; }
-.form-row input, .form-row select, .form-row textarea { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #e5dccf; border-radius: 6px; }
-.mt-1 { margin-top: 0.35rem; }
-.form-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; }
-.btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; text-decoration: none; border: 1px solid #cb997e; color: #8b5a2b; background: #fff; cursor: pointer; }
-.btn-primary { background: #cb997e; color: #fff; border-color: #cb997e; }
-.msg { padding: 1rem; }
-.msg.error { color: #c44; }
+.form {
+  max-width: 500px;
+  background: var(--ar-surface);
+  padding: 1.25rem;
+  border-radius: var(--ar-radius-lg);
+  border: 1px solid var(--ar-border);
+  box-shadow: var(--ar-shadow-card);
+}
+.form-row {
+  margin-bottom: 1rem;
+}
+.form-row label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ar-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-row input,
+.form-row select,
+.form-row textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-surface);
+}
+.mt-1 {
+  margin-top: 0.35rem;
+}
+.form-actions {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+}
+.msg {
+  padding: 1rem;
+}
+.msg.error {
+  color: var(--ar-danger);
+}
 </style>

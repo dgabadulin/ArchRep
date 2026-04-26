@@ -6,9 +6,9 @@
     "start": "node backend/index.js",
     "build:v3": "cd frontend-v3 && npm run build",
     "deploy": "infra\\prod\\deploy.bat",
-    "db:migrate": "node-pg-migrate up --config-file .pgmrc --migrations-dir DB/migrations",
-    "db:migrate:down": "node-pg-migrate down --config-file .pgmrc --migrations-dir DB/migrations",
-    "db:migrate:create": "node-pg-migrate create --config-file .pgmrc --migrations-dir DB/migrations",
+    "db:migrate": "node-pg-migrate up --config-file pgmrc.json --migrations-dir DB/migrations",
+    "db:migrate:down": "node-pg-migrate down --config-file pgmrc.json --migrations-dir DB/migrations",
+    "db:migrate:create": "node-pg-migrate create --config-file pgmrc.json --migrations-dir DB/migrations",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

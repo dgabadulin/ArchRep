@@ -184,18 +184,7 @@ useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
 </script>
 
 <style scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.page-head h1 { margin: 0; font-size: 1.35rem; color: #2d2a26; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; display: inline-block; }
-.btn-primary { background: #cb997e; color: #fff; }
-.btn-secondary { background: #e5dccf; color: #2d2a26; }
-.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5dccf; padding: 1.5rem; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.25rem; }
-.field-wide { grid-column: 1 / -1; }
-.field label { display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.9rem; color: #374151; }
-.field input, .field select, .field textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.95rem; }
-.req { color: #b91c1c; }
-.error { color: #b91c1c; margin-top: 0.5rem; }
-.actions { margin-top: 1.5rem; display: flex; gap: 0.75rem; }
-.loading { padding: 1rem; }
+.error {
+  margin-top: 0.5rem;
+}
 </style>
