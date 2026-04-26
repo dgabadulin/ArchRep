@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import './styles/theme.css'
 import './echarts/registerDashboardCharts.js'
 import App from './App.vue'
 import router from './router'

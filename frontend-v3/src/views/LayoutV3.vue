@@ -95,27 +95,136 @@ function toggleGroup(label) {
 </script>
 
 <style scoped>
-.layout { display: flex; min-height: 100vh; min-height: 100dvh; background: #faf8f5; }
-.sidebar { width: 280px; flex-shrink: 0; background: #f5f0e8; display: flex; flex-direction: column; border-right: 1px solid #e5dccf; box-shadow: 2px 0 8px rgba(0,0,0,0.04); }
-.sidebar-header { padding: 1rem 1.25rem; border-bottom: 1px solid #e5dccf; }
-.logo { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; font-size: 0.95rem; color: #2d2a26; text-decoration: none; }
-.logo:hover { color: #8b6914; }
-.logo-img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; }
-.logo-text { flex: 1; min-width: 0; }
-.sidebar-nav { padding: 0.5rem 0; overflow-y: auto; }
-.nav-group { margin-bottom: 0.25rem; }
-.nav-group-title { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.5rem 1.25rem; font-size: 0.9rem; font-weight: 500; color: #2d2a26; background: none; border: none; cursor: pointer; text-align: left; font-family: inherit; }
-.nav-group-title:hover { background: rgba(0,0,0,0.04); }
-.nav-group-chevron { margin-left: auto; font-size: 0.7rem; color: #5c5349; }
-.nav-group-children { padding-left: 0.5rem; }
-.nav-link, .nav-link-sub { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1.25rem; color: #2d2a26; text-decoration: none; font-size: 0.9rem; transition: background 0.15s, color 0.15s; }
-.nav-link-sub { padding-left: 2rem; }
-.nav-link-home { margin-bottom: 0.25rem; }
-.nav-icon { flex-shrink: 0; width: 1.25em; text-align: center; }
-.nav-icon-svg { color: currentColor; }
-.nav-link:hover, .nav-link-sub:hover { background: rgba(0,0,0,0.05); color: #1a1917; }
-.nav-link.active, .nav-link-sub.active { background: rgba(203, 153, 126, 0.2); color: #8b5a2b; font-weight: 500; border-right: 3px solid #cb997e; }
-.main { flex: 1; padding: 1rem 1.5rem; overflow: auto; }
+.layout {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ar-bg);
+}
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--ar-surface);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ar-border);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
+}
+.sidebar-header {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--ar-border);
+  background: linear-gradient(135deg, var(--ar-header) 0%, #252842 100%);
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.logo:hover {
+  color: var(--ar-accent);
+}
+.logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--ar-header-border);
+  background: #2a2d3e;
+  padding: 2px;
+}
+.logo-text {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-nav {
+  padding: 0.4rem 0 0.75rem;
+  overflow-y: auto;
+}
+.nav-group {
+  margin-bottom: 0.15rem;
+}
+.nav-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ar-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  border-radius: var(--ar-radius-sm);
+  transition: background 0.12s, color 0.12s;
+}
+.nav-group-title:hover {
+  background: var(--ar-accent-soft);
+  color: var(--ar-link);
+}
+.nav-group-chevron {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--ar-muted);
+}
+.nav-group-children {
+  padding: 0.15rem 0 0.35rem;
+  margin: 0 0.35rem 0.35rem;
+  background: #f8f9fb;
+  border-radius: var(--ar-radius-sm);
+  border: 1px solid var(--ar-border);
+}
+.nav-link,
+.nav-link-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  margin: 0 0.25rem;
+  color: var(--ar-text);
+  text-decoration: none;
+  font-size: 0.875rem;
+  border-radius: var(--ar-radius-sm);
+  transition: background 0.12s, color 0.12s;
+}
+.nav-link-sub {
+  padding-left: 1.35rem;
+}
+.nav-link-home {
+  margin: 0 0.35rem 0.35rem;
+}
+.nav-icon {
+  flex-shrink: 0;
+  width: 1.25em;
+  text-align: center;
+}
+.nav-icon-svg {
+  color: currentColor;
+}
+.nav-link:hover,
+.nav-link-sub:hover {
+  background: var(--ar-accent-soft);
+  color: var(--ar-link);
+}
+.nav-link.active,
+.nav-link-sub.active {
+  background: var(--ar-accent);
+  color: var(--ar-text-on-accent);
+  font-weight: 700;
+}
+.main {
+  flex: 1;
+  padding: 1.1rem 1.5rem;
+  overflow: auto;
+}
 .layout--minimal {
   height: 100dvh;
   max-height: 100dvh;

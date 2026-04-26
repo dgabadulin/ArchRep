@@ -35,7 +35,7 @@
     >
       <template #override-node="{ nodeId: nid }">
         <g class="node-custom">
-          <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#faf8f5" stroke="#cb997e" stroke-width="1" />
+          <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#f8f9fb" stroke="#00c4ae" stroke-width="1" />
           <g transform="translate(-12, -12)">
             <component :is="getIconComponent(nid)" :size="24" stroke-width="1.5" />
           </g>
@@ -130,7 +130,7 @@
       <div v-for="row in legendRows" :key="row.code" class="legend-row">
         <svg class="legend-node-svg" viewBox="-24 -24 48 48" width="36" height="36" aria-hidden="true">
           <g class="node-custom">
-            <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#faf8f5" stroke="#cb997e" stroke-width="1" />
+            <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#f8f9fb" stroke="#00c4ae" stroke-width="1" />
             <g transform="translate(-12, -12)">
               <component :is="getIconComponent(row.syntheticNodeId)" :size="24" stroke-width="1.5" />
             </g>
@@ -345,9 +345,9 @@ const configs = computed(() => ({
       width: 48,
       height: 48,
       borderRadius: 8,
-      color: '#faf8f5',
+      color: '#f8f9fb',
       strokeWidth: 1,
-      strokeColor: '#cb997e',
+      strokeColor: '#00c4ae',
     },
     label: {
       visible: true,
@@ -1021,9 +1021,9 @@ defineExpose({
   gap: 0.5rem;
   flex-shrink: 0;
   padding: 0.5rem;
-  background: #faf8f5;
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
+  background: var(--ar-table-head-bg);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius);
 }
 .toolbar-toggle {
   display: flex;
@@ -1042,21 +1042,24 @@ defineExpose({
 .btn-layout {
   padding: 0.4rem 0.6rem;
   font-size: 0.8rem;
-  border: 1px solid #d4c4b0;
+  border: 1px solid var(--ar-border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--ar-surface);
   cursor: pointer;
   text-align: left;
+  font-family: inherit;
 }
-.btn-layout:hover { background: #f5f0e8; }
+.btn-layout:hover {
+  background: var(--ar-row-hover);
+}
 .analyzer-graph-wrap {
   position: relative;
   flex: 1;
   min-width: 0;
   height: 780px;
-  background: #fff;
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
+  background: var(--ar-surface);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius);
   overflow: hidden;
 }
 .analyzer-graph {
@@ -1073,12 +1076,15 @@ defineExpose({
 .btn-tool {
   padding: 0.35rem 0.6rem;
   font-size: 0.8rem;
-  border: 1px solid #d4c4b0;
+  border: 1px solid var(--ar-border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--ar-surface);
   cursor: pointer;
+  font-family: inherit;
 }
-.btn-tool:hover { background: #f5f0e8; }
+.btn-tool:hover {
+  background: var(--ar-row-hover);
+}
 .graph-legend {
   position: absolute;
   left: 10px;
@@ -1089,11 +1095,11 @@ defineExpose({
   overflow-y: auto;
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
   font-size: 0.82rem;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 .legend-row {
   display: flex;
@@ -1114,10 +1120,10 @@ defineExpose({
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: #fff;
-  border: 1px solid #d4c4b0;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  background: var(--ar-surface);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   padding: 0.25rem 0;
   min-width: 200px;
 }
@@ -1130,14 +1136,14 @@ defineExpose({
   background: none;
   font-size: 0.85rem;
   cursor: pointer;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 .ctx-item:hover {
-  background: #f5f0e8;
+  background: var(--ar-row-hover);
 }
 .ctx-divider {
   height: 1px;
-  background: #e5dccf;
+  background: var(--ar-border);
   margin: 0.25rem 0;
 }
 .modal-overlay {
@@ -1150,9 +1156,10 @@ defineExpose({
   z-index: 1100;
 }
 .modal-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  background: var(--ar-surface);
+  border-radius: var(--ar-radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--ar-border);
   max-width: 90vw;
   max-height: 80vh;
   display: flex;
@@ -1163,15 +1170,19 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e5dccf;
+  border-bottom: 1px solid var(--ar-border);
 }
-.modal-header h3 { margin: 0; font-size: 1rem; }
+.modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--ar-text);
+}
 .modal-close {
   border: none;
   background: none;
   font-size: 1.25rem;
   cursor: pointer;
-  color: #5c5349;
+  color: var(--ar-muted);
 }
 .modal-body { padding: 1rem; overflow: auto; }
 .view-json {
@@ -1179,6 +1190,6 @@ defineExpose({
   font-size: 0.8rem;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #2d2a26;
+  color: var(--ar-text);
 }
 </style>

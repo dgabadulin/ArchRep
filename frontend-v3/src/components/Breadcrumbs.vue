@@ -76,9 +76,25 @@ function formatTitle(segment, index, parts, _fullPath) {
 </script>
 
 <style scoped>
-.breadcrumbs { font-size: 0.85rem; color: #5c5349; margin-bottom: 0.75rem; }
-.breadcrumb-link { color: #8b6914; text-decoration: none; }
-.breadcrumb-link:hover { text-decoration: underline; }
-.breadcrumb-sep { margin: 0 0.35rem; }
-.breadcrumb-current { color: #2d2a26; font-weight: 500; }
+.breadcrumbs {
+  font-size: 0.85rem;
+  color: var(--ar-muted);
+  margin-bottom: 0.75rem;
+}
+.breadcrumb-link {
+  color: var(--ar-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+.breadcrumb-link:hover {
+  text-decoration: underline;
+}
+.breadcrumb-sep {
+  margin: 0 0.35rem;
+  color: var(--ar-border);
+}
+.breadcrumb-current {
+  color: var(--ar-text);
+  font-weight: 600;
+}
 </style>

@@ -142,7 +142,7 @@ onMounted(() => {
 }
 .tab-hint {
   font-size: 0.9rem;
-  color: #5c5349;
+  color: var(--ar-muted);
   margin-bottom: 1rem;
 }
 .entity-links-toolbar {
@@ -151,7 +151,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding: 1rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--ar-border);
 }
 .loading {
   padding: 1rem;

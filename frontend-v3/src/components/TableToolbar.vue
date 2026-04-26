@@ -41,14 +41,15 @@ function onSearchInput() {
   min-width: 320px;
   max-width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d4c4b0;
-  border-radius: 6px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
   font-size: 0.9rem;
-  background: #fff;
+  background: var(--ar-surface);
+  color: var(--ar-text);
 }
 .search-input:focus {
   outline: none;
-  border-color: #cb997e;
-  box-shadow: 0 0 0 2px rgba(203, 153, 126, 0.2);
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 2px var(--ar-accent-muted);
 }
 </style>

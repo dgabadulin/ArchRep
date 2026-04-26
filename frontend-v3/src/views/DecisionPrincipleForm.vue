@@ -163,22 +163,11 @@ useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
 </script>
 
 <style scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.page-head h1 { margin: 0; font-size: 1.35rem; color: #2d2a26; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; display: inline-block; }
-.btn-primary { background: #cb997e; color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #b8866b; }
-.btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
-.btn-secondary { background: #e5dccf; color: #2d2a26; }
-.btn-secondary:hover { background: #d4c4b0; }
-.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5dccf; padding: 1.5rem; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.25rem; }
-.field-wide { grid-column: 1 / -1; }
-.field label { display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.9rem; }
-.field input, .field select, .field textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #d4c4b0; border-radius: 6px; font-size: 0.95rem; }
-.field input.readonly { background: #f5f0e8; color: #5c5349; }
-.req { color: #b91c1c; }
-.error { color: #b91c1c; margin-top: 0.5rem; }
-.actions { margin-top: 1.5rem; display: flex; gap: 0.75rem; }
-.loading { padding: 1rem; }
+.field input.readonly {
+  background: var(--ar-table-head-bg);
+  color: var(--ar-muted);
+}
+.error {
+  margin-top: 0.5rem;
+}
 </style>

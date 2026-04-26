@@ -908,34 +908,83 @@ async function deleteRelationType(id) { if (confirm('Удалить тип св�
 </script>
 
 <style scoped>
-.lead { color: #5c5349; margin-bottom: 1rem; }
-.tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
-.tab { padding: 0.5rem 1rem; border: 1px solid #d4c4b0; background: #fff; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
-.tab:hover { background: #faf8f5; }
-.tab.active { background: #cb997e; color: #fff; border-color: #cb997e; }
-.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5dccf; overflow: hidden; }
-.table-actions { padding: 0.5rem 1rem; border-bottom: 1px solid #e5dccf; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.85rem; }
-.btn-primary { background: #cb997e; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
-.btn-excel { background: #2d5a27; color: #f5f0e8; border: none; border-radius: 6px; cursor: pointer; }
-.btn-excel:disabled { opacity: 0.7; cursor: not-allowed; }
-.btn-secondary { background: #e5dccf; color: #2d2a26; border: none; border-radius: 6px; cursor: pointer; }
-.btn-link { background: none; border: none; color: #8b6914; cursor: pointer; text-decoration: underline; margin-right: 0.5rem; font-size: 0.9rem; }
-.btn-link.danger { color: #b91c1c; }
-.table { width: 100%; border-collapse: collapse; }
-.table th, .table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e5dccf; }
-.table th { background: #faf8f5; font-weight: 600; color: #5c5349; }
-.loading, .empty { padding: 1rem; }
-.ref-hint { color: #5c5349; font-size: 0.9rem; margin-bottom: 0.75rem; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { background: #fff; padding: 1.5rem; border-radius: 8px; min-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
-.modal h3 { margin: 0 0 1rem; font-size: 1.1rem; }
-.form-row { margin-bottom: 0.75rem; }
-.form-row label { display: block; margin-bottom: 0.25rem; font-size: 0.9rem; }
+.lead {
+  color: var(--ar-muted);
+  margin-bottom: 1rem;
+}
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.table-actions {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--ar-border);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.btn-link:not(.danger) {
+  color: var(--ar-link);
+  margin-right: 0.5rem;
+}
+.ref-hint {
+  color: var(--ar-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 29, 46, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--ar-surface);
+  padding: 1.5rem;
+  border-radius: var(--ar-radius-lg);
+  min-width: 320px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--ar-border);
+}
+.modal h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  color: var(--ar-text);
+}
+.form-row {
+  margin-bottom: 0.75rem;
+}
+.form-row label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
 .form-row input,
-.form-row select { width: 100%; padding: 0.5rem; border: 1px solid #d4c4b0; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
-.form-row select { cursor: pointer; background: #fff; }
-.req { color: #b91c1c; }
-.modal-actions { margin-top: 1rem; display: flex; gap: 0.5rem; }
-.modal-actions .btn { min-height: 40px; padding: 0.6rem 1rem; }
+.form-row select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 1rem;
+  box-sizing: border-box;
+  background: var(--ar-surface);
+}
+.form-row select {
+  cursor: pointer;
+}
+.modal-actions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+.modal-actions .btn {
+  min-height: 40px;
+  padding: 0.6rem 1rem;
+}
 </style>

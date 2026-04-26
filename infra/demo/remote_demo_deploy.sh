@@ -81,7 +81,8 @@ echo "[demo] Сборка образа ar-api для запуска миграц
 "${COMPOSE[@]}" build ar-api
 
 echo "[demo] Прогон node-pg-migrate (db:migrate) в БД archrep..."
-"${COMPOSE[@]}" run --rm --no-deps ar-api sh -lc "set -e; npm install --include=dev; export DB_HOST=\${DB_HOST:-postgres}; export DB_PORT=\${DB_PORT:-5432}; export DB_NAME=\${DB_NAME:-archrep}; export DATABASE_URL=\$(node -e 'const u=encodeURIComponent(process.env.DB_USER||\"postgres\"); const p=encodeURIComponent(process.env.DB_PASSWORD||\"\"); const h=process.env.DB_HOST||\"postgres\"; const port=process.env.DB_PORT||\"5432\"; const db=process.env.DB_NAME||\"archrep\"; process.stdout.write(`postgres://${u}:${p}@${h}:${port}/${db}`);'); npm run db:migrate"
+# Вариант A: без JS template literal — иначе внешний bash (set -u) ловит ${u} и `` ` `` как подстановки.
+"${COMPOSE[@]}" run --rm --no-deps ar-api sh -lc "set -e; npm install --include=dev; export DB_HOST=\${DB_HOST:-postgres}; export DB_PORT=\${DB_PORT:-5432}; export DB_NAME=\${DB_NAME:-archrep}; export DATABASE_URL=\$(node -e 'const u=encodeURIComponent(process.env.DB_USER||\"postgres\"); const p=encodeURIComponent(process.env.DB_PASSWORD||\"\"); const h=process.env.DB_HOST||\"postgres\"; const port=process.env.DB_PORT||\"5432\"; const db=process.env.DB_NAME||\"archrep\"; process.stdout.write(\"postgres://\"+u+\":\"+p+\"@\"+h+\":\"+port+\"/\"+db);'); npm run db:migrate"
 
 echo "[demo] Сборка и запуск ar-api..."
 "${COMPOSE[@]}" up -d ar-api

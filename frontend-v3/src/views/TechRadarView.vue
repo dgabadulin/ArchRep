@@ -25,22 +25,26 @@ const radarUrl = computed(() => String(getConfig().TECH_RADAR_EMBED_URL || '').t
 <style scoped>
 .tech-radar-page { height: calc(100vh - 8rem); display: flex; flex-direction: column; }
 .page-head { margin-bottom: 0.5rem; }
-.page-head h1 { margin: 0; font-size: 1.2rem; color: #2d2a26; }
+.page-head h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--ar-text);
+}
 .radar-iframe {
   flex: 1;
   width: 100%;
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-lg);
+  background: var(--ar-surface);
 }
 .radar-empty {
   flex: 1;
   margin: 0;
   padding: 1rem 1.25rem;
-  border: 1px solid #e5dccf;
-  border-radius: 8px;
-  background: #faf8f5;
-  color: #5c5348;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-lg);
+  background: var(--ar-table-head-bg);
+  color: var(--ar-muted);
   font-size: 0.95rem;
   line-height: 1.5;
 }

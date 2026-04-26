@@ -67,13 +67,13 @@ onMounted(load)
 .state {
   padding: 1rem;
   text-align: center;
-  color: #5c5349;
+  color: var(--ar-muted);
   font-size: 0.9rem;
 }
 .state.error {
-  color: #a94442;
+  color: var(--ar-danger);
 }
 .state.empty {
-  color: #5c5349;
+  color: var(--ar-muted);
 }
 </style>
