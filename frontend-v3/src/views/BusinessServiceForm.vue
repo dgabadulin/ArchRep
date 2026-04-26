@@ -28,11 +28,6 @@
         </select>
       </div>
       <div class="form-row">
-        <label>Источник / Категория</label>
-        <input v-model="form.source" placeholder="Источник" />
-        <input v-model="form.category" placeholder="Категория" class="mt-1" />
-      </div>
-      <div class="form-row">
         <label>Описание</label>
         <textarea v-model="form.description" rows="3"></textarea>
       </div>
@@ -78,8 +73,6 @@ async function load() {
         fullname: row.fullname || '',
         ar_organization_units_id: row.ar_organization_units_id,
         ar_business_service_statuses_id: row.ar_business_service_statuses_id,
-        source: row.source || '',
-        category: row.category || '',
         description: row.description || '',
       }
     } catch (e) {
@@ -87,7 +80,7 @@ async function load() {
       form.value = null
     }
   } else {
-    form.value = { name: '', fullname: '', ar_organization_units_id: null, ar_business_service_statuses_id: null, source: '', category: '', description: '' }
+    form.value = { name: '', fullname: '', ar_organization_units_id: null, ar_business_service_statuses_id: null, description: '' }
   }
   loading.value = false
 }
@@ -98,8 +91,6 @@ async function submit() {
     fullname: form.value.fullname || undefined,
     ar_organization_units_id: form.value.ar_organization_units_id || undefined,
     ar_business_service_statuses_id: form.value.ar_business_service_statuses_id || undefined,
-    source: form.value.source || undefined,
-    category: form.value.category || undefined,
     description: form.value.description || undefined,
   }
   try {
@@ -147,9 +138,6 @@ watch(id, load)
   border: 1px solid var(--ar-border);
   border-radius: var(--ar-radius-sm);
   background: var(--ar-surface);
-}
-.mt-1 {
-  margin-top: 0.35rem;
 }
 .form-actions {
   margin-top: 1.25rem;

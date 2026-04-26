@@ -2393,10 +2393,10 @@ app.get('/api/togaf/business-services/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_services_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.post('/api/togaf/business-services', async (req, res) => {
-  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_insert, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_insert, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/togaf/business-services/:id', async (req, res) => {
-  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_update, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.source, b.category, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_update, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.delete('/api/togaf/business-services/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_services_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
