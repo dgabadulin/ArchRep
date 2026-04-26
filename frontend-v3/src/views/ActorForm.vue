@@ -1,20 +1,16 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование актора' : 'Новый актор' }}</h1>
+      <h1>{{ isEdit ? 'Редактирование заинтересованного лица' : 'Новое заинтересованное лицо' }}</h1>
       <router-link to="/actors" class="btn">← К списку</router-link>
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
-      <div class="form-row">
-        <label>Код *</label>
-        <input v-model="form.code" required />
-      </div>
       <div class="form-row">
         <label>Наименование *</label>
         <input v-model="form.name" required />
       </div>
       <div class="form-row">
-        <label>Тип актора</label>
+        <label>Тип заинтересованного лица</label>
         <select v-model="form.actor_type_id">
           <option :value="null">—</option>
           <option v-for="t in actorTypes" :key="t.id" :value="t.id">{{ t.display_name || t.name }}</option>
@@ -26,10 +22,6 @@
           <option :value="null">—</option>
           <option v-for="ou in organizationUnits" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
         </select>
-      </div>
-      <div class="form-row">
-        <label>Источник</label>
-        <input v-model="form.source" />
       </div>
       <div class="form-row">
         <label>Описание</label>
@@ -77,31 +69,27 @@ async function load() {
     try {
       const row = await togafApi.actor(id.value)
       form.value = {
-        code: row.code,
         name: row.name,
         description: row.description || '',
         organization_unit_id: row.organization_unit_id,
         actor_type_id: row.actor_type_id,
-        source: row.source || '',
       }
     } catch (e) {
       error.value = e.message
       form.value = null
     }
   } else {
-    form.value = { code: '', name: '', description: '', organization_unit_id: null, actor_type_id: null, source: '' }
+    form.value = { name: '', description: '', organization_unit_id: null, actor_type_id: null }
   }
   loading.value = false
 }
 
 async function submit() {
   const payload = {
-    code: form.value.code,
     name: form.value.name,
     description: form.value.description || undefined,
     organization_unit_id: form.value.organization_unit_id || undefined,
     actor_type_id: form.value.actor_type_id || undefined,
-    source: form.value.source || undefined,
   }
   try {
     if (isEdit.value) {

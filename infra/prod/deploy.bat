@@ -45,7 +45,7 @@ if exist "!SSH_KEY!" (
 
 echo [1/3] Копирование проекта на сервер %DEPLOY_SSH_TARGET_HOST% ...
 cd /d "%LOCAL_DIR%"
-scp !SSH_OPTS! -r backend frontend-v3 infra package.json package-lock.json .dockerignore "%REMOTE%:%DEPLOY_REMOTE_DIR%/"
+scp !SSH_OPTS! -r backend frontend-v3 infra DB package.json package-lock.json pgmrc.json .dockerignore "%REMOTE%:%DEPLOY_REMOTE_DIR%/"
 if %ERRORLEVEL% neq 0 (
     echo Ошибка копирования.
     exit /b 1

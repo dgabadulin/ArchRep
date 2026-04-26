@@ -10,8 +10,7 @@ export function flatBusinessFunctionsToTreemap(rows) {
   for (const r of rows) {
     byId.set(r.id, {
       id: r.id,
-      name: (r.name || r.code || `#${r.id}`).trim(),
-      code: r.code,
+      name: (r.name || `#${r.id}`).trim(),
       parent_id: r.parent_id,
       children: [],
     })
@@ -32,10 +31,9 @@ export function flatBusinessFunctionsToTreemap(rows) {
     return {
       name: 'Бизнес-способности',
       children: rows.map((r) => ({
-        name: (r.name || r.code || `#${r.id}`).trim(),
+        name: (r.name || `#${r.id}`).trim(),
         value: 1,
         id: r.id,
-        code: r.code,
       })),
     }
   }
@@ -61,7 +59,6 @@ export function flatBusinessFunctionsToTreemap(rows) {
       name: n.name,
       value: n.value,
       id: n.id,
-      code: n.code,
     }
     if (n.children.length) {
       o.children = n.children.map(toEcharts)
@@ -187,7 +184,6 @@ export function treemapOptionFromTree(tree, { titleText, compact = false } = {})
       formatter(info) {
         const { name, value, data } = info
         const lines = [String(name), `Вес (узлов в поддереве): ${value}`]
-        if (data?.code) lines.push(`Код: ${data.code}`)
         return lines.join('\n')
       },
     },

@@ -102,7 +102,7 @@ const tileDescriptions = {
   '/decisions/applied': 'ADRA с инкрементами',
   '/architecture-debt': 'Реестр архитектурного долга (разрывы, отклонения)',
   '/organization-units': 'Структура организации',
-  '/actors': 'Роли и исполнители',
+  '/actors': 'Заинтересованные лица (stakeholders)',
   '/business-services': 'Продукты и сервисы',
   '/business-functions': 'Бизнес-способности',
   '/systems': 'Реестр информационных систем',
@@ -115,7 +115,7 @@ const tileDescriptions = {
   '/dashboards/catalog': 'Описание и ссылки на дашборды',
   '/goals': 'Цели и задачи (дерево/список)',
   '/references': 'Статусы, владельцы, типы (ИС и технологии)',
-  '/references-togaf': 'Категории орг. единиц, типы акторов, статусы',
+  '/references-togaf': 'Категории орг. единиц, типы заинтересованных лиц, статусы',
   '/settings/parameters': 'Настроечные параметры системы (Keycloak, лимиты, флаги)',
   '/settings/service-operations': 'Массовые операции (пересборка проекций и др.)',
 }

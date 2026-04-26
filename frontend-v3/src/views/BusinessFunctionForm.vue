@@ -6,10 +6,6 @@
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
       <div class="form-row">
-        <label>Код *</label>
-        <input v-model="form.code" required />
-      </div>
-      <div class="form-row">
         <label>Наименование *</label>
         <input v-model="form.name" required />
       </div>
@@ -26,11 +22,6 @@
           <option :value="null">—</option>
           <option v-for="ou in organizationUnits" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
         </select>
-      </div>
-      <div class="form-row">
-        <label>Источник / Категория</label>
-        <input v-model="form.source" placeholder="Источник" />
-        <input v-model="form.category" placeholder="Категория" class="mt-1" />
       </div>
       <div class="form-row">
         <label>Описание</label>
@@ -74,33 +65,27 @@ async function load() {
     try {
       const row = await togafApi.businessFunction(id.value)
       form.value = {
-        code: row.code,
         name: row.name,
         description: row.description || '',
         parent_id: row.parent_id,
         ar_organization_units_id: row.ar_organization_units_id,
-        source: row.source || '',
-        category: row.category || '',
       }
     } catch (e) {
       error.value = e.message
       form.value = null
     }
   } else {
-    form.value = { code: '', name: '', description: '', parent_id: null, ar_organization_units_id: null, source: '', category: '' }
+    form.value = { name: '', description: '', parent_id: null, ar_organization_units_id: null }
   }
   loading.value = false
 }
 
 async function submit() {
   const payload = {
-    code: form.value.code,
     name: form.value.name,
     description: form.value.description || undefined,
     parent_id: form.value.parent_id || undefined,
     ar_organization_units_id: form.value.ar_organization_units_id || undefined,
-    source: form.value.source || undefined,
-    category: form.value.category || undefined,
   }
   try {
     if (isEdit.value) {
@@ -147,9 +132,6 @@ watch(id, load)
   border: 1px solid var(--ar-border);
   border-radius: var(--ar-radius-sm);
   background: var(--ar-surface);
-}
-.mt-1 {
-  margin-top: 0.35rem;
 }
 .form-actions {
   margin-top: 1.25rem;

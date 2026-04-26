@@ -5,7 +5,7 @@
     </div>
     <div class="tabs">
       <button type="button" :class="['tab', { active: tab === 'categories' }]" @click="tab = 'categories'">Категории орг. единиц</button>
-      <button type="button" :class="['tab', { active: tab === 'actor-types' }]" @click="tab = 'actor-types'">Типы акторов</button>
+      <button type="button" :class="['tab', { active: tab === 'actor-types' }]" @click="tab = 'actor-types'">Типы заинтересованных лиц</button>
       <button type="button" :class="['tab', { active: tab === 'statuses' }]" @click="tab = 'statuses'">Статусы бизнес-сервисов</button>
       <button type="button" :class="['tab', { active: tab === 'entity-types' }]" @click="tab = 'entity-types'">Типы сущностей метамодели</button>
       <button type="button" :class="['tab', { active: tab === 'relation-types' }]" @click="tab = 'relation-types'">Типы связей метамодели</button>
@@ -36,7 +36,7 @@
       <p v-if="categories.length === 0" class="empty">Нет записей</p>
     </div>
     <div v-else-if="tab === 'actor-types'" class="panel">
-      <h2>Типы акторов</h2>
+      <h2>Типы заинтересованных лиц</h2>
       <div class="table-actions">
         <button type="button" class="btn btn-sm btn-primary" @click="openActorTypeForm()">Добавить</button>
       </div>
@@ -155,7 +155,7 @@
     </div>
     <div v-if="actorTypeForm" class="modal-overlay">
       <div class="modal">
-        <h3>{{ actorTypeForm.id ? 'Изменить тип актора' : 'Новый тип актора' }}</h3>
+        <h3>{{ actorTypeForm.id ? 'Изменить тип заинтересованного лица' : 'Новый тип заинтересованного лица' }}</h3>
         <div class="form-row"><label>Код</label><input v-model="actorTypeForm.code" placeholder="необязательно" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="actorTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="actorTypeForm.description" /></div>
@@ -390,7 +390,7 @@ async function deleteCategory(id) {
   }
 }
 async function deleteActorType(id) {
-  if (!confirm('Удалить тип актора?')) return
+  if (!confirm('Удалить тип заинтересованного лица?')) return
   try {
     await togafApi.refs.deleteActorType(id)
     await load()

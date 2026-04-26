@@ -66,7 +66,6 @@ import TableToolbar from '../components/TableToolbar.vue'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 
 const columns = [
-  { key: 'code', label: 'Код', defaultVisible: true },
   { key: 'name', label: 'Наименование', defaultVisible: true },
   { key: 'fullname', label: 'Полное наименование', defaultVisible: false },
   { key: 'owner_name', label: 'Владелец', defaultVisible: true },
@@ -80,7 +79,7 @@ const visibleCols = ref(getVisibleColumns('business-services', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
-const sortPref = getSortPref('business-services', 'name', 'asc')
+const sortPref = getSortPref('business-services', 'name', 'asc', columns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 

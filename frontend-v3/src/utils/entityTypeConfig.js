@@ -33,9 +33,9 @@ export const entityTypeConfig = {
     listLabel: 'Орг. единицы',
   },
   actor: {
-    label: 'Актор',
+    label: 'Заинтересованное лицо',
     icon: 'User',
-    listLabel: 'Акторы',
+    listLabel: 'Заинтересованные лица',
   },
   business_service: {
     label: 'Бизнес-сервис (продукт)',

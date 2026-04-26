@@ -92,7 +92,7 @@ const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
 const excelLoading = ref(false)
-const sortPref = getSortPref('systems', 'name', 'asc')
+const sortPref = getSortPref('systems', 'name', 'asc', systemColumns)
 const sortKey = ref(sortPref.sortKey)
 const sortOrder = ref(sortPref.sortOrder)
 

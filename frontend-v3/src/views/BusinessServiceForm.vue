@@ -6,10 +6,6 @@
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
       <div class="form-row">
-        <label>Код *</label>
-        <input v-model="form.code" required />
-      </div>
-      <div class="form-row">
         <label>Наименование *</label>
         <input v-model="form.name" required />
       </div>
@@ -78,7 +74,6 @@ async function load() {
     try {
       const row = await togafApi.businessService(id.value)
       form.value = {
-        code: row.code,
         name: row.name,
         fullname: row.fullname || '',
         ar_organization_units_id: row.ar_organization_units_id,
@@ -92,14 +87,13 @@ async function load() {
       form.value = null
     }
   } else {
-    form.value = { code: '', name: '', fullname: '', ar_organization_units_id: null, ar_business_service_statuses_id: null, source: '', category: '', description: '' }
+    form.value = { name: '', fullname: '', ar_organization_units_id: null, ar_business_service_statuses_id: null, source: '', category: '', description: '' }
   }
   loading.value = false
 }
 
 async function submit() {
   const payload = {
-    code: form.value.code,
     name: form.value.name,
     fullname: form.value.fullname || undefined,
     ar_organization_units_id: form.value.ar_organization_units_id || undefined,
