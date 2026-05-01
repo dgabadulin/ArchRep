@@ -20,7 +20,7 @@
           <div v-else class="picker-list">
             <label v-for="item in filteredEntityList" :key="item.id" class="picker-item">
               <input type="checkbox" :value="item.id" v-model="selectedIds" />
-              <span>{{ item.display_name || item.name || item.code || `#${item.id}` }}</span>
+              <span>{{ item.display_name || item.full_name || item.name || item.code || `#${item.id}` }}</span>
             </label>
           </div>
           <p v-if="!listLoading && entityList.length === 0" class="empty-inline">Нет записей</p>
@@ -107,6 +107,7 @@ const filteredEntityList = computed(() => {
       (e.name && e.name.toLowerCase().includes(q)) ||
       (e.code && e.code.toLowerCase().includes(q)) ||
       (e.fullname && e.fullname.toLowerCase().includes(q)) ||
+      (e.full_name && e.full_name.toLowerCase().includes(q)) ||
       String(e.id).includes(q)
   )
 })
@@ -196,7 +197,10 @@ function onExpandModules(nid) {
   })
 }
 
-const defaultEntityTypeOrder = ['system', 'subsystem', 'technology', 'organization_unit', 'actor', 'business_service', 'business_function', 'principle']
+const defaultEntityTypeOrder = [
+  'system', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee',
+  'business_service', 'business_function', 'principle',
+]
 function getEntityTypeOrder() {
   const o = getConfig().GRAPH_ENTITY_ORDER
   return Array.isArray(o) && o.length ? o : defaultEntityTypeOrder
@@ -261,7 +265,7 @@ function buildGraph() {
     const item = entityList.value.find((e) => e.id === id)
     const displayType = type === 'system' && item?.parent_ar_systems_id != null ? 'subsystem' : type
     nodes[nid] = {
-      name: item?.display_name || item?.name || item?.code || `${type}:${id}`,
+      name: item?.display_name || item?.full_name || item?.name || item?.code || `${type}:${id}`,
       entityType: displayType,
       entityId: id,
     }

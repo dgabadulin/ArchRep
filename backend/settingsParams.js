@@ -39,7 +39,7 @@ async function loadParams(pool) {
 
 /**
  * Получить значение параметра по коду. После loadParams() — синхронно из кэша.
- * @param {string} code — код параметра (например ARR_SERVER_PORT, GAP_CODE_PREFIX, TECH_RADAR_EMBED_URL, SYS_TECH_STACK_RELATION_CODE, MODULE_TECH_STACK_RELATION_CODE)
+ * @param {string} code — код параметра (например ARR_SERVER_PORT, GAP_CODE_PREFIX, TECH_RADAR_EMBED_URL, SYS_TECH_STACK_RELATION_CODE, MODULE_TECH_STACK_RELATION_CODE, DISP_EMPLOYEE_TEMPLATE, SYSTEM_IT_LEAD_RELATION_CODE)
  * @param {*} defaultValue — значение по умолчанию, если параметр не задан
  * @returns {*}
  */

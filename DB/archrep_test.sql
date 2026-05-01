@@ -153,8 +153,6 @@ CREATE TABLE archrep_test.ar_systems (
 	supplier_ar_partners_id int8 NULL, -- Поставщик решения, интегратор (FK)
 	supporter_ar_partners_id int8 NULL, -- Партнер по поддержке(FK)
 	description varchar NULL, -- Описание системы/модуля
-	it_lead varchar NULL, -- Ответственный от ИТ
-	business_lead varchar NULL, -- Ответственный от бизнеса
 	ar_system_owners_id int8 NULL, -- Относится к направлению бизнеса (FK)
 	ar_system_hosting_types_id int8 NULL, -- Тип хостинга(FK)
 	"comment" varchar NULL, -- Примечание
@@ -176,8 +174,6 @@ COMMENT ON COLUMN archrep_test.ar_systems.vendor_ar_partners_id IS 'Вендор
 COMMENT ON COLUMN archrep_test.ar_systems.supplier_ar_partners_id IS 'Поставщик решения, интегратор (FK)';
 COMMENT ON COLUMN archrep_test.ar_systems.supporter_ar_partners_id IS 'Партнер по поддержке(FK)';
 COMMENT ON COLUMN archrep_test.ar_systems.description IS 'Описание системы/модуля';
-COMMENT ON COLUMN archrep_test.ar_systems.it_lead IS 'Ответственный от ИТ';
-COMMENT ON COLUMN archrep_test.ar_systems.business_lead IS 'Ответственный от бизнеса';
 COMMENT ON COLUMN archrep_test.ar_systems.ar_system_owners_id IS 'Относится к направлению бизнеса (FK)';
 COMMENT ON COLUMN archrep_test.ar_systems.ar_system_hosting_types_id IS 'Тип хостинга(FK)';
 COMMENT ON COLUMN archrep_test.ar_systems."comment" IS 'Примечание';

@@ -87,11 +87,17 @@
         </div>
         <div class="field">
           <label>Ответственный от ИТ</label>
-          <input v-model="form.it_lead" />
+          <select v-model="form.it_lead_employee_id">
+            <option :value="null">—</option>
+            <option v-for="emp in employees" :key="emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
+          </select>
         </div>
         <div class="field">
-          <label>Ответственный от бизнеса</label>
-          <input v-model="form.business_lead" />
+          <label>Владелец системы (бизнес)</label>
+          <select v-model="form.business_lead_employee_id">
+            <option :value="null">—</option>
+            <option v-for="emp in employees" :key="'b-' + emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
+          </select>
         </div>
         <div class="field field-wide">
           <label>Описание</label>
@@ -235,6 +241,7 @@ const statuses = ref([])
 const vendors = ref([])
 const owners = ref([])
 const hostingTypes = ref([])
+const employees = ref([])
 
 const activeTab = ref('data')
 const systemTechnologies = ref([])
@@ -278,7 +285,8 @@ const systemTechGraphCenterNodeId = computed(() => {
 const form = reactive({
   code: '', name: '', fullname: '', parent_ar_systems_id: null, parent_name: '',
   ar_system_statuses_id: null, vendor_ar_partners_id: null, supplier_ar_partners_id: null,
-  supporter_ar_partners_id: null, description: '', it_lead: '', business_lead: '',
+  supporter_ar_partners_id: null, description: '',
+  it_lead_employee_id: null, business_lead_employee_id: null,
   ar_system_owners_id: null, ar_system_hosting_types_id: null, comment: '',
   external_system: false,
 })
@@ -295,8 +303,8 @@ function formSnapshot() {
     supplier_ar_partners_id: form.supplier_ar_partners_id,
     supporter_ar_partners_id: form.supporter_ar_partners_id,
     description: form.description,
-    it_lead: form.it_lead,
-    business_lead: form.business_lead,
+    it_lead_employee_id: form.it_lead_employee_id,
+    business_lead_employee_id: form.business_lead_employee_id,
     ar_system_owners_id: form.ar_system_owners_id,
     ar_system_hosting_types_id: form.ar_system_hosting_types_id,
     comment: form.comment,
@@ -309,7 +317,8 @@ const lastLoadedSnapshot = ref(null)
 function emptyForm() {
   form.code = ''; form.name = ''; form.fullname = ''; form.parent_ar_systems_id = null; form.parent_name = ''
   form.ar_system_statuses_id = null; form.vendor_ar_partners_id = null; form.supplier_ar_partners_id = null
-  form.supporter_ar_partners_id = null; form.description = ''; form.it_lead = ''; form.business_lead = ''
+  form.supporter_ar_partners_id = null; form.description = ''
+  form.it_lead_employee_id = null; form.business_lead_employee_id = null
   form.ar_system_owners_id = null; form.ar_system_hosting_types_id = null; form.comment = ''
   form.external_system = false
 }
@@ -322,7 +331,9 @@ function mapToForm(row) {
   form.vendor_ar_partners_id = row.vendor_ar_partners_id ?? null
   form.supplier_ar_partners_id = row.supplier_ar_partners_id ?? null
   form.supporter_ar_partners_id = row.supporter_ar_partners_id ?? null
-  form.description = row.description ?? ''; form.it_lead = row.it_lead ?? ''; form.business_lead = row.business_lead ?? ''
+  form.description = row.description ?? ''
+  form.it_lead_employee_id = row.it_lead_employee_id ?? null
+  form.business_lead_employee_id = row.business_lead_employee_id ?? null
   form.ar_system_owners_id = row.ar_system_owners_id ?? null
   form.ar_system_hosting_types_id = row.ar_system_hosting_types_id ?? null
   form.comment = row.comment ?? ''
@@ -330,10 +341,12 @@ function mapToForm(row) {
 }
 
 async function loadRefs() {
-  const [parents, st, v, o, h] = await Promise.all([
+  const [parents, st, v, o, h, em] = await Promise.all([
     api.getParentSystems(), api.getSystemStatuses(), api.getVendors(), api.getOwners(), api.getHostingTypes(),
+    api.getEmployees(),
   ])
   parentSystems.value = parents; statuses.value = st; vendors.value = v; owners.value = o; hostingTypes.value = h
+  employees.value = em
 }
 
 onMounted(async () => {
@@ -451,8 +464,8 @@ async function submit(opts = {}) {
       supplier_ar_partners_id: fkOrNull(form.supplier_ar_partners_id),
       supporter_ar_partners_id: fkOrNull(form.supporter_ar_partners_id),
       description: form.description?.trim() || undefined,
-      it_lead: form.it_lead?.trim() || undefined,
-      business_lead: form.business_lead?.trim() || undefined,
+      it_lead_employee_id: fkOrNull(form.it_lead_employee_id),
+      business_lead_employee_id: fkOrNull(form.business_lead_employee_id),
       ar_system_owners_id: fkOrNull(form.ar_system_owners_id),
       ar_system_hosting_types_id: fkOrNull(form.ar_system_hosting_types_id),
       comment: form.comment?.trim() || undefined,

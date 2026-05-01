@@ -230,7 +230,7 @@ function getIconComponent(nodeId) {
   const type = node?.entityType || (nodeId && nodeId.indexOf(':') >= 0 ? nodeId.split(':')[0] : '')
   const config = getEntityTypeConfig(type)
   const name = config.icon || 'Circle'
-  return iconComponents[name] || LucideIcons.Circle
+  return iconComponents[name] || LucideIcons[name] || LucideIcons.Circle
 }
 
 /** Список типов из метамодели для легенды (синтетический id «code:0» — только для выбора иконки). */

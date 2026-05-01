@@ -107,6 +107,28 @@
         </table>
         <p v-if="vendors.length === 0" class="empty">Нет записей</p>
       </template>
+      <!-- Сотрудники -->
+      <template v-else-if="activeTab === 'employees'">
+        <div class="table-actions">
+          <button type="button" class="btn btn-sm btn-primary" @click="openEmployeeForm()">Добавить</button>
+          <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Сотрудник</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in employees" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.display_name || r.full_name }}</td>
+              <td>{{ r.status === 'active' ? 'active' : 'inactive' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openEmployeeForm(r)">Изменить</button>
+                <button type="button" class="btn-link danger" @click="deleteEmployee(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="employees.length === 0" class="empty">Нет записей</p>
+      </template>
       <!-- ADR: статусы систем в решении -->
       <template v-else-if="activeTab === 'adrSystemStatuses'">
         <div class="table-actions">
@@ -433,6 +455,17 @@
         </div>
       </div>
     </div>
+    <div v-if="employeeForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ employeeForm.id ? 'Изменить сотрудника' : 'Новый сотрудник' }}</h3>
+        <div class="form-row"><label>ФИО</label><input v-model="employeeForm.full_name" placeholder="Иванов Иван Иванович" /></div>
+        <div class="form-row"><label>Активен</label><select v-model="employeeForm.active"><option :value="true">Да (active)</option><option :value="false">Нет (inactive)</option></select></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" @click="saveEmployee">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="employeeForm = null">Отмена</button>
+        </div>
+      </div>
+    </div>
     <div v-if="adrSystemStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ adrSystemStatusForm.id ? 'Изменить статус системы в решении' : 'Новый статус (системы в решении)' }}</h3>
@@ -601,6 +634,7 @@ const tabs = [
   { id: 'hosting', label: 'Типы хостинга' },
   { id: 'owners', label: 'Владельцы (направления)' },
   { id: 'vendors', label: 'Партнёры / вендоры' },
+  { id: 'employees', label: 'Сотрудники' },
   { id: 'adrSystemStatuses', label: 'Системы в решении (статусы)' },
   { id: 'adrRelationStatuses', label: 'Интеграции в решении (статусы)' },
   { id: 'adrStatuses', label: 'Статус утверждения' },
@@ -622,6 +656,7 @@ const statuses = ref([])
 const hostingTypes = ref([])
 const owners = ref([])
 const vendors = ref([])
+const employees = ref([])
 const adrSystemStatuses = ref([])
 const adrRelationStatuses = ref([])
 const adrStatuses = ref([])
@@ -637,6 +672,7 @@ const statusForm = ref(null)
 const hostingForm = ref(null)
 const ownerForm = ref(null)
 const vendorForm = ref(null)
+const employeeForm = ref(null)
 const adrSystemStatusForm = ref(null)
 const adrRelationStatusForm = ref(null)
 const integrationFlowEventTypeForm = ref(null)
@@ -660,6 +696,7 @@ async function loadTab() {
     else if (activeTab.value === 'hosting') hostingTypes.value = await api.getHostingTypes(q)
     else if (activeTab.value === 'owners') owners.value = await api.getOwners(q)
     else if (activeTab.value === 'vendors') vendors.value = await api.getPartners(q)
+    else if (activeTab.value === 'employees') employees.value = await api.getEmployees(q)
     else if (activeTab.value === 'adrSystemStatuses') adrSystemStatuses.value = await api.getAdrSystemStatuses(q)
     else if (activeTab.value === 'adrRelationStatuses') adrRelationStatuses.value = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'adrStatuses') adrStatuses.value = await api.getAdrStatuses()
@@ -694,6 +731,7 @@ async function exportExcel() {
     else if (activeTab.value === 'hosting') blob = await api.getHostingTypes(q)
     else if (activeTab.value === 'owners') blob = await api.getOwners(q)
     else if (activeTab.value === 'vendors') blob = await api.getPartners(q)
+    else if (activeTab.value === 'employees') blob = await api.getEmployees(q)
     else if (activeTab.value === 'adrSystemStatuses') blob = await api.getAdrSystemStatuses(q)
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
@@ -709,6 +747,11 @@ function openStatusForm(r) { statusForm.value = r ? { id: r.id, name: r.name, de
 function openHostingForm(r) { hostingForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
 function openOwnerForm(r) { ownerForm.value = r ? { id: r.id, name: r.name, leader: r.leader ?? '' } : { name: '', leader: '' } }
 function openVendorForm(r) { vendorForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
+function openEmployeeForm(r) {
+  employeeForm.value = r
+    ? { id: r.id, full_name: r.full_name ?? '', active: !!r.active }
+    : { full_name: '', active: true }
+}
 function openAdrSystemStatusForm(r) { adrSystemStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
 function openAdrRelationStatusForm(r) { adrRelationStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
 function openIntegrationFlowEventTypeForm(r) { integrationFlowEventTypeForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
@@ -762,6 +805,16 @@ async function saveVendor() {
     if (vendorForm.value.id) await api.updatePartner(vendorForm.value.id, { name: vendorForm.value.name })
     else await api.createPartner({ name: vendorForm.value.name })
     vendorForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function saveEmployee() {
+  if (!employeeForm.value?.full_name?.trim()) return
+  try {
+    const body = { full_name: employeeForm.value.full_name.trim(), active: employeeForm.value.active }
+    if (employeeForm.value.id) await api.updateEmployee(employeeForm.value.id, body)
+    else await api.createEmployee(body)
+    employeeForm.value = null
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }
 }
@@ -866,6 +919,13 @@ async function deleteStatus(id) { if (confirm('Удалить?')) { await api.de
 async function deleteHosting(id) { if (confirm('Удалить?')) { await api.deleteHostingType(id); await loadTab() } }
 async function deleteOwner(id) { if (confirm('Удалить?')) { await api.deleteOwner(id); await loadTab() } }
 async function deleteVendor(id) { if (confirm('Удалить?')) { await api.deletePartner(id); await loadTab() } }
+async function deleteEmployee(id) {
+  if (!confirm('Удалить сотрудника? Ссылки в ИС будут обнулены.')) return
+  try {
+    await api.deleteEmployee(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
 async function deleteAdrSystemStatus(id) { if (confirm('Удалить?')) { await api.deleteAdrSystemStatus(id); await loadTab() } }
 async function deleteAdrRelationStatus(id) { if (confirm('Удалить?')) { await api.deleteAdrRelationStatus(id); await loadTab() } }
 async function deleteIntegrationFlowEventType(id) { if (confirm('Удалить?')) { await api.deleteIntegrationFlowEventType(id); await loadTab() } }

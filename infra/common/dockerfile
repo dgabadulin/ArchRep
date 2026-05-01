@@ -18,6 +18,8 @@ RUN npm ci --omit=dev 2>/dev/null || npm install
 # Миграции и конфиг node-pg-migrate (npm run db:migrate в demo/prod deploy)
 COPY pgmrc.json ./
 COPY DB/migrations ./DB/migrations
+# SQL, на который ссылаются миграции через readFileSync (см. DB/migrations/*.js)
+COPY DB/scripts ./DB/scripts
 
 COPY backend ./backend
 COPY --from=frontend-v3-build /app/frontend-v3-dist ./frontend-v3-dist

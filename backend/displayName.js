@@ -46,6 +46,7 @@ const TEMPLATE_DEFS = {
   DISP_BUSINESS_SERVICE_TEMPLATE: { fields: ['name', 'fullname'], fallback: '{name}' },
   DISP_BUSINESS_SERVICE_STATUS_TEMPLATE: { fields: ['name'], fallback: '{name}' },
   DISP_BUSINESS_FUNCTION_TEMPLATE: { fields: ['name'], fallback: '{name}' },
+  DISP_EMPLOYEE_TEMPLATE: { fields: ['full_name', 'status'], fallback: '{full_name} [[({status})]]' },
   DISP_META_ENTITY_TYPE_TEMPLATE: { fields: ['code', 'name'], fallback: '{name}' },
   DISP_META_REL_TYPE_TEMPLATE: { fields: ['code', 'name'], fallback: '{name}' },
 };
@@ -81,6 +82,7 @@ const ENTITY_TO_TEMPLATE = {
   business_service: 'DISP_BUSINESS_SERVICE_TEMPLATE',
   business_service_status: 'DISP_BUSINESS_SERVICE_STATUS_TEMPLATE',
   business_function: 'DISP_BUSINESS_FUNCTION_TEMPLATE',
+  employee: 'DISP_EMPLOYEE_TEMPLATE',
   meta_entity_type: 'DISP_META_ENTITY_TYPE_TEMPLATE',
   meta_relation_type: 'DISP_META_REL_TYPE_TEMPLATE',
 };

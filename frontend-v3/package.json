@@ -13,7 +13,7 @@
     "vue-router": "^4.2.0",
     "v-network-graph": "^0.9.22",
     "@antv/g6": "^4.6.0",
-    "lucide-vue-next": "^0.460.0",
+    "lucide-vue-next": "^0.500.0",
     "marked": "^15.0.0",
     "echarts": "^5.5.0",
     "vue-echarts": "^7.0.0"

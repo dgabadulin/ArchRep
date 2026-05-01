@@ -17,6 +17,7 @@ const entityFetchers = {
   business_function: (id) => togafApi.businessFunction(id),
   principle: (id) => api.getPrinciple(String(id)),
   gap: (id) => api.getGap(String(id)),
+  employee: (id) => api.getEmployee(String(id)),
 }
 
 const listFetchers = {
@@ -29,6 +30,7 @@ const listFetchers = {
   business_function: (params) => togafApi.businessFunctions(params),
   principle: (params) => api.getPrinciples(params),
   gap: (params) => api.getGaps(params),
+  employee: (params) => api.getEmployees(params),
 }
 
 /**

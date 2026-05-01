@@ -79,8 +79,8 @@ const systemColumns = [
   { key: 'owner', label: 'Владелец', defaultVisible: true },
   { key: 'hosting', label: 'Тип хостинга', defaultVisible: false },
   { key: 'description', label: 'Описание', defaultVisible: false },
-  { key: 'it_lead', label: 'Ответственный от ИТ', defaultVisible: false },
-  { key: 'business_lead', label: 'Ответственный от бизнеса', defaultVisible: false },
+  { key: 'it_lead_employee_name', label: 'Ответственный от ИТ', defaultVisible: false },
+  { key: 'business_lead_employee_name', label: 'Владелец системы (бизнес)', defaultVisible: false },
   { key: 'comment', label: 'Примечание', defaultVisible: false },
   { key: 'actions', label: '', defaultVisible: true },
 ]

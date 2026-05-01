@@ -106,8 +106,8 @@
 | ar_system_owners_id | bigint FK | Владелец (направление бизнеса) |
 | ar_system_hosting_types_id | bigint FK | Тип хостинга |
 | description | text | Описание |
-| it_lead | varchar | Ответственный от ИТ |
-| business_lead | varchar | Ответственный от бизнеса |
+| it_lead_employee_id | bigint FK | Ответственный от ИТ (`ar_employees`) |
+| business_lead_employee_id | bigint FK | Владелец системы / ответственный от бизнеса (`ar_employees`) |
 | comment | text | Примечание |
 | technologies | text | Текстовое перечисление технологий (legacy) |
 
