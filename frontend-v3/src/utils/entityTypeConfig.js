@@ -37,6 +37,11 @@ export const entityTypeConfig = {
     icon: 'User',
     listLabel: 'Заинтересованные лица',
   },
+  employee: {
+    label: 'Сотрудник',
+    icon: 'UserCircle',
+    listLabel: 'Сотрудники',
+  },
   business_service: {
     label: 'Бизнес-сервис (продукт)',
     icon: 'Package',

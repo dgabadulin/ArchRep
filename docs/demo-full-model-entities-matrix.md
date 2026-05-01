@@ -13,6 +13,7 @@
 | `actor` | `ar_actors` | Каталог | Уже есть | `performs_business_function` |
 | `business_service` | `ar_business_services` | Каталог | Уже есть | `realized_by_system`, `owned_by_org_unit` |
 | `business_function` | `ar_business_functions` | Каталог/иерархия | Уже есть | `belongs_to_org_unit`, `supports_business_service` |
+| `employee` | `ar_employees` | Справочник | Уже есть | FK с `system` / `subsystem`: ИТ-лид и владелец (`it_lead_employee_id`, `business_lead_employee_id`); проекции с кодами `system_it_lead`, …; подпись ребра на графе — из `ar_metamodel_relation_types.name`, не из `displayed_name` |
 | `system_function` | `ar_system_functions` | Каталог (строки внутри ИС) | Есть таблица и API; **нет** связей с бизнес-слоем в схеме | `belongs_to_system` (FK), целевые: `implements_business_function`, `supports_business_service`; опционально проекция в `ar_metamodel_relations` |
 | `principle` | `ar_principles` | Каталог | Уже есть | `constrains_system_or_process` |
 | `gap` | `ar_gaps` | Реестр | Уже есть | `affects_any_entity` |
@@ -27,6 +28,7 @@
 | Код сущности | Текущий источник | Примечание для модели |
 |---|---|---|
 | `partner` | `ar_partners` | Единый справочник контрагентов (вендор/поставщик/поддержка) |
+| `employee` | `ar_employees` | Сотрудник (ответственные ИТ/бизнес по ИС); отображение через `DISP_EMPLOYEE_TEMPLATE` |
 | `system_owner` | `ar_system_owners` | Владелец системы (орг. роль) |
 | `system_status` | `ar_system_statuses` | Статус системы |
 | `hosting_type` | `ar_system_hosting_types` | Тип хостинга |
@@ -49,7 +51,7 @@
 | `ar_systems` | `vendor_ar_partners_id` | `vendor` (роль `partner`) | Отдельный тип связи и аналитика по вендорам |
 | `ar_systems` | `supplier_ar_partners_id` | `supplier` (роль `partner`) | Прозрачность поставки/поддержки |
 | `ar_systems` | `supporter_ar_partners_id` | `support_provider` (роль `partner`) | SLA и ответственность |
-| `ar_systems` | `it_lead`, `business_lead` | `person` | Повторно используемые ответственные между объектами |
+| `ar_systems` | FK `it_lead_employee_id`, `business_lead_employee_id` | `employee` (`ar_employees`) | Ответственные только через справочник сотрудников |
 | `ar_systems`/`ar_technologies` | текстовые `comment`, `description` | `note`/`evidence` | История решений и источников |
 | разные сущности | `source`, `category` (где остались) | `source_system`, `domain_category` | Контролируемый vocabulary вместо свободного текста |
 
@@ -83,6 +85,10 @@
 | `integration_flow` | `system -> system` | Проекция из `ar_integration_flows` |
 | `module_technology` | `subsystem -> technology` | Модуль использует технологию |
 | `system_technology` | `system -> technology` | ИС использует элемент техстека |
+| `system_it_lead` | `system -> employee` | Ответственный от ИТ (FK на `ar_employees`); триггер на `ar_systems`; отображаемое имя типа связи — «Ответственный от ИТ» |
+| `subsystem_it_lead` | `subsystem -> employee` | То же для модуля |
+| `system_business_lead` | `system -> employee` | Владелец системы (FK); отображаемое имя типа — «Владелец системы» |
+| `subsystem_business_lead` | `subsystem -> employee` | То же для модуля |
 | `integration_flow_system_module` | `system -> subsystem` | Проекция потока: система -> модуль |
 | `integration_flow_module_system` | `subsystem -> system` | Проекция потока: модуль -> система |
 | `integration_flow_module_module` | `subsystem -> subsystem` | Проекция потока: модуль -> модуль |
@@ -158,6 +164,7 @@
 **Примечания к классификации (репозиторий):**
 
 - **ADRP / ADRA:** тип связи **`applied_gap`** (`adr_applied → gap`) описан в §5.1. Явного FK **ADRA → ADRP** в таблице `ar_adrs_applied` нет — трассировка «заключение опирается на принцип» в матрице помечена как **нужно** (`conforms_to_adr_principle`). Связь сущностей каталога ИС с ADRA — **частично** через `ar_adr_increment_systems` и `ar_adr_increment_system_functions` (и связанные справочники инкремента), без единого универсального FK «ADRA → system».
+- **Сотрудники и ИС:** тип сущности **`employee`** (`ar_employees`: только **`full_name`** и **`active`**; «фамилия» для дедупа при импорте — первое слово **`full_name`**, без отдельной колонки, уникальность через индекс по выражению). На `ar_systems` — **`it_lead_employee_id`**, **`business_lead_employee_id`**. Проекции в **`ar_metamodel_relations`**: `system_it_lead`, `subsystem_it_lead`, `system_business_lead`, `subsystem_business_lead` (коды — параметры `*_RELATION_CODE`). Видимое имя в списках — **`DISP_EMPLOYEE_TEMPLATE`**.
 - **Партнёр и ИС:** на `ar_systems` три nullable FK на `ar_partners`; в UI уже различаются вендор / поставщик(внедрение) / поддержка. Для **subsystem** используются те же колонки, если для модуля они заполняются. Проекция в метамодель — три типа связи с кодами вроде `system_vendor_partner`, `system_implementation_partner`, `system_support_partner` (и зеркально для `subsystem`, либо единый код с `from_entity_type`).
 - `gap-system`: метамодель, направление **gap → system** (см. §5.1); ячейка **system → gap** — «нужно», обратное направление в метамодели отдельно не задано.
 - `system_technology` / `module_technology`: в метамодели хранится направление **system|subsystem → technology**; ячейки **technology → system|subsystem** помечены как **частично** (обратное чтение той же связи / отсутствие FK «технология → система»).

@@ -185,6 +185,26 @@ psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_i
 
 ---
 
+## Сотрудники и лиды ИС (`ar_employees`, FK на `ar_systems`)
+
+Таблица **`archrep.ar_employees`** (`full_name`, `active`), без отдельной колонки фамилии: уникальность «по фамилии» для дедупа — **выражение** `lower(trim(split_part(full_name,' ',1)))` в уникальном индексе. Колонки **`it_lead_employee_id`** / **`business_lead_employee_id`** на **`ar_systems`**, проекции в **`ar_metamodel_relations`** (триггер на `ar_systems`), параметр **`DISP_EMPLOYEE_TEMPLATE`** для отображения сотрудника в справочниках, четыре **`*_RELATION_CODE`**. Подпись ребра на графе для этих проекций — из **`ar_metamodel_relation_types.name`**, не из **`displayed_name`**. В скрипте функция **`normalize_lead_text`** используется только при переносе legacy-текстов и в конце **удаляется**.
+
+**Прод (полная цепочка сотрудники + подписи рёбер + снятие текстовых полей лидов):**
+
+```bash
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_20260501120000_ar_employees_system_leads.sql
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_20260502120000_employee_lead_edge_labels.sql
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_20260503120000_drop_ar_systems_legacy_lead_text.sql
+```
+
+Второй файл идемпотентен и нужен в первую очередь, если первый скрипт уже выполнялся **до** появления в репозитории правок по единым именам типов связей и очистке **`displayed_name`**. Третий скрипт удаляет **`it_lead`** / **`business_lead`** из **`ar_systems`** — накатывайте **после** выката backend/frontend, которые больше не читают эти колонки.
+
+**Демо:** миграции `DB/migrations/20260501120000_ar_employees_system_leads.js`, `DB/migrations/20260502120000_employee_lead_edge_labels.js`, `DB/migrations/20260503120000_drop_ar_systems_legacy_lead_text.js` (`npm run db:migrate`). После наката перезапустите backend.
+
+**Анализ зависимостей:** в коде обновлены дефолты **`GRAPH_ENTITY_ORDER`** и **`GRAPH_ENTITY_ICONS`** (`employee` после `actor`). Если в **`ar_settings_parameters`** уже задан свой **`GRAPH_ENTITY_ORDER`**, добавьте в массив код **`employee`** вручную (см. `docs/adding-new-entity-type.md` §3.2).
+
+---
+
 ## Миграция «Архитектурные решения» (ADR)
 
 Чтобы работали раздел «Реестр архитектурных решений» и связанные справочники, нужно один раз выполнить скрипт:

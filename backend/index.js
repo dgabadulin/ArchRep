@@ -88,6 +88,7 @@ const DISPLAY_NAME_PATHS = [
   [/^\/api\/parent-systems$/, 'system'],
   [/^\/api\/technologies(?:\/\d+)?$/, 'technology'],
   [/^\/api\/partners(?:\/\d+)?$/, 'partner'],
+  [/^\/api\/ar-employees(?:\/\d+)?$/, 'employee'],
   [/^\/api\/ar-vendors$/, 'partner'],
   [/^\/api\/owners(?:\/\d+)?$/, 'owner'],
   [/^\/api\/hosting-types(?:\/\d+)?$/, 'hosting_type'],
@@ -239,7 +240,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   GRAPH_MAX_NODES: 200,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'subsystem', 'technology', 'organization_unit', 'actor', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
   GRAPH_COLLAPSED_SYSTEM_ICON: null,
@@ -268,6 +269,7 @@ app.get('/api/config', (req, res) => {
       technology: { label: 'Технология', icon: 'Cpu', listLabel: 'Технологии' },
       organization_unit: { label: 'Организационная единица', icon: 'Building2', listLabel: 'Орг. единицы' },
       actor: { label: 'Актор', icon: 'User', listLabel: 'Акторы' },
+      employee: { label: 'Сотрудник', icon: 'UserCircle', listLabel: 'Сотрудники' },
       business_service: { label: 'Бизнес-сервис (продукт)', icon: 'Package', listLabel: 'Продукты' },
       business_function: { label: 'Бизнес-функция', icon: 'GitBranch', listLabel: 'Бизнес-способности' },
       principle: { label: 'Принцип', icon: 'Scale', listLabel: 'Принципы' },
@@ -343,6 +345,7 @@ app.get('/api/update-ar-systems/:id', (req, res) => {
 
 app.put('/api/update-ar-systems/:id', async (req, res) => {
   const { id } = req.params;
+  const b = req.body || {};
   const {
     code,
     name,
@@ -353,13 +356,13 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
     supplier_ar_partners_id,
     supporter_ar_partners_id,
     description,
-    it_lead,
-    business_lead,
     ar_system_hosting_types_id,
     technologies = '',
     external_system = false,
-    comment
-  } = req.body;
+    comment,
+    it_lead_employee_id,
+    business_lead_employee_id,
+  } = b;
   if (!code || !name) {
     return res.status(400).json({ error: 'Missing required fields: code or name' });
   }
@@ -374,12 +377,12 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
       pgParam(supplier_ar_partners_id),
       pgParam(supporter_ar_partners_id),
       pgParam(description),
-      pgParam(it_lead),
-      pgParam(business_lead),
       pgParam(ar_system_hosting_types_id),
       technologies,
       external_system,
       pgParam(comment),
+      pgParam(it_lead_employee_id),
+      pgParam(business_lead_employee_id),
       id
     ]);
     if (result.rowCount === 0) {
@@ -394,6 +397,7 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
 
 app.post('/api/add-ar-systems', async (req, res) => {
   try {
+    const b = req.body || {};
     const {
       code,
       name,
@@ -404,13 +408,13 @@ app.post('/api/add-ar-systems', async (req, res) => {
       supplier_ar_partners_id,
       supporter_ar_partners_id,
       description,
-      it_lead,
-      business_lead,
       ar_system_hosting_types_id,
       technologies = '',
       external_system = false,
-      comment
-    } = req.body;
+      comment,
+      it_lead_employee_id,
+      business_lead_employee_id,
+    } = b;
     if (!code || !name) {
       return res.status(400).json({ error: 'Fields "code" and "name" are required' });
     }
@@ -424,12 +428,12 @@ app.post('/api/add-ar-systems', async (req, res) => {
       pgParam(supplier_ar_partners_id),
       pgParam(supporter_ar_partners_id),
       pgParam(description),
-      pgParam(it_lead),
-      pgParam(business_lead),
       pgParam(ar_system_hosting_types_id),
       technologies,
       external_system,
-      pgParam(comment)
+      pgParam(comment),
+      pgParam(it_lead_employee_id),
+      pgParam(business_lead_employee_id),
     ]);
     res.status(201).json({ message: 'Record created successfully', id: result.rows[0].id });
   } catch (err) {
@@ -575,6 +579,73 @@ app.delete('/api/partners/:id', async (req, res) => {
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.status(204).send();
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Employees (ar_employees) ---
+app.get('/api/ar-employees', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.employees_select_search : queries.employees_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows.map((r) => applyDisplayName(r, 'employee'));
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Сотрудники');
+      res.setHeader('Content-Disposition', 'attachment; filename=employees.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.get('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.employees_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.post('/api/ar-employees', async (req, res) => {
+  try {
+    const { full_name, active } = req.body || {};
+    if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
+    const r = await pool.query(queries.employees_insert, [String(full_name).trim(), active]);
+    res.status(201).json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с такой фамилией уже есть' });
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const { full_name, active } = req.body || {};
+    if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
+    const r = await pool.query(queries.employees_update, [String(full_name).trim(), active, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с такой фамилией уже есть' });
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.employees_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
 });
 
 // --- Owners CRUD (additional to GET /api/owners) ---

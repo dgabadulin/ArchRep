@@ -77,6 +77,9 @@ BEGIN
     EXIT WHEN n = 0;
   END LOOP;
 
+  -- 13b. Сотрудники (после ИС: FK на ar_employees обнуляется, строки можно удалить)
+  DELETE FROM archrep.ar_employees;
+
   -- 14. Технологии каталога
   DELETE FROM archrep.ar_technologies;
 

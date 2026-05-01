@@ -11,8 +11,6 @@ module.exports = {
         , supl.name supplier
         , supp.name supporter
         , s.description
-        , it_lead
-        , s.business_lead
         , so.name owner
         , sht.name hosting
         , s.comment
@@ -25,6 +23,10 @@ module.exports = {
         , supporter_ar_partners_id
         , ar_system_owners_id
         , ar_system_hosting_types_id
+        , s.it_lead_employee_id
+        , s.business_lead_employee_id
+        , it_e.full_name AS it_lead_employee_name
+        , bl_e.full_name AS business_lead_employee_name
         FROM
         archrep.ar_systems s
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
@@ -33,15 +35,19 @@ module.exports = {
         LEFT JOIN archrep.ar_partners supp ON s.supporter_ar_partners_id = supp.id
         LEFT JOIN archrep.ar_system_owners so ON s.ar_system_owners_id = so.id
         LEFT JOIN archrep.ar_system_hosting_types sht ON s.ar_system_hosting_types_id = sht.id
+        LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
+        LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
         order by s.name
     `,
     systems_select_search: `
         SELECT
           s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
           vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
-          s.it_lead, s.business_lead, so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
+          so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
           parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
-          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id
+          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.it_lead_employee_id, s.business_lead_employee_id,
+          it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
@@ -49,19 +55,23 @@ module.exports = {
         LEFT JOIN archrep.ar_partners supp ON s.supporter_ar_partners_id = supp.id
         LEFT JOIN archrep.ar_system_owners so ON s.ar_system_owners_id = so.id
         LEFT JOIN archrep.ar_system_hosting_types sht ON s.ar_system_hosting_types_id = sht.id
+        LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
+        LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
         WHERE (s.code ILIKE $1 OR s.name ILIKE $1 OR COALESCE(s.fullname,'') ILIKE $1 OR COALESCE(s.parent_name,'') ILIKE $1
           OR COALESCE(ss.name,'') ILIKE $1 OR COALESCE(vnd.name,'') ILIKE $1 OR COALESCE(supl.name,'') ILIKE $1
-          OR COALESCE(supp.name,'') ILIKE $1 OR COALESCE(s.description,'') ILIKE $1 OR COALESCE(s.it_lead,'') ILIKE $1
-          OR COALESCE(s.business_lead,'') ILIKE $1 OR COALESCE(so.name,'') ILIKE $1 OR COALESCE(sht.name,'') ILIKE $1
-          OR COALESCE(s.comment,'') ILIKE $1 OR COALESCE(s.technologies,'') ILIKE $1)
+          OR COALESCE(supp.name,'') ILIKE $1 OR COALESCE(s.description,'') ILIKE $1 OR COALESCE(so.name,'') ILIKE $1 OR COALESCE(sht.name,'') ILIKE $1
+          OR COALESCE(s.comment,'') ILIKE $1 OR COALESCE(s.technologies,'') ILIKE $1
+          OR COALESCE(it_e.full_name,'') ILIKE $1 OR COALESCE(bl_e.full_name,'') ILIKE $1)
         ORDER BY s.name
     `,
     systems_get: `
         SELECT s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
           vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
-          s.it_lead, s.business_lead, so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
+          so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
           parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
-          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id
+          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.it_lead_employee_id, s.business_lead_employee_id,
+          it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
@@ -69,6 +79,8 @@ module.exports = {
         LEFT JOIN archrep.ar_partners supp ON s.supporter_ar_partners_id = supp.id
         LEFT JOIN archrep.ar_system_owners so ON s.ar_system_owners_id = so.id
         LEFT JOIN archrep.ar_system_hosting_types sht ON s.ar_system_hosting_types_id = sht.id
+        LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
+        LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
         WHERE s.id = $1
     `,
     parent_systems_select: `
@@ -130,12 +142,12 @@ module.exports = {
       supplier_ar_partners_id = NULLIF($7, '')::BIGINT,
       supporter_ar_partners_id = NULLIF($8, '')::BIGINT,
       description = $9,
-      it_lead = $10,
-      business_lead = $11,
-      ar_system_hosting_types_id = NULLIF($12, '')::BIGINT,
-      technologies = COALESCE($13, ''),
-      external_system = COALESCE($14, false),
-      comment = $15
+      ar_system_hosting_types_id = NULLIF($10, '')::BIGINT,
+      technologies = COALESCE($11, ''),
+      external_system = COALESCE($12, false),
+      comment = $13,
+      it_lead_employee_id = NULLIF($14, '')::BIGINT,
+      business_lead_employee_id = NULLIF($15, '')::BIGINT
     WHERE id = $16
     RETURNING *
   `,
@@ -150,18 +162,20 @@ module.exports = {
     supplier_ar_partners_id,
     supporter_ar_partners_id,
     description,
-    it_lead,
-    business_lead,
     ar_system_hosting_types_id,
     technologies,
     external_system,
-    comment
+    comment,
+    it_lead_employee_id,
+    business_lead_employee_id
   ) VALUES (
     $1, $2, $3, NULLIF($4, '')::BIGINT, NULLIF($5, '')::BIGINT,
     NULLIF($6, '')::BIGINT, NULLIF($7, '')::BIGINT, NULLIF($8, '')::BIGINT,
-    $9, $10, $11, NULLIF($12, '')::BIGINT, $13,
-    COALESCE($14, false),
-    $15
+    $9, NULLIF($10, '')::BIGINT, $11,
+    COALESCE($12, false),
+    $13,
+    NULLIF($14, '')::BIGINT,
+    NULLIF($15, '')::BIGINT
   )
   RETURNING id
 `,
@@ -172,6 +186,37 @@ module.exports = {
   partners_update: `UPDATE archrep.ar_partners SET name = $1 WHERE id = $2 RETURNING *`,
   partners_delete: `DELETE FROM archrep.ar_partners WHERE id = $1`,
   partners_get: `SELECT id, name FROM archrep.ar_partners WHERE id = $1`,
+
+  // --- Employees (ar_employees) ---
+  employees_select: `
+    SELECT id, full_name, active,
+           CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
+    FROM archrep.ar_employees ORDER BY full_name`,
+  employees_select_search: `
+    SELECT id, full_name, active,
+           CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
+    FROM archrep.ar_employees
+    WHERE full_name ILIKE $1
+       OR split_part(full_name, ' ', 1) ILIKE $1
+    ORDER BY full_name`,
+  employees_get: `
+    SELECT id, full_name, active,
+           CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
+    FROM archrep.ar_employees WHERE id = $1`,
+  employees_insert: `
+    INSERT INTO archrep.ar_employees (full_name, active)
+    VALUES ($1, COALESCE($2, true))
+    RETURNING id, full_name, active,
+      CASE WHEN active THEN 'active' ELSE 'inactive' END AS status`,
+  employees_update: `
+    UPDATE archrep.ar_employees
+    SET full_name = $1,
+        active = COALESCE($2, active),
+        updated_at = current_timestamp
+    WHERE id = $3
+    RETURNING id, full_name, active,
+      CASE WHEN active THEN 'active' ELSE 'inactive' END AS status`,
+  employees_delete: `DELETE FROM archrep.ar_employees WHERE id = $1`,
 
   owners_select: `SELECT id, name, leader FROM archrep.ar_system_owners ORDER BY name`,
   owners_select_search: `SELECT id, name, leader FROM archrep.ar_system_owners WHERE name ILIKE $1 OR COALESCE(leader,'') ILIKE $1 ORDER BY name`,
