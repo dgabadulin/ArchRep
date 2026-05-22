@@ -1,0 +1,19 @@
+no,code,name,description,from_entity,to_entity,from_to
+1,organization_unit_business_service,Отвечает за,Орг. единица владеет бизнес-сервисом,organization_unit,business_service,organization_unit → business_service
+2,organization_unit_business_function,Отвечает за,Орг. единица владеет бизнес-функцией,organization_unit,business_function,organization_unit → business_function
+3,actor_business_function,Отвечает за,Заинтересованное лицо исполняет бизнес-функцию,actor,business_function,actor → business_function
+4,business_function_business_service,Поддерживает сервис,Бизнес-функция обеспечивает бизнес-сервис,business_function,business_service,business_function → business_service
+5,system_business_service,Обеспечивает продукт,ИС реализует бизнес-сервис,system,business_service,system → business_service
+6,system_business_function,Реализует бизнес-функцию,ИС реализует бизнес-функцию,system,business_function,system → business_function
+7,system_system_function,Содержит функцию ИС,"Система включает функцию ИС; в БД — ar_system_functions.ar_systems_id",system,system_function,system → system_function
+8,system_function_business_function,Реализует бизнес-функцию,Функция ИС покрывает бизнес-функцию,system_function,business_function,system_function → business_function
+9,system_function_business_service,Обеспечивает продукт,Функция ИС обеспечивает бизнес-сервис,system_function,business_service,system_function → business_service
+10,actor_system_function,Использует функцию ИС,Действующее лицо опирается на возможность системы,actor,system_function,actor → system_function
+11,adr_applied_adr_principle,Соблюдает принцип,ADRA опирается на ADRP,adr_applied,adr_principle,adr_applied → adr_principle
+12,system_partner_vendor,Вендор,"Корневая ИС — вендор; проекция по FK vendor_ar_partners_id (ar_systems)",system,partner,system → partner
+13,system_partner_implementer,Интегратор,"Корневая ИС — интегратор; проекция по FK supplier_ar_partners_id (ar_systems)",system,partner,system → partner
+14,system_partner_supporter,Поддерживает,"Корневая ИС — поддержка; проекция по FK supporter_ar_partners_id (ar_systems)",system,partner,system → partner
+15,subsystem_partner_vendor,Вендор,"Модуль — вендор; проекция по FK vendor_ar_partners_id (строка ar_systems модуля)",subsystem,partner,subsystem → partner
+16,subsystem_partner_implementer,Интегратор,"Модуль — интегратор; проекция по FK supplier_ar_partners_id (ar_systems)",subsystem,partner,subsystem → partner
+17,subsystem_partner_supporter,Поддерживает,"Модуль — поддержка; проекция по FK supporter_ar_partners_id (ar_systems)",subsystem,partner,subsystem → partner
+18,technology_partner_vendor,Вендор,"Технология — вендор; проекция по FK vendor_ar_partners_id (ar_technologies)",technology,partner,technology → partner

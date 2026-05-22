@@ -7,7 +7,7 @@ exports.up = (pgm) => {
     VALUES (
       'TECH_RADAR_EMBED_URL',
       'Полный URL iframe страницы «Тех.радар» (внешний сервис; documentId и др. в query). Значение задаётся только здесь или через env TECH_RADAR_EMBED_URL.',
-      'https://radar.st.tech/?documentId=https://radar.st.tech/radar/platforma-a.csv',
+      null,
       'string',
       'Технологии',
       false,

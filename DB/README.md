@@ -40,6 +40,10 @@ npm run db:migrate
 
 Для demo-деплоя команда запускается автоматически из `infra/demo/remote_demo_deploy.sh` в режимах `full` и `api-only`.
 
+**Словарь типов связей по матрице demo:** `DB/scripts/migrate_20260506120000_demo_full_model_entities_matrix_relation_dictionary.sql` (пара `DB/migrations/20260506120000_demo_full_model_entities_matrix_relation_dictionary.js`) — выравнивание `ar_metamodel_relation_types` с `docs/demo-full-model-entities-matrix.md` §3.1–§3.2; после наката перезапуск backend.
+
+**Демо-набор SCOR («СеверЛогистик»):** `DB/scripts/migrate_20260507120000_demo_scor_reference_dataset.sql` и `DB/migrations/20260507120000_demo_scor_reference_dataset.js` — объекты и связи по [`docs/demo-dataset-scor-reference-model.md`](docs/demo-dataset-scor-reference-model.md) (коды сущностей с префиксом `DEMO_SCOR_`); идемпотентный накат на демо-БД. После наката — перезапуск backend.
+
 ---
 
 ## Параметр `TECH_RADAR_EMBED_URL` (страница «Тех.радар»)
