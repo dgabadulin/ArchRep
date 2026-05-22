@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>Архитектурные решения (ADR)</h1>
       <div class="head-actions">
-        <router-link to="/decisions/principle/new" class="btn btn-primary">Добавить решение</router-link>
+        <router-link :to="linkTo('/decisions/principle/new')" class="btn btn-primary">Добавить решение</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
@@ -47,7 +47,7 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="`/decisions/principle/${row.id}/edit`" class="link">Изменить</router-link>
+                <router-link :to="linkTo(`/decisions/principle/${row.id}/edit`)" class="link">Изменить</router-link>
                 <button type="button" class="btn-link danger" @click="remove(row.id)">Удалить</button>
               </template>
               <template v-else-if="key === 'context'">{{ (row.context || '—').slice(0, 50) }}{{ (row.context && row.context.length > 50) ? '…' : '' }}</template>
@@ -67,6 +67,9 @@ import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { useListSearch } from '../composables/useListSearch'
+
+const { search, linkTo } = useListSearch()
 
 const columns = [
   { key: 'code', label: 'Код', defaultVisible: true },
@@ -80,7 +83,6 @@ const columns = [
 ]
 
 const list = ref([])
-const search = ref('')
 const visibleCols = ref(getVisibleColumns('decisions-principle', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)

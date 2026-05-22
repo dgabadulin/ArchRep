@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование связи' : 'Новая связь метамодели' }}</h1>
-      <router-link to="/metamodel-relations" class="btn">Назад</router-link>
+      <router-link :to="listRouteLocation" class="btn">Назад</router-link>
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
       <p v-if="isManagedIntegrationProjection" class="banner">
@@ -50,7 +50,7 @@
       </div>
       <div class="form-actions">
         <button v-if="!isManagedIntegrationProjection" type="submit" class="btn btn-primary">Сохранить</button>
-        <router-link to="/metamodel-relations" class="btn">Назад к списку</router-link>
+        <router-link :to="listRouteLocation" class="btn">Назад к списку</router-link>
       </div>
     </form>
     <div v-else-if="loading" class="msg">Загрузка...</div>
@@ -62,9 +62,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { togafApi } from '../api'
+import { useFormListReturn } from '../composables/useFormListReturn'
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation } = useFormListReturn('/metamodel-relations')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
 const form = ref(null)
@@ -145,7 +147,7 @@ async function submit() {
     } else {
       await togafApi.createRelation(payload)
     }
-    router.push('/metamodel-relations')
+    router.push(listRouteLocation.value)
   } catch (e) {
     error.value = e.message || 'Ошибка сохранения'
   }

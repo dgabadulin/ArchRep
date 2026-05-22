@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>Организационные единицы</h1>
       <div class="head-actions">
-        <router-link to="/organization-units/new" class="btn btn-primary">Добавить орг. единицу</router-link>
+        <router-link :to="linkTo('/organization-units/new')" class="btn btn-primary">Добавить орг. единицу</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" disabled title="Экспорт в Excel для раздела пока не реализован">
             Экспорт в Excel
@@ -47,7 +47,7 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="`/organization-units/${row.id}/edit`" class="link">Изменить</router-link>
+                <router-link :to="linkTo(`/organization-units/${row.id}/edit`)" class="link">Изменить</router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -64,6 +64,9 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { togafApi } from '../api'
 import TableToolbar from '../components/TableToolbar.vue'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { useListSearch } from '../composables/useListSearch'
+
+const { search, linkTo } = useListSearch()
 
 const columns = [
   { key: 'name', label: 'Наименование', defaultVisible: true },
@@ -74,7 +77,6 @@ const columns = [
 ]
 
 const list = ref([])
-const search = ref('')
 const visibleCols = ref(getVisibleColumns('organization-units', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)

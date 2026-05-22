@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>Каталог ИС</h1>
       <div class="head-actions">
-        <router-link to="/systems/new" class="btn btn-primary">Добавить систему</router-link>
+        <router-link :to="linkTo('/systems/new')" class="btn btn-primary">Добавить систему</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
@@ -47,7 +47,7 @@
           <tr v-for="row in sortedSystems" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="`/systems/${row.id}/edit`" class="link">Изменить</router-link>
+                <router-link :to="linkTo(`/systems/${row.id}/edit`)" class="link">Изменить</router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -65,6 +65,9 @@ import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { useListSearch } from '../composables/useListSearch'
+
+const { search, linkTo } = useListSearch()
 
 const systemColumns = [
   { key: 'code', label: 'Код', defaultVisible: true },
@@ -86,7 +89,6 @@ const systemColumns = [
 ]
 
 const systems = ref([])
-const search = ref('')
 const visibleCols = ref(getVisibleColumns('systems', systemColumns))
 const colPickerOpen = ref(false)
 const loading = ref(true)
