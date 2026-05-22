@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>Интеграционные потоки</h1>
       <div class="head-actions">
-        <router-link to="/integrations/new" class="btn btn-primary">Добавить поток</router-link>
+        <router-link :to="linkTo('/integrations/new')" class="btn btn-primary">Добавить поток</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
@@ -55,7 +55,7 @@
                 <span v-else>—</span>
               </template>
               <template v-else-if="key === 'actions'">
-                <router-link :to="`/integrations/${row.id}/edit`" class="link">Изменить</router-link>
+                <router-link :to="linkTo(`/integrations/${row.id}/edit`)" class="link">Изменить</router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -73,6 +73,9 @@ import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { useListSearch } from '../composables/useListSearch'
+
+const { search, linkTo } = useListSearch()
 
 const columns = [
   { key: 'source', label: 'Система источник', defaultVisible: true },
@@ -87,7 +90,6 @@ const columns = [
 ]
 
 const rows = ref([])
-const search = ref('')
 const visibleCols = ref(getVisibleColumns('integrations', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)

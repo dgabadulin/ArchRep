@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование архитектурного заключения' : 'Новое архитектурное заключение' }}</h1>
-      <router-link to="/decisions/applied" class="btn btn-secondary">← К реестру</router-link>
+      <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
@@ -322,6 +322,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
+import { useFormListReturn } from '../composables/useFormListReturn'
 import IncrementSystemFunctionsModal from '../components/IncrementSystemFunctionsModal.vue'
 import { api } from '../api/client'
 import { getConfig } from '@/config/params'
@@ -333,6 +334,7 @@ const adrCodeMaxLen = computed(() => (getConfig().ADR_CODE_MAXLEN ?? 15) | 0)
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/decisions/applied')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
 
@@ -922,7 +924,7 @@ async function submit(opts = {}) {
       }
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push('/decisions/applied')
+      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       const res = await api.saveDecisionAppliedFull({ ...body, increments: [] })
       if (res?.code != null) {
@@ -930,7 +932,7 @@ async function submit(opts = {}) {
       }
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push(`/decisions/applied/${res.id}/edit`)
+      if (!opts.skipNavigate) router.push(routeWithListSearch(`/decisions/applied/${res.id}/edit`))
     }
   } catch (e) {
     submitError.value = e.body?.error || e.message || 'Ошибка сохранения'

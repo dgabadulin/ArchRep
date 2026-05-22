@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование бизнес-функции' : 'Новая бизнес-функция' }}</h1>
-      <router-link to="/business-functions" class="btn">Назад</router-link>
+      <router-link :to="listRouteLocation" class="btn">Назад</router-link>
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
       <div class="form-row">
@@ -29,7 +29,7 @@
       </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Сохранить</button>
-        <router-link to="/business-functions" class="btn">Отмена</router-link>
+        <router-link :to="listRouteLocation" class="btn">Отмена</router-link>
       </div>
     </form>
     <div v-else-if="loading" class="msg">Загрузка...</div>
@@ -41,9 +41,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { togafApi } from '../api'
+import { useFormListReturn } from '../composables/useFormListReturn'
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation } = useFormListReturn('/business-functions')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
 const form = ref(null)
@@ -93,7 +95,7 @@ async function submit() {
     } else {
       await togafApi.createBusinessFunction(payload)
     }
-    router.push('/business-functions')
+    router.push(listRouteLocation.value)
   } catch (e) {
     error.value = e.message || 'Ошибка сохранения'
   }

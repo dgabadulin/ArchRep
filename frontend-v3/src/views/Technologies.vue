@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>Каталог технологий</h1>
       <div class="head-actions">
-        <router-link to="/technologies/new" class="btn btn-primary">Добавить технологию</router-link>
+        <router-link :to="linkTo('/technologies/new')" class="btn btn-primary">Добавить технологию</router-link>
         <div class="head-buttons-row">
           <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
@@ -47,7 +47,7 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="`/technologies/${row.id}/edit`" class="link">Изменить</router-link>
+                <router-link :to="linkTo(`/technologies/${row.id}/edit`)" class="link">Изменить</router-link>
                 <button type="button" class="btn-link danger" @click="remove(row.id)">Удалить</button>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
@@ -66,6 +66,9 @@ import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { useListSearch } from '../composables/useListSearch'
+
+const { search, linkTo } = useListSearch()
 
 const techColumns = [
   { key: 'id', label: 'ID', defaultVisible: false },
@@ -82,7 +85,6 @@ const techColumns = [
 ]
 
 const list = ref([])
-const search = ref('')
 const visibleCols = ref(getVisibleColumns('technologies', techColumns))
 const colPickerOpen = ref(false)
 const loading = ref(true)

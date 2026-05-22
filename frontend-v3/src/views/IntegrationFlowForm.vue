@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование интеграционного потока' : 'Новый интеграционный поток' }}</h1>
-      <router-link to="/integrations" class="btn btn-secondary">← К списку</router-link>
+      <router-link :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
 
     <div v-if="loading && isEdit" class="loading">Загрузка...</div>
@@ -52,7 +52,7 @@
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions">
         <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link to="/integrations" class="btn btn-secondary">Отмена</router-link>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
       </div>
     </form>
   </div>
@@ -62,10 +62,12 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
+import { useFormListReturn } from '../composables/useFormListReturn'
 import { api } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/integrations')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
 
@@ -165,12 +167,12 @@ async function submit(opts = {}) {
       await api.updateIntegrationFlow(id.value, body)
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push('/integrations')
+      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       const res = await api.createIntegrationFlow(body)
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push(`/integrations/${res.id}/edit`)
+      if (!opts.skipNavigate) router.push(routeWithListSearch(`/integrations/${res.id}/edit`))
     }
   } catch (e) {
     submitError.value = e.body?.error || e.message || 'Ошибка сохранения'

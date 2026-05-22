@@ -3,7 +3,7 @@
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование системы' : 'Новая система' }}</h1>
       <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">← Возврат</router-link>
-      <router-link v-else to="/systems" class="btn btn-secondary">← К списку</router-link>
+      <router-link v-else :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
 
     <template v-if="isEdit">
@@ -112,7 +112,7 @@
       <div class="actions">
         <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
         <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">Отмена</router-link>
-        <router-link v-else to="/systems" class="btn btn-secondary">Отмена</router-link>
+        <router-link v-else :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
       </div>
     </form>
 
@@ -210,6 +210,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
+import { useFormListReturn } from '../composables/useFormListReturn'
 import { api } from '../api/client'
 import { getConfig } from '@/config/params'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
@@ -219,6 +220,7 @@ const sysCodeMaxLen = computed(() => (getConfig().SYS_CODE_MAXLEN ?? 32) | 0)
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/systems')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
 
@@ -476,7 +478,7 @@ async function submit(opts = {}) {
       await api.updateSystem(id.value, body)
       isDirty.value = false
       lastLoadedSnapshot.value = formSnapshot()
-      if (!opts.skipNavigate) router.push('/systems')
+      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       const res = await api.createSystem(body)
       isDirty.value = false
@@ -488,7 +490,7 @@ async function submit(opts = {}) {
           const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
           router.push({ path, query: q })
         } else {
-          router.push(`/systems/${res.id}/edit`)
+          router.push(routeWithListSearch(`/systems/${res.id}/edit`))
         }
       }
     }

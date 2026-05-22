@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование архитектурного долга' : 'Новый архитектурный долг' }}</h1>
-      <router-link to="/architecture-debt" class="btn btn-secondary">← К реестру</router-link>
+      <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
     <template v-if="isEdit">
@@ -83,7 +83,7 @@
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions actions-bottom">
         <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link to="/architecture-debt" class="btn btn-secondary">Отмена</router-link>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
       </div>
     </form>
 
@@ -150,9 +150,11 @@ import RelationPickerModal from '../components/RelationPickerModal.vue'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
 import { fetchEntity } from '../api/graphApi'
 import { nodeId } from '../utils/entityTypeConfig'
+import { useFormListReturn } from '../composables/useFormListReturn'
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/architecture-debt')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
 
@@ -300,7 +302,7 @@ async function submit() {
       await api.updateGap(id.value, body)
     } else {
       const res = await api.createGap(body)
-      router.push(`/architecture-debt/${res.id}/edit`)
+      router.push(routeWithListSearch(`/architecture-debt/${res.id}/edit`))
       return
     }
   } catch (e) {

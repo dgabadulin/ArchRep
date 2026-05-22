@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <h1>{{ isEdit ? 'Редактирование принципиального решения' : 'Новое принципиальное решение' }}</h1>
-      <router-link to="/decisions/principle" class="btn btn-secondary">← К реестру</router-link>
+      <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
@@ -43,7 +43,7 @@
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions">
         <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link to="/decisions/principle" class="btn btn-secondary">Отмена</router-link>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
       </div>
     </form>
   </div>
@@ -53,10 +53,12 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
+import { useFormListReturn } from '../composables/useFormListReturn'
 import { api } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
+const { listRouteLocation } = useFormListReturn('/decisions/principle')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
 
@@ -144,12 +146,12 @@ async function submit(opts = {}) {
       await api.updateDecisionPrinciple(id.value, body)
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push('/decisions/principle')
+      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       await api.createDecisionPrinciple(body)
       lastLoadedSnapshot.value = formSnapshot()
       isDirty.value = false
-      if (!opts.skipNavigate) router.push('/decisions/principle')
+      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     }
   } catch (e) {
     submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
