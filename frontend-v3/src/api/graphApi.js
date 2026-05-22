@@ -18,6 +18,16 @@ const entityFetchers = {
   principle: (id) => api.getPrinciple(String(id)),
   gap: (id) => api.getGap(String(id)),
   employee: (id) => api.getEmployee(String(id)),
+  partner: (id) => api.getPartner(String(id)),
+  system_function: (id) => api.getSystemFunction(String(id)),
+  adr_principle: async (id) => {
+    const d = await api.getDecisionPrinciple(String(id))
+    return { ...d, name: d.name || d.code || '—' }
+  },
+  applied: async (id) => {
+    const d = await api.getDecisionApplied(String(id))
+    return { ...d, name: d.task_name || d.code || '—' }
+  },
 }
 
 const listFetchers = {
@@ -31,6 +41,10 @@ const listFetchers = {
   principle: (params) => api.getPrinciples(params),
   gap: (params) => api.getGaps(params),
   employee: (params) => api.getEmployees(params),
+  partner: (params) => api.getPartners(params),
+  system_function: (params) => api.getSystemFunctionsGlobal(params),
+  adr_principle: (params) => api.getDecisionsPrinciple(params),
+  applied: (params) => api.getDecisionsApplied(params),
 }
 
 /**

@@ -1282,6 +1282,29 @@ app.delete('/api/increments/:incrementId/systems/:rowId', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 
+/** Глобальный поиск функций ИС (метамодель / граф). */
+app.get('/api/system-functions', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await pool.query(queries.system_functions_select_search, [search || null]);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/system-functions/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_functions_get_by_id, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
 app.get('/api/ar-systems/:systemId/system-functions', async (req, res) => {
   try {
     const r = await pool.query(queries.system_functions_by_system, [req.params.systemId]);

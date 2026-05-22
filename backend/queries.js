@@ -396,6 +396,13 @@ module.exports = {
 
   adr_increment_system_get_by_id: `SELECT id, ar_adr_increment_id, ar_systems_id, comment FROM archrep.ar_adr_increment_systems WHERE id = $1`,
   system_functions_by_system: `SELECT id, ar_systems_id, name, description FROM archrep.ar_system_functions WHERE ar_systems_id = $1 ORDER BY lower(trim(name)), id`,
+  system_functions_get_by_id: `SELECT id, ar_systems_id, name, description FROM archrep.ar_system_functions WHERE id = $1`,
+  system_functions_select_search: `
+    SELECT id, ar_systems_id, name, description
+    FROM archrep.ar_system_functions
+    WHERE ($1::text IS NULL OR trim($1::text) = '' OR name ILIKE '%' || trim($1::text) || '%')
+    ORDER BY lower(trim(name)), id
+    LIMIT 300`,
   system_functions_insert: `INSERT INTO archrep.ar_system_functions (ar_systems_id, name, description) VALUES ($1, trim($2), NULLIF(trim($3),'')) RETURNING *`,
   system_functions_delete_many: `DELETE FROM archrep.ar_system_functions WHERE ar_systems_id = $1 AND id = ANY($2::bigint[]) RETURNING id`,
   /** Какие заключения (ADR) и инкременты ссылаются на данные функции каталога — до DELETE. */

@@ -62,6 +62,26 @@ export const entityTypeConfig = {
     icon: 'AlertTriangle',
     listLabel: 'Долги',
   },
+  partner: {
+    label: 'Партнёр',
+    icon: 'Handshake',
+    listLabel: 'Партнёры',
+  },
+  system_function: {
+    label: 'Функция ИС',
+    icon: 'Layers',
+    listLabel: 'Функции ИС',
+  },
+  adr_principle: {
+    label: 'ADRP (принцип)',
+    icon: 'BookOpen',
+    listLabel: 'ADRP',
+  },
+  applied: {
+    label: 'ADRA (заключение)',
+    icon: 'FileText',
+    listLabel: 'ADRA',
+  },
 }
 
 export function getEntityTypeConfig(code) {

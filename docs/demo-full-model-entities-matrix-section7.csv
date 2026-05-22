@@ -1,4 +1,4 @@
-From_To,organization_unit,actor,business_service,business_function,system_function,system,subsystem,technology,principle,gap
+From_To,organization_unit,actor,business_service,business_function,system_function,system,subsystem,employee,technology,principle,gap
 organization_unit,"—","частично
 org_unit_contains_actor","частично
 owns_business_service","частично
@@ -6,6 +6,7 @@ owns_business_function","нужно
 scopes_system_function","нужно
 owns_system","нужно
 owns_subsystem","нужно
+org_employs_or_aligns","нужно
 mandates_technology_standard","нужно
 sponsors_principle","нужно
 accountable_for_gap"
@@ -15,7 +16,8 @@ consumes_business_service","нужно
 performs_business_function","нужно
 uses_system_function","нужно
 uses_system","нужно
-uses_subsystem","нужно
+uses_subsystem","частично
+may_match_employee","нужно
 uses_technology","нужно
 subject_to_principle","нужно
 raises_gap"
@@ -26,6 +28,7 @@ supported_by_business_function","нужно
 realized_by_system_function","нужно
 realized_by_system","нужно
 realized_by_subsystem","нужно
+product_owner_employee","нужно
 enabled_by_technology","нужно
 constrained_by_principle","нужно
 exposes_gap"
@@ -37,6 +40,7 @@ business_function_hierarchy","нужно
 implemented_by_system_function","нужно
 realized_by_system","нужно
 realized_by_subsystem","нужно
+process_owner_employee","нужно
 supported_by_technology","нужно
 constrained_by_principle","нужно
 reveals_gap"
@@ -47,6 +51,7 @@ supports_bs","нужно
 implements_bf","—","частично
 belongs_to_system","нужно
 scoped_to_subsystem","нужно
+dev_owner_employee","нужно
 runs_on_technology_stack","нужно
 complies_with_principle","нужно
 related_gap"
@@ -57,6 +62,7 @@ realizes_business_service","нужно
 realizes_business_function","частично
 contains_system_function","—","есть
 system_module","есть
+system_it_lead + system_business_lead","есть
 system_technology","нужно
 constrained_by_principle","нужно
 affected_by_gap"
@@ -68,9 +74,21 @@ realizes_business_function","нужно
 exposes_system_function","частично
 part_of_system","частично
 subsystem_hierarchy","есть
+subsystem_it_lead + subsystem_business_lead","есть
 module_technology","нужно
 constrained_by_principle","нужно
 affected_by_gap"
+employee,"частично
+employed_under_org","частично
+same_person_as_actor","нужно
+owns_or_sponsors_bs","нужно
+owns_or_sponsors_bf","нужно
+maintains_system_function","частично
+lead_for_system","частично
+lead_for_subsystem","—","нужно
+technology_steward","нужно
+governed_by_principle","нужно
+touches_gap"
 technology,"нужно
 standardized_by_organization","нужно
 relevant_to_actor","нужно
@@ -78,7 +96,8 @@ enables_business_service","нужно
 enables_business_function","нужно
 implements_layer_for_system_function","частично
 system_technology","частично
-module_technology","—","нужно
+module_technology","нужно
+technology_expert","—","нужно
 constrained_by_principle","нужно
 impacted_by_gap"
 principle,"нужно
@@ -89,6 +108,7 @@ constrains_business_function","нужно
 constrains_system_function","нужно
 constrains_system","нужно
 constrains_subsystem","нужно
+constrains_employee_scope","нужно
 constrains_technology","—","нужно
 gap_addressing_principle"
 gap,"нужно
@@ -99,5 +119,6 @@ impacts_business_function","нужно
 impacts_system_function","есть
 gap-system","нужно
 impacts_subsystem","нужно
+impacts_employee","нужно
 impacts_technology","нужно
 contradicts_principle","—"

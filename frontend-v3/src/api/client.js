@@ -8,6 +8,7 @@ function buildQuery(params) {
   if (params?.system_id != null) q.set('system_id', params.system_id)
   if (params?.exclude_modules) q.set('exclude_modules', '1')
   if (params?.only_modules) q.set('only_modules', '1')
+  if (params?.search) q.set('search', params.search)
   const s = q.toString()
   return s ? '?' + s : ''
 }
@@ -109,6 +110,8 @@ export const api = {
   addIncrementSystem: (incrementId, body) => request(`/api/increments/${incrementId}/systems`, { method: 'POST', body: JSON.stringify(body) }),
   removeIncrementSystem: (incrementId, rowId) => request(`/api/increments/${incrementId}/systems/${rowId}`, { method: 'DELETE' }),
   getSystemFunctions: (systemId) => request(`/api/ar-systems/${systemId}/system-functions`),
+  getSystemFunctionsGlobal: (params) => request('/api/system-functions' + buildQuery(params)),
+  getSystemFunction: (id) => request(`/api/system-functions/${id}`),
   createSystemFunction: (systemId, body) =>
     request(`/api/ar-systems/${systemId}/system-functions`, { method: 'POST', body: JSON.stringify(body) }),
   /** ids — массив id функций каталога; 409 если функции выбраны в ADR (тело: usages, adr_codes) */
