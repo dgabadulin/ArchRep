@@ -5,6 +5,14 @@
  */
 
 const { resolveDrawioStyles } = require('./drawioStyles');
+const {
+  extractEdgeGeometryMap,
+  layoutNodes,
+  computeEdgeRoutes,
+  formatPortStyle,
+  formatEdgeGeometryXml,
+  routeFromSaved,
+} = require('./incrementDiagramLayout');
 
 function escapeXml(s) {
   return String(s || '')
@@ -275,10 +283,6 @@ function buildMxfile(opts) {
   const edgeStyle = drawio.edge;
   const layout = drawio.layout;
 
-  const margin = Number(layout.margin) || 40;
-  const nodeSep = Number(layout.nodeSep) || 40;
-  const rankSep = Number(layout.rankSep) || 80;
-
   const parent = '1';
   const cells = [];
   cells.push('<mxCell id="0"/>');
@@ -298,19 +302,21 @@ function buildMxfile(opts) {
     maxH = Math.max(maxH, z.height);
   }
 
-  const n = sizes.length;
-  const cols = n === 0 ? 1 : Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
-  const cellW = maxW + nodeSep;
-  const cellH = maxH + rankSep;
+  const edgeGeometryMap = opts.edgeGeometryMap || null;
+  const useLayeredLayout = !geometryMap || geometryMap.size === 0;
+  const nodePositions = useLayeredLayout
+    ? layoutNodes(sizes, relations, layout)
+    : null;
 
+  const positionsForRoutes = new Map();
   sizes.forEach((z, i) => {
     const s = z.sys;
     const sid = `sys-${s.ar_systems_id}`;
     const value = buildNodeHtmlValue(z.title, z.bodyLines, nodeStyle);
     const { fillColor, strokeColor } = nodeColors(s, nodeStyle);
     const corner = Number(nodeStyle.cornerRadius) || 8;
-    let x = margin + (i % cols) * cellW;
-    let y = margin + Math.floor(i / cols) * cellH;
+    let x;
+    let y;
     let w = z.width;
     let h = z.height;
     const g = geometryMap && geometryMap.get(sid);
@@ -319,14 +325,33 @@ function buildMxfile(opts) {
       y = g.y;
       w = g.width;
       h = g.height;
+    } else if (nodePositions && nodePositions.has(sid)) {
+      const p = nodePositions.get(sid);
+      x = p.x;
+      y = p.y;
+      w = p.width;
+      h = p.height;
+    } else {
+      const margin = Number(layout.margin) || 40;
+      const nodeSep = Number(layout.nodeSep) || 40;
+      const rankSep = Number(layout.rankSep) || 80;
+      const n = sizes.length;
+      const cols = n === 0 ? 1 : Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
+      const cellW = maxW + nodeSep;
+      const cellH = maxH + rankSep;
+      x = margin + (i % cols) * cellW;
+      y = margin + Math.floor(i / cols) * cellH;
     }
     const style =
       `rounded=1;whiteSpace=wrap;html=1;arcSize=${corner};` +
       `fillColor=${fillColor};strokeColor=${strokeColor};`;
+    positionsForRoutes.set(sid, { x, y, width: w, height: h });
     cells.push(
       `<mxCell id="${sid}" value="${value}" style="${style}" vertex="1" parent="${parent}"><mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/></mxCell>`,
     );
   });
+  const computedRoutes =
+    positionsForRoutes.size > 0 ? computeEdgeRoutes(positionsForRoutes, relations, layout) : new Map();
 
   const edgeLabelFs = Number(edgeStyle.labelFontSize) || 10;
   const systemIdSet = new Set(sortedSystems.map((s) => String(s.ar_systems_id)));
@@ -339,12 +364,16 @@ function buildMxfile(opts) {
     const label = escapeXml((r.name || r.description || 'Связь').slice(0, 500));
     const stroke = edgeStrokeColor(r, edgeStyle);
     const sw = 2;
+    const saved = edgeGeometryMap && edgeGeometryMap.get(rid);
+    const route = saved ? routeFromSaved(saved) : computedRoutes.get(rid);
+    const portStyle = formatPortStyle(route);
     const style =
       `edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;` +
       `startArrow=none;endArrow=classic;endFill=1;strokeColor=${stroke};strokeWidth=${sw};` +
-      `fontSize=${edgeLabelFs};fontColor=#000000;`;
+      `fontSize=${edgeLabelFs};fontColor=#000000;${portStyle}`;
+    const geoXml = formatEdgeGeometryXml(route);
     cells.push(
-      `<mxCell id="${rid}" value="${label}" style="${style}" edge="1" parent="${parent}" source="${from}" target="${to}"><mxGeometry relative="1" as="geometry"/></mxCell>`,
+      `<mxCell id="${rid}" value="${label}" style="${style}" edge="1" parent="${parent}" source="${from}" target="${to}">${geoXml}</mxCell>`,
     );
   });
 
@@ -361,13 +390,23 @@ function buildMxfile(opts) {
  */
 function mergeMxfileWithData(previousMxfile, systems, relations, solutionName, versionLabel, getParam) {
   const geometryMap = extractVertexGeometryMap(previousMxfile);
+  const edgeGeometryMap = extractEdgeGeometryMap(previousMxfile);
   const drawio = getParam ? resolveDrawioStyles(getParam) : null;
-  return buildMxfile({ systems, relations, solutionName, versionLabel, geometryMap, drawio });
+  return buildMxfile({
+    systems,
+    relations,
+    solutionName,
+    versionLabel,
+    geometryMap,
+    edgeGeometryMap,
+    drawio,
+  });
 }
 
 module.exports = {
   escapeXml,
   extractVertexGeometryMap,
+  extractEdgeGeometryMap,
   buildMxfile,
   mergeMxfileWithData,
   resolveDrawioStyles,

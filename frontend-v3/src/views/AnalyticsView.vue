@@ -49,7 +49,7 @@
         v-model:show-all-edges-cascade="showAllEdgesCascade"
         :can-collapse-modules="analyzerCanCollapseModules"
         :can-expand-modules="analyzerCanExpandModules"
-        @add-level="onAddLevel"
+        @toggle-relations="onToggleRelations"
         @layout="onLayout"
         @hide-node="onHideNode"
         @hide-edge="onHideEdge"
@@ -93,6 +93,9 @@ const showAllEdgesCascade = ref(false)
 const expandedFrom = ref({})
 const hiddenNodeIds = ref(new Set())
 const hiddenEdgeIds = ref(new Set())
+/** Активные типы связи у узла для пошагового раскрытия (C2): '__all__' или Set<relation_type>. */
+const activeRelationTypesAtNode = ref({})
+const ALL_RELATION_TYPES = '__all__'
 /** Узлы system:id, для которых на графе свернуты модули (issue #48) */
 const collapsedSystemNodeIds = ref([])
 const analyzerRef = ref(null)
@@ -122,9 +125,9 @@ const visibleNodes = computed(() => {
   return out
 })
 
-function isEdgeVisible(edgeId, source, target) {
-  if (hiddenEdgeIds.value.has(edgeId)) return false
-  if (hiddenNodeIds.value.has(source) || hiddenNodeIds.value.has(target)) return false
+function isEdgeVisible(edgeId, source, target, hiddenNodes = hiddenNodeIds.value, hiddenEdges = hiddenEdgeIds.value) {
+  if (hiddenEdges.has(edgeId)) return false
+  if (hiddenNodes.has(source) || hiddenNodes.has(target)) return false
   if (showAllEdgesCascade.value) return true
   const root = rootNodeId.value
   if (!root) return true
@@ -132,6 +135,40 @@ function isEdgeVisible(edgeId, source, target) {
   if (source === root || target === root) return true
   if (exp[source] === target || exp[target] === source) return true
   return false
+}
+
+/** Есть ли у узла хотя бы одно видимое ребро к другому не скрытому узлу. */
+function nodeHasVisibleEdgeToOtherNode(nid, hiddenNodes, hiddenEdges) {
+  for (const [eid, e] of Object.entries(graphEdges.value)) {
+    if (!e) continue
+    if (!isEdgeVisible(eid, e.source, e.target, hiddenNodes, hiddenEdges)) continue
+    if (e.source !== nid && e.target !== nid) continue
+    const other = e.source === nid ? e.target : e.source
+    if (other && other !== nid && !hiddenNodes.has(other)) return true
+  }
+  return false
+}
+
+/** Скрыть узлы без видимых связей с остальным графом (каскадно). */
+function pruneOrphanVisibleNodes(...preserveNodeIds) {
+  const preserve = new Set(preserveNodeIds.filter(Boolean))
+  if (rootNodeId.value) preserve.add(rootNodeId.value)
+
+  let changed = true
+  while (changed) {
+    changed = false
+    const nextHiddenNodes = new Set(hiddenNodeIds.value)
+    const hiddenEdges = hiddenEdgeIds.value
+    for (const nid of Object.keys(graphNodes.value)) {
+      if (nextHiddenNodes.has(nid)) continue
+      if (preserve.has(nid)) continue
+      if (!nodeHasVisibleEdgeToOtherNode(nid, nextHiddenNodes, hiddenEdges)) {
+        nextHiddenNodes.add(nid)
+        changed = true
+      }
+    }
+    if (changed) hiddenNodeIds.value = nextHiddenNodes
+  }
 }
 
 const visibleEdges = computed(() => {
@@ -252,6 +289,7 @@ function buildGraph() {
 
   hiddenNodeIds.value = new Set()
   hiddenEdgeIds.value = new Set()
+  activeRelationTypesAtNode.value = {}
   collapsedSystemNodeIds.value = []
   const root = ids.length === 1 ? nodeId(type, ids[0]) : null
   rootNodeId.value = root
@@ -331,22 +369,118 @@ async function resolveNodeNames(nodesObj) {
   }
 }
 
-function onAddLevel({ nodeId: nid, relationType }) {
+function edgeMatchesRelationFilter(edge, relationType) {
+  if (relationType == null) return true
+  return String(edge?.relationType || '') === relationType
+}
+
+function incidentRelationTypeCodesForNode(nid) {
+  const codes = new Set()
+  for (const r of relations.value || []) {
+    if (!r) continue
+    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
+    const toId = `${r.to_entity_type}:${r.to_entity_id}`
+    if (fromId !== nid && toId !== nid) continue
+    const code = String(r.relation_type || '').trim()
+    if (code) codes.add(code)
+  }
+  return codes
+}
+
+function setActiveRelationTypesAtNode(nid, value) {
+  const next = { ...activeRelationTypesAtNode.value }
+  if (value == null) delete next[nid]
+  else next[nid] = value
+  activeRelationTypesAtNode.value = next
+}
+
+function addActiveRelationType(nid, relationType) {
+  if (relationType == null) {
+    setActiveRelationTypesAtNode(nid, ALL_RELATION_TYPES)
+    return
+  }
+  const prev = activeRelationTypesAtNode.value[nid]
+  if (prev === ALL_RELATION_TYPES) return
+  const set = prev instanceof Set ? new Set(prev) : new Set()
+  set.add(relationType)
+  setActiveRelationTypesAtNode(nid, set)
+}
+
+function removeActiveRelationType(nid, relationType) {
+  if (relationType == null) {
+    setActiveRelationTypesAtNode(nid, null)
+    return
+  }
+  const prev = activeRelationTypesAtNode.value[nid]
+  if (prev === ALL_RELATION_TYPES) {
+    const codes = incidentRelationTypeCodesForNode(nid)
+    codes.delete(relationType)
+    setActiveRelationTypesAtNode(nid, codes.size ? codes : null)
+    return
+  }
+  if (!(prev instanceof Set)) {
+    setActiveRelationTypesAtNode(nid, null)
+    return
+  }
+  const set = new Set(prev)
+  set.delete(relationType)
+  setActiveRelationTypesAtNode(nid, set.size ? set : null)
+}
+
+function edgeMatchesActiveTypesAtNode(nid, relationTypeCode) {
+  const active = activeRelationTypesAtNode.value[nid]
+  if (!active) return false
+  if (active === ALL_RELATION_TYPES) return true
+  return active instanceof Set && active.has(relationTypeCode)
+}
+
+function relayoutHubForNode(nid, nodesToPlaceOnRing = []) {
+  nextTick(() => {
+    if (nodesToPlaceOnRing.length > 0) {
+      const parentStarCenterId = expandedFrom.value[nid] || rootNodeId.value || null
+      analyzerRef.value?.relayoutHubAroundNode?.(nid, nodesToPlaceOnRing, {
+        parentStarCenterId,
+        rootNodeId: rootNodeId.value,
+      })
+    }
+    analyzerRef.value?.fitToContents?.()
+  })
+}
+
+function hideRelationsAtNode(nid, relationType) {
+  removeActiveRelationType(nid, relationType)
+  const nextHidden = new Set(hiddenEdgeIds.value)
+  for (const [eid, e] of Object.entries(graphEdges.value)) {
+    if (!e) continue
+    if (e.source !== nid && e.target !== nid) continue
+    if (!edgeMatchesRelationFilter(e, relationType)) continue
+    nextHidden.add(eid)
+  }
+  hiddenEdgeIds.value = nextHidden
+  pruneOrphanVisibleNodes(nid)
+  nextTick(() => analyzerRef.value?.fitToContents?.())
+}
+
+function expandRelationsAtNode(nid, relationType) {
+  const visibleBefore = new Set(
+    Object.keys(graphNodes.value).filter((id) => !hiddenNodeIds.value.has(id))
+  )
+  addActiveRelationType(nid, relationType)
   const edges = graphEdges.value
   const incidentNodeIds = new Set([nid])
   const incidentEdgeIds = new Set()
   Object.entries(edges).forEach(([eid, e]) => {
-    if (e.source === nid || e.target === nid) {
-      incidentEdgeIds.add(eid)
-      if (e.source) incidentNodeIds.add(e.source)
-      if (e.target) incidentNodeIds.add(e.target)
-    }
+    if (!e) return
+    if (e.source !== nid && e.target !== nid) return
+    if (!edgeMatchesRelationFilter(e, relationType)) return
+    incidentEdgeIds.add(eid)
+    if (e.source) incidentNodeIds.add(e.source)
+    if (e.target) incidentNodeIds.add(e.target)
   })
   hiddenNodeIds.value = new Set([...hiddenNodeIds.value].filter((id) => !incidentNodeIds.has(id)))
   hiddenEdgeIds.value = new Set([...hiddenEdgeIds.value].filter((id) => !incidentEdgeIds.has(id)))
 
-  const prevNodeIds = Object.keys(graphNodes.value)
-  const allNodeIds = new Set(prevNodeIds)
+  const allNodeIds = new Set(Object.keys(graphNodes.value))
   const incident = getIncidentRelations(relations.value, new Set([nid]), relationType || null)
   const { nodes: newNodes, edges: newEdges } = relationsToGraphData(incident, allNodeIds)
 
@@ -371,19 +505,27 @@ function onAddLevel({ nodeId: nid, relationType }) {
       added = true
     }
   })
-  const allNodeIdsAfter = new Set(Object.keys(nextNodes))
-  const betweenRelations = getRelationsBetweenNodes(relations.value, allNodeIdsAfter)
-  const { edges: betweenEdges } = relationsToGraphData(betweenRelations, allNodeIdsAfter)
-  Object.assign(nextEdges, betweenEdges)
+  // «Все типы»: дополнительно все связи между уже показанными узлами.
+  // Один тип: только инцидентные связи выбранного relation_type (без «добора» других типов с теми же От/К).
+  if (relationType == null) {
+    const allNodeIdsAfter = new Set(Object.keys(nextNodes))
+    const betweenRelations = getRelationsBetweenNodes(relations.value, allNodeIdsAfter)
+    const { edges: betweenEdges } = relationsToGraphData(betweenRelations, allNodeIdsAfter)
+    Object.assign(nextEdges, betweenEdges)
+  }
   graphNodes.value = nextNodes
   graphEdges.value = nextEdges
+  const nodesToPlaceOnRing = Object.keys(nextNodes).filter(
+    (id) => id !== nid && !hiddenNodeIds.value.has(id) && !visibleBefore.has(id)
+  )
   if (added) resolveNodeNames(nextNodes)
-  nextTick(() => {
-    if (addedNodeIds.length > 0) {
-      analyzerRef.value?.applyLayoutForAddedLevel?.(nid, addedNodeIds)
-    }
-    analyzerRef.value?.fitToContents?.()
-  })
+  relayoutHubForNode(nid, nodesToPlaceOnRing)
+}
+
+function onToggleRelations({ nodeId: nid, relationType, show }) {
+  if (!nid) return
+  if (show) expandRelationsAtNode(nid, relationType)
+  else hideRelationsAtNode(nid, relationType)
 }
 
 function onLayout(layoutType) {
@@ -392,10 +534,14 @@ function onLayout(layoutType) {
 
 function onHideNode(nodeId) {
   hiddenNodeIds.value = new Set(hiddenNodeIds.value).add(nodeId)
+  pruneOrphanVisibleNodes()
+  nextTick(() => analyzerRef.value?.fitToContents?.())
 }
 
 function onHideEdge(edgeId) {
   hiddenEdgeIds.value = new Set(hiddenEdgeIds.value).add(edgeId)
+  pruneOrphanVisibleNodes()
+  nextTick(() => analyzerRef.value?.fitToContents?.())
 }
 
 function resetGraph() {
@@ -406,6 +552,7 @@ function resetGraph() {
   expandedFrom.value = {}
   hiddenNodeIds.value = new Set()
   hiddenEdgeIds.value = new Set()
+  activeRelationTypesAtNode.value = {}
   collapsedSystemNodeIds.value = []
   selectedIds.value = []
 }
