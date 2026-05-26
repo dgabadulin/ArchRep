@@ -90,7 +90,36 @@
             Развернуть модули
           </button>
           <div v-if="showCtxModuleActions" class="ctx-divider" />
-          <button type="button" class="ctx-item" @click="onCtxAddLevel(null)">Показать связи (все типы)</button>
+          <div
+            class="ctx-submenu"
+            :class="{ 'ctx-submenu--flip': ctxSubmenuFlipLeft }"
+            @mouseenter="updateCtxSubmenuFlip"
+          >
+            <button type="button" class="ctx-item ctx-item--submenu" @click.prevent>
+              <span>Показать связи</span>
+              <span class="ctx-caret">{{ ctxSubmenuFlipLeft ? '‹' : '›' }}</span>
+            </button>
+            <div ref="ctxSubmenuPanelRef" class="ctx-submenu-panel" role="menu" aria-label="Показать связи">
+              <button type="button" class="ctx-item" @click="onCtxRelationTypeClick(null)">
+                <span class="ctx-check" aria-hidden="true">{{ ctxAllTypesChecked ? '✓' : '' }}</span>
+                <span>Все типы</span>
+              </button>
+              <div class="ctx-divider" />
+              <button
+                v-for="rt in ctxIncidentRelationTypeOptions"
+                :key="rt.code"
+                type="button"
+                class="ctx-item"
+                @click="onCtxRelationTypeClick(rt.code)"
+              >
+                <span class="ctx-check" aria-hidden="true">{{ ctxShownRelationTypesForNode.has(rt.code) ? '✓' : '' }}</span>
+                <span>{{ rt.label }}</span>
+              </button>
+              <div v-if="ctxIncidentRelationTypeOptions.length === 0" class="ctx-empty">
+                Нет связей
+              </div>
+            </div>
+          </div>
           <div class="ctx-divider" />
           <button type="button" class="ctx-item" @click="onCtxHideNode">Скрыть объект</button>
           <div class="ctx-divider" />
@@ -277,7 +306,7 @@ const effectiveShowExportButtons = computed(() => {
 })
 
 const emit = defineEmits([
-  'add-level',
+  'toggle-relations',
   'layout',
   'hide-node',
   'hide-edge',
@@ -320,6 +349,8 @@ const showLegend = ref(false)
 const containerRef = ref(null)
 const graphRef = ref(null)
 const contextMenuRef = ref(null)
+const ctxSubmenuPanelRef = ref(null)
+const ctxSubmenuFlipLeft = ref(false)
 const layouts = ref({ nodes: {} })
 const zoomLevel = ref(1)
 
@@ -386,6 +417,79 @@ const contextMenu = ref({
   y: 0,
 })
 
+const entityTypeLabelByCode = computed(() => {
+  const map = new Map()
+  for (const et of props.legendEntityTypes || []) {
+    const code = String(et?.code || '').trim()
+    if (!code || map.has(code)) continue
+    map.set(code, String(et.display_name || et.name || code).trim() || code)
+  }
+  return map
+})
+
+function relationTypeMenuLabel(rt) {
+  if (!rt) return ''
+  const name = String(rt.display_name || rt.name || rt.code || '').trim() || String(rt.code || '').trim()
+  const fromCode = String(rt.from_entity_type_code || '').trim()
+  const toCode = String(rt.to_entity_type_code || '').trim()
+  const fromLabel = entityTypeLabelByCode.value.get(fromCode) || fromCode
+  const toLabel = entityTypeLabelByCode.value.get(toCode) || toCode
+  if (fromLabel && toLabel) return `${name} (${fromLabel} → ${toLabel})`
+  return name
+}
+
+const ctxShownRelationTypesForNode = computed(() => {
+  const nid = contextMenu.value?.node
+  const set = new Set()
+  if (!nid) return set
+  for (const e of Object.values(props.edges || {})) {
+    if (!e) continue
+    if (e.source !== nid && e.target !== nid) continue
+    const t = String(e.relationType || '').trim()
+    if (t) set.add(t)
+  }
+  return set
+})
+
+const ctxIncidentRelationTypeOptions = computed(() => {
+  const nid = contextMenu.value?.node
+  if (!nid) return []
+  const uniqueCodes = new Set()
+  for (const r of props.relations || []) {
+    if (!r) continue
+    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
+    const toId = `${r.to_entity_type}:${r.to_entity_id}`
+    if (fromId !== nid && toId !== nid) continue
+    const code = String(r.relation_type || '').trim()
+    if (code) uniqueCodes.add(code)
+  }
+
+  const byCode = new Map()
+  for (const rt of props.relationTypes || []) {
+    const code = String(rt?.code || '').trim()
+    if (!code) continue
+    byCode.set(code, rt)
+  }
+
+  const out = []
+  for (const code of uniqueCodes) {
+    const rt = byCode.get(code)
+    out.push({
+      code,
+      label: relationTypeMenuLabel(rt) || code,
+    })
+  }
+  out.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+  return out
+})
+
+const ctxAllTypesChecked = computed(() => {
+  const opts = ctxIncidentRelationTypeOptions.value
+  if (!opts.length) return false
+  const shown = ctxShownRelationTypesForNode.value
+  return opts.every((o) => shown.has(o.code))
+})
+
 const viewModal = ref({
   show: false,
   title: '',
@@ -405,6 +509,7 @@ const eventHandlers = computed(() => {
         x: event.clientX,
         y: event.clientY,
       }
+      nextTick(updateCtxSubmenuFlip)
     },
     'edge:contextmenu': ({ edge, event }) => {
       event.preventDefault()
@@ -436,8 +541,26 @@ function onCtxExpandModules() {
   closeContextMenu()
 }
 
-function onCtxAddLevel(relationType) {
-  if (contextMenu.value.node) emit('add-level', { nodeId: contextMenu.value.node, relationType })
+function updateCtxSubmenuFlip() {
+  ctxSubmenuFlipLeft.value = false
+  const menu = contextMenuRef.value
+  const panel = ctxSubmenuPanelRef.value
+  if (!menu || !panel) return
+  const menuRect = menu.getBoundingClientRect()
+  const panelWidth = Math.max(panel.offsetWidth || 0, 320)
+  const gap = 8
+  if (menuRect.right + panelWidth + gap > window.innerWidth) {
+    ctxSubmenuFlipLeft.value = true
+  }
+}
+
+function onCtxRelationTypeClick(relationType) {
+  const nid = contextMenu.value.node
+  if (!nid) return
+  const shown = relationType == null
+    ? ctxAllTypesChecked.value
+    : ctxShownRelationTypesForNode.value.has(relationType)
+  emit('toggle-relations', { nodeId: nid, relationType, show: !shown })
   closeContextMenu()
 }
 
@@ -657,35 +780,83 @@ function getExpandSemicircle(expandedNodeId, addedNodeIds, current) {
   return dy < 0 ? 'top' : 'bottom'
 }
 
-function applyLayoutForAddedLevel(expandedNodeId, addedNodeIds) {
-  if (!expandedNodeId || !Array.isArray(addedNodeIds) || addedNodeIds.length === 0) return
+/** R★ — радиус прежней звезды с центром S (по layout и подписям рёбер). */
+function estimateParentStarRadius(starCenterId, current, excludeIds) {
+  if (!starCenterId) return 200
+  const sp = current[starCenterId]
+  if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) return 200
+  const exclude = excludeIds || new Set()
+  let maxDist = 0
+  const starEdges = {}
+  for (const [eid, e] of Object.entries(props.edges || {})) {
+    if (!e) continue
+    if (e.source !== starCenterId && e.target !== starCenterId) continue
+    const other = e.source === starCenterId ? e.target : e.source
+    if (!other || exclude.has(other)) continue
+    starEdges[eid] = e
+    const p = current[other]
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      const d = Math.hypot(p.x - sp.x, p.y - sp.y)
+      if (d > maxDist) maxDist = d
+    }
+  }
+  return Math.max(200, maxDist, getMinEdgeLengthForLabels(starEdges))
+}
+
+/** Мин. радиус нового кольца: подписи рёбер + плотность при L узлах. */
+function minRingRadiusForNewNodes(nodeCount, expandEdgesObj) {
+  const minEdgeLen = getMinEdgeLengthForLabels(expandEdgesObj)
+  const R_labels = Math.max(200, minEdgeLen)
+  if (nodeCount < 2) return R_labels
+  return Math.max(R_labels, minEdgeLen / (2 * Math.sin(Math.PI / nodeCount)))
+}
+
+/**
+ * Расстояние хаба X от центра прежней звезды S: d_new ≥ R★ + R_ring + m (с запасом 10%).
+ * @param {number} d0 — текущее |X − S|
+ */
+function hubDistanceFromParentStar(d0, R_star, R_ring, margin, paddingFactor = 1.1) {
+  const clearance = (R_star + R_ring + margin) * paddingFactor
+  const outwardOnly = d0 > 1e-6 ? d0 + R_ring + margin : clearance
+  return Math.max(clearance, outwardOnly)
+}
+
+/**
+ * Инкрементальное раскрытие: сдвинуть хаб X и разместить на кольце только впервые показанные узлы.
+ * @param {object} [layoutContext] — { parentStarCenterId, rootNodeId }
+ */
+function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext = {}) {
+  if (!expandedNodeId) return
+  const toPlace = [...new Set((nodesToPlaceOnRing || []).filter((id) => id && id !== expandedNodeId))]
+  if (toPlace.length === 0) return
+
   const current = layouts.value?.nodes ?? {}
   const centerX = current[expandedNodeId]?.x ?? 0
   const centerY = current[expandedNodeId]?.y ?? 0
-  const L = addedNodeIds.length
-  const R_main = Math.max(200, getMinEdgeLengthForLabels(props.edges || {}))
-  const addedSet = new Set(addedNodeIds)
-  const newlyVisibleEdges = {}
+  const L = toPlace.length
+  const toPlaceSet = new Set(toPlace)
+  const expandEdges = {}
   for (const [eid, e] of Object.entries(props.edges || {})) {
-    const fromExpanded =
-      (e.source === expandedNodeId && addedSet.has(e.target)) ||
-      (e.target === expandedNodeId && addedSet.has(e.source))
-    const betweenAdded = addedSet.has(e.source) && addedSet.has(e.target)
-    if (fromExpanded || betweenAdded) newlyVisibleEdges[eid] = e
+    if (!e) continue
+    const fromHub =
+      (e.source === expandedNodeId && toPlaceSet.has(e.target)) ||
+      (e.target === expandedNodeId && toPlaceSet.has(e.source))
+    if (fromHub) expandEdges[eid] = e
   }
-  const R_expand = Math.max(200, getMinEdgeLengthForLabels(newlyVisibleEdges))
-  /** Расстояние центр главной звезды — центр звезды раскрытия: R_main + R_expand + 10% от суммы. */
-  const centerDistance = (R_main + R_expand) * 1.1
 
-  const rootId = lastLayoutCenterId.value
-  const ox = rootId && current[rootId] ? current[rootId].x ?? 0 : 0
-  const oy = rootId && current[rootId] ? current[rootId].y ?? 0 : 0
+  const movingSet = new Set([expandedNodeId, ...toPlace])
+  const rootId = layoutContext.rootNodeId || lastLayoutCenterId.value
+  const parentId = layoutContext.parentStarCenterId || rootId
+  const starCenterId =
+    parentId && current[parentId] && Number.isFinite(current[parentId].x) ? parentId : rootId
+  const sx = starCenterId && current[starCenterId] ? current[starCenterId].x ?? 0 : 0
+  const sy = starCenterId && current[starCenterId] ? current[starCenterId].y ?? 0 : 0
 
-  let dirX = centerX - ox
-  let dirY = centerY - oy
-  const dirLen = Math.hypot(dirX, dirY)
-  if (dirLen < 1e-6) {
-    const semicircle = getExpandSemicircle(expandedNodeId, addedNodeIds, current)
+  let dirX = centerX - sx
+  let dirY = centerY - sy
+  const d0 = Math.hypot(dirX, dirY)
+  if (d0 < 1e-6) {
+    const semicircle = getExpandSemicircle(expandedNodeId, toPlace, current)
     switch (semicircle) {
       case 'right':
         dirX = 1
@@ -704,23 +875,93 @@ function applyLayoutForAddedLevel(expandedNodeId, addedNodeIds) {
         dirY = 0
     }
   } else {
-    dirX /= dirLen
-    dirY /= dirLen
+    dirX /= d0
+    dirY /= d0
   }
 
-  const shiftedCenterX = ox + dirX * centerDistance
-  const shiftedCenterY = oy + dirY * centerDistance
-  const result = { [expandedNodeId]: { x: shiftedCenterX, y: shiftedCenterY } }
-  for (let i = 0; i < L; i++) {
-    const a = (i / Math.max(L, 1)) * 2 * Math.PI - Math.PI / 2
-    result[addedNodeIds[i]] = {
-      x: shiftedCenterX + R_expand * Math.cos(a),
-      y: shiftedCenterY + R_expand * Math.sin(a),
+  const R_star = estimateParentStarRadius(starCenterId, current, movingSet)
+  const margin = GRAPH_NODE_MIN_CENTER_DIST
+  const minD = margin
+  const minDSq = minD * minD
+  const baseR = Math.max(minRingRadiusForNewNodes(L, expandEdges), minD + 12)
+
+  const obstacles = []
+  for (const id of Object.keys(props.nodes || {})) {
+    if (movingSet.has(id)) continue
+    const p = current[id]
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      obstacles.push({ x: p.x, y: p.y })
     }
   }
+
+  function candidatesPass(cand) {
+    let ok = true
+    for (let i = 0; i < L && ok; i++) {
+      for (let j = i + 1; j < L; j++) {
+        const dx = cand[i].x - cand[j].x
+        const dy = cand[i].y - cand[j].y
+        if (dx * dx + dy * dy < minDSq) ok = false
+      }
+    }
+    if (!ok) return false
+    for (let i = 0; i < L && ok; i++) {
+      for (const o of obstacles) {
+        const dx = cand[i].x - o.x
+        const dy = cand[i].y - o.y
+        if (dx * dx + dy * dy < minDSq) ok = false
+      }
+    }
+    return ok
+  }
+
+  function ringCandidates(hubX, hubY, R) {
+    const cand = []
+    for (let i = 0; i < L; i++) {
+      const a = L > 0 ? (i / L) * 2 * Math.PI - Math.PI / 2 : -Math.PI / 2
+      cand.push({ x: hubX + R * Math.cos(a), y: hubY + R * Math.sin(a) })
+    }
+    return cand
+  }
+
+  const maxR = 3200
+  const stepR = 26
+  const result = {}
+  let placed = false
+
+  /** Сдвиг и кольцо с одним и тем же R: d_new = f(R★, R, m). */
+  for (let R = baseR; R <= maxR && !placed; R += stepR) {
+    const centerDistance = hubDistanceFromParentStar(d0, R_star, R, margin)
+    const hubX = sx + dirX * centerDistance
+    const hubY = sy + dirY * centerDistance
+    const cand = ringCandidates(hubX, hubY, R)
+    if (!candidatesPass(cand)) continue
+    result[expandedNodeId] = { x: hubX, y: hubY }
+    for (let i = 0; i < L; i++) {
+      result[toPlace[i]] = cand[i]
+    }
+    placed = true
+  }
+
+  if (!placed) {
+    const R = maxR
+    const centerDistance = hubDistanceFromParentStar(d0, R_star, R, margin)
+    const hubX = sx + dirX * centerDistance
+    const hubY = sy + dirY * centerDistance
+    result[expandedNodeId] = { x: hubX, y: hubY }
+    const cand = ringCandidates(hubX, hubY, R)
+    for (let i = 0; i < L; i++) {
+      result[toPlace[i]] = cand[i]
+    }
+  }
+
   const nextLayouts = { ...current }
   Object.assign(nextLayouts, result)
   layouts.value = { nodes: nextLayouts }
+}
+
+/** @deprecated Используйте relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing). */
+function applyLayoutForAddedLevel(expandedNodeId, nodesToPlaceOnRing) {
+  relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing)
 }
 
 /**
@@ -995,6 +1236,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 defineExpose({
   applyLayout,
   applyLayoutForAddedLevel,
+  relayoutHubAroundNode,
   placeRevealedModules,
   exportSvg,
   exportPng,
@@ -1145,6 +1387,53 @@ defineExpose({
   height: 1px;
   background: var(--ar-border);
   margin: 0.25rem 0;
+}
+.ctx-submenu {
+  position: relative;
+}
+.ctx-item--submenu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.ctx-caret {
+  color: var(--ar-muted);
+  font-size: 0.95em;
+}
+.ctx-submenu-panel {
+  display: none;
+  position: absolute;
+  top: -0.25rem;
+  left: calc(100% - 2px);
+  min-width: 320px;
+  max-width: 460px;
+  background: var(--ar-surface);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+  padding: 0.25rem 0;
+  z-index: 1001;
+}
+.ctx-submenu:hover .ctx-submenu-panel,
+.ctx-submenu:focus-within .ctx-submenu-panel {
+  display: block;
+}
+.ctx-submenu--flip .ctx-submenu-panel {
+  left: auto;
+  right: calc(100% - 2px);
+}
+.ctx-check {
+  display: inline-block;
+  width: 1.25rem;
+  margin-right: 0.25rem;
+  color: var(--ar-link);
+}
+.ctx-empty {
+  padding: 0.35rem 0.75rem 0.4rem;
+  font-size: 0.82rem;
+  color: var(--ar-muted);
+  white-space: nowrap;
 }
 .modal-overlay {
   position: fixed;
