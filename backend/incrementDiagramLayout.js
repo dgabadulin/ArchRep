@@ -2,7 +2,6 @@
  * Слойная раскладка (dagre) и ортогональная разводка рёбер для draw.io (issue #53, варианты C + D).
  */
 
-const dagre = require('dagre');
 
 /**
  * @param {string} mxfile
@@ -62,6 +61,8 @@ function parseGeometryPoints(block) {
  * @returns {Map<string, { x: number, y: number, width: number, height: number }>}
  */
 function layoutNodesLayered(sizes, relations, layout) {
+  // eslint-disable-next-line global-require
+  const dagre = require('dagre');
   const margin = Number(layout.margin) || 40;
   const nodeSep = (Number(layout.nodeSep) || 40) + (Number(layout.edgeLabelReserveV) || 0);
   const rankSep = (Number(layout.rankSep) || 80) + (Number(layout.edgeLabelReserveH) || 0);
@@ -159,8 +160,101 @@ function portFraction(index, total) {
  * @param {object} layout
  * @returns {Map<string, { exitX: number, exitY: number, entryX: number, entryY: number, points?: {x:number,y:number}[] }>}
  */
+function boxCenter(box) {
+  return { cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
+}
+
+/**
+ * Сторона выхода/входа по взаимному положению центров (ближайшая грань).
+ * @param {'LR'|'TB'|'BT'} layoutDirection — при почти равных |dx| и |dy|
+ */
+function pickSides(fromBox, toBox, layoutDirection = 'LR') {
+  const fc = boxCenter(fromBox);
+  const tc = boxCenter(toBox);
+  const dx = tc.cx - fc.cx;
+  const dy = tc.cy - fc.cy;
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  const tiePx = 24;
+  let horizontal;
+  if (Math.abs(adx - ady) <= tiePx) {
+    horizontal = layoutDirection === 'LR';
+  } else {
+    horizontal = adx >= ady;
+  }
+  if (horizontal) {
+    if (dx >= 0) return { exitSide: 'east', entrySide: 'west' };
+    return { exitSide: 'west', entrySide: 'east' };
+  }
+  if (dy >= 0) return { exitSide: 'south', entrySide: 'north' };
+  return { exitSide: 'north', entrySide: 'south' };
+}
+
+/** @param {'east'|'west'|'north'|'south'} side */
+function portOnSide(box, side, frac, isExit) {
+  const f = Math.min(1, Math.max(0, frac));
+  const { x, y, width: w, height: h } = box;
+  switch (side) {
+    case 'east':
+      return {
+        x: x + w,
+        y: y + h * f,
+        ...(isExit ? { exitX: 1, exitY: f } : { entryX: 1, entryY: f }),
+      };
+    case 'west':
+      return {
+        x,
+        y: y + h * f,
+        ...(isExit ? { exitX: 0, exitY: f } : { entryX: 0, entryY: f }),
+      };
+    case 'south':
+      return {
+        x: x + w * f,
+        y: y + h,
+        ...(isExit ? { exitX: f, exitY: 1 } : { entryX: f, entryY: 1 }),
+      };
+    case 'north':
+    default:
+      return {
+        x: x + w * f,
+        y,
+        ...(isExit ? { exitX: f, exitY: 0 } : { entryX: f, entryY: 0 }),
+      };
+  }
+}
+
+/**
+ * Ортогональный маршрут снаружи bbox: выход/вход с ближайших граней, излом между ними.
+ */
+function orthogonalRouteNearestSide(fromBox, toBox, exitFrac, entryFrac, offset, layoutDirection = 'LR') {
+  const { exitSide, entrySide } = pickSides(fromBox, toBox, layoutDirection);
+  const exit = portOnSide(fromBox, exitSide, exitFrac, true);
+  const entry = portOnSide(toBox, entrySide, entryFrac, false);
+
+  const isHoriz = exitSide === 'east' || exitSide === 'west';
+  const points = [];
+
+  if (isHoriz) {
+    const midX = (exit.x + entry.x) / 2;
+    const sy = exit.y + offset;
+    const ty = entry.y + offset;
+    points.push({ x: midX, y: sy }, { x: midX, y: ty });
+  } else {
+    const midY = (exit.y + entry.y) / 2 + offset;
+    points.push({ x: exit.x, y: midY }, { x: entry.x, y: midY });
+  }
+
+  return {
+    exitX: exit.exitX,
+    exitY: exit.exitY,
+    entryX: entry.entryX,
+    entryY: entry.entryY,
+    points,
+  };
+}
+
 function computeEdgeRoutes(positions, relations, layout) {
-  const direction = String(layout.direction || 'LR').toUpperCase();
+  const layoutDirection = String(layout.direction || 'LR').toUpperCase();
   const parallelGap = Number(layout.parallelEdgeGap) || 12;
   const routes = new Map();
 
@@ -210,30 +304,21 @@ function computeEdgeRoutes(positions, relations, layout) {
     const nPair = byPair.get(pk).length;
 
     if (from === to) {
-      routes.set(rid, selfLoopRoute(fromBox, pi, nPair, direction, parallelGap));
+      routes.set(rid, selfLoopRoute(fromBox, pi, nPair, layoutDirection, parallelGap));
       continue;
     }
 
     const offset = nPair > 1 ? (pi - (nPair - 1) / 2) * parallelGap : 0;
-    let route;
-    if (direction === 'TB') {
-      const exitX = nPair > 1 ? portFraction(pi, nPair) : portFraction(oi, nOut);
-      const entryX = nPair > 1 ? portFraction(pi, nPair) : portFraction(ii, nIn);
-      route = orthogonalRouteTb(fromBox, toBox, { exitX, entryX }, offset);
-    } else if (direction === 'BT') {
-      const exitX = nPair > 1 ? portFraction(pi, nPair) : portFraction(oi, nOut);
-      const entryX = nPair > 1 ? portFraction(pi, nPair) : portFraction(ii, nIn);
-      route = orthogonalRouteBt(fromBox, toBox, { exitX, entryX }, offset);
-    } else {
-      let exitY = portFraction(oi, nOut);
-      let entryY = portFraction(ii, nIn);
-      if (nPair > 1) {
-        const t = portFraction(pi, nPair);
-        exitY = t;
-        entryY = t;
-      }
-      route = orthogonalRouteLr(fromBox, toBox, { exitY, entryY }, offset);
-    }
+    const exitFrac = nPair > 1 ? portFraction(pi, nPair) : portFraction(oi, nOut);
+    const entryFrac = nPair > 1 ? portFraction(pi, nPair) : portFraction(ii, nIn);
+    const route = orthogonalRouteNearestSide(
+      fromBox,
+      toBox,
+      exitFrac,
+      entryFrac,
+      offset,
+      layoutDirection,
+    );
     routes.set(rid, route);
   }
 
@@ -268,63 +353,6 @@ function selfLoopRoute(box, index, total, direction, gap) {
       { x: box.x + box.width + loop, y: cy },
       { x: box.x + box.width + loop, y: cy - loop * 0.6 },
       { x: box.x + box.width - 8, y: cy - loop * 0.5 },
-    ],
-  };
-}
-
-function orthogonalRouteLr(fromBox, toBox, ports, offset) {
-  const { exitY, entryY } = ports;
-  const sx = fromBox.x + fromBox.width;
-  const sy = fromBox.y + fromBox.height * exitY;
-  const tx = toBox.x;
-  const ty = toBox.y + toBox.height * entryY;
-  const midX = (sx + tx) / 2 + offset;
-  return {
-    exitX: 1,
-    exitY: exitY,
-    entryX: 0,
-    entryY: entryY,
-    points: [
-      { x: midX, y: sy },
-      { x: midX, y: ty },
-    ],
-  };
-}
-
-function orthogonalRouteTb(fromBox, toBox, ports, offset) {
-  const { exitX, entryX } = ports;
-  const sx = fromBox.x + fromBox.width * exitX;
-  const sy = fromBox.y + fromBox.height;
-  const tx = toBox.x + toBox.width * entryX;
-  const ty = toBox.y;
-  const midY = (sy + ty) / 2 + offset;
-  return {
-    exitX: exitX,
-    exitY: 1,
-    entryX: entryX,
-    entryY: 0,
-    points: [
-      { x: sx, y: midY },
-      { x: tx, y: midY },
-    ],
-  };
-}
-
-function orthogonalRouteBt(fromBox, toBox, ports, offset) {
-  const { exitX, entryX } = ports;
-  const sx = fromBox.x + fromBox.width * exitX;
-  const sy = fromBox.y;
-  const tx = toBox.x + toBox.width * entryX;
-  const ty = toBox.y + toBox.height;
-  const midY = (sy + ty) / 2 + offset;
-  return {
-    exitX: exitX,
-    exitY: 0,
-    entryX: entryX,
-    entryY: 1,
-    points: [
-      { x: sx, y: midY },
-      { x: tx, y: midY },
     ],
   };
 }
