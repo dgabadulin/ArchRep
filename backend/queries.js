@@ -629,6 +629,67 @@ module.exports = {
   gap_states_update: `UPDATE archrep.ar_gap_states SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
   gap_states_delete: `DELETE FROM archrep.ar_gap_states WHERE id = $1`,
 
+  web_resource_statuses_select: `SELECT id, code, name, description FROM archrep.ar_web_resource_statuses ORDER BY id`,
+  web_resource_statuses_get: `SELECT id, code, name, description FROM archrep.ar_web_resource_statuses WHERE id = $1`,
+  web_resource_statuses_insert: `INSERT INTO archrep.ar_web_resource_statuses (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
+  web_resource_statuses_update: `UPDATE archrep.ar_web_resource_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
+  web_resource_statuses_delete: `DELETE FROM archrep.ar_web_resource_statuses WHERE id = $1`,
+
+  web_resources_root_system_check: `SELECT id FROM archrep.ar_systems WHERE id = $1 AND parent_ar_systems_id IS NULL`,
+
+  web_resources_select: `
+    SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url, w.app_store_links,
+           w.ar_systems_id, w.publication_request_number, w.publication_date,
+           w.ar_web_resource_statuses_id, w.created_at, w.updated_at,
+           s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
+           st.name AS status_name, st.code AS status_code
+    FROM archrep.ar_web_resources w
+    JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
+    JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
+    ORDER BY w.code`,
+  web_resources_select_search: `
+    SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url, w.app_store_links,
+           w.ar_systems_id, w.publication_request_number, w.publication_date,
+           w.ar_web_resource_statuses_id, w.created_at, w.updated_at,
+           s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
+           st.name AS status_name, st.code AS status_code
+    FROM archrep.ar_web_resources w
+    JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
+    JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
+    WHERE (
+      w.code ILIKE $1 OR w.short_name ILIKE $1 OR COALESCE(w.purpose,'') ILIKE $1
+      OR COALESCE(w.publication_url,'') ILIKE $1 OR COALESCE(w.app_store_links,'') ILIKE $1
+      OR COALESCE(w.publication_request_number,'') ILIKE $1
+      OR s.name ILIKE $1 OR COALESCE(s.code,'') ILIKE $1 OR COALESCE(s.fullname,'') ILIKE $1
+      OR st.name ILIKE $1 OR COALESCE(st.code,'') ILIKE $1
+    )
+    ORDER BY w.code`,
+  web_resources_get: `
+    SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url, w.app_store_links,
+           w.ar_systems_id, w.publication_request_number, w.publication_date,
+           w.ar_web_resource_statuses_id, w.created_at, w.updated_at,
+           s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
+           st.name AS status_name, st.code AS status_code
+    FROM archrep.ar_web_resources w
+    JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
+    JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
+    WHERE w.id = $1`,
+  web_resources_insert: `INSERT INTO archrep.ar_web_resources (
+      code, short_name, purpose, publication_url, app_store_links,
+      ar_systems_id, publication_request_number, publication_date, ar_web_resource_statuses_id
+    ) VALUES (
+      $1 || nextval('archrep.ar_web_resources_code_seq')::text,
+      $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''),
+      $6::BIGINT, NULLIF($7,''), NULLIF($8,'')::date, $9::BIGINT
+    ) RETURNING *`,
+  web_resources_update: `UPDATE archrep.ar_web_resources SET
+      short_name = $1, purpose = NULLIF($2,''), publication_url = NULLIF($3,''), app_store_links = NULLIF($4,''),
+      ar_systems_id = $5::BIGINT, publication_request_number = NULLIF($6,''),
+      publication_date = NULLIF($7,'')::date, ar_web_resource_statuses_id = $8::BIGINT,
+      updated_at = current_timestamp
+    WHERE id = $9 RETURNING *`,
+  web_resources_delete: `DELETE FROM archrep.ar_web_resources WHERE id = $1`,
+
   metamodel_relations_by_from: `
     SELECT r.id, r.from_entity_type, r.from_entity_id, r.to_entity_type, r.to_entity_id, r.relation_type, r.name, r.displayed_name, r.reference_to_baserow, r.description, r.payload, r.created_at, r.updated_at,
            rrt.name AS relation_type_name

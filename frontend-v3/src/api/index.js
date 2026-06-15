@@ -64,6 +64,9 @@ export const togafApi = {
   updateBusinessService: (id, body) => api.put(`/togaf/business-services/${id}`, body),
   deleteBusinessService: (id) => api.delete(`/togaf/business-services/${id}`),
 
+  webResources: (params) => api.get('/togaf/web-resources', params),
+  webResource: (id) => api.get(`/togaf/web-resources/${id}`),
+
   businessFunctions: (params) => api.get('/togaf/business-functions', params),
   businessFunction: (id) => api.get(`/togaf/business-functions/${id}`),
   createBusinessFunction: (body) => api.post('/togaf/business-functions', body),

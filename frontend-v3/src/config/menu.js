@@ -27,6 +27,7 @@ export const menuItems = [
     children: [
       { label: 'Каталог ИС', path: '/systems', icon: 'list' },
       { label: 'Реестр интеграций', path: '/integrations', icon: 'share' },
+      { label: 'Реестр веб-ресурсов', path: '/web-resources', icon: 'globe' },
     ],
   },
   {

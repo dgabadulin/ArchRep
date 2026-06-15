@@ -13,7 +13,7 @@ const DEFAULTS = {
   GRAPH_MAX_NODES: 200,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   GRAPH_COLLAPSED_SYSTEM_ICON: 'MonitorDot',
   ADR_CODE_MAXLEN: 15,

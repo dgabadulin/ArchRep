@@ -113,6 +113,8 @@ const DISPLAY_NAME_PATHS = [
   [/^\/api\/togaf\/actors(?:\/\d+)?$/, 'actor'],
   [/^\/api\/togaf\/refs\/actor-types(?:\/\d+)?$/, 'actor_type'],
   [/^\/api\/togaf\/business-services(?:\/\d+)?$/, 'business_service'],
+  [/^\/api\/togaf\/web-resources(?:\/\d+)?$/, 'web_resource'],
+  [/^\/api\/togaf\/web-resource-statuses(?:\/\d+)?$/, 'web_resource_status'],
   [/^\/api\/togaf\/refs\/business-service-statuses(?:\/\d+)?$/, 'business_service_status'],
   [/^\/api\/togaf\/business-functions(?:\/\d+)?$/, 'business_function'],
   [/^\/api\/togaf\/entity-types(?:\/\d+)?$/, 'meta_entity_type'],
@@ -240,7 +242,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   GRAPH_MAX_NODES: 200,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
   GRAPH_COLLAPSED_SYSTEM_ICON: null,
@@ -273,6 +275,7 @@ app.get('/api/config', (req, res) => {
       business_service: { label: 'Бизнес-сервис (продукт)', icon: 'Package', listLabel: 'Продукты' },
       business_function: { label: 'Бизнес-функция', icon: 'GitBranch', listLabel: 'Бизнес-способности' },
       principle: { label: 'Принцип', icon: 'Scale', listLabel: 'Принципы' },
+      web_resource: { label: 'Веб-ресурс', icon: 'Globe', listLabel: 'Веб-ресурсы' },
     };
   }
   if (out.GRAPH_COLLAPSED_SYSTEM_ICON == null || String(out.GRAPH_COLLAPSED_SYSTEM_ICON).trim() === '') {
@@ -2142,6 +2145,127 @@ app.delete('/api/ar-gap-states/:id', async (req, res) => {
   try { const r = await pool.query(queries.gap_states_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 
+// --- Web resources registry ---
+function enrichWebResourceRow(row) {
+  const out = applyDisplayName(row, 'web_resource');
+  if (row.system_name != null) {
+    out.system_display_name = applyDisplayName({
+      code: row.system_code,
+      name: row.system_name,
+      fullname: row.system_fullname,
+    }, 'system').display_name;
+  }
+  return out;
+}
+
+async function assertRootSystemId(systemId) {
+  const r = await pool.query(queries.web_resources_root_system_check, [systemId]);
+  if (r.rowCount === 0) {
+    const err = new Error('Требуется корневая информационная система (не модуль).');
+    err.status = 400;
+    throw err;
+  }
+}
+
+app.get('/api/togaf/web-resources', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.web_resources_select_search : queries.web_resources_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichWebResourceRow);
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Веб-ресурсы');
+      res.setHeader('Content-Disposition', 'attachment; filename=web-resources.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.web_resources_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichWebResourceRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resources', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.short_name) return res.status(400).json({ error: 'short_name required' });
+    if (!b.ar_systems_id) return res.status(400).json({ error: 'ar_systems_id required' });
+    if (!b.ar_web_resource_statuses_id) return res.status(400).json({ error: 'ar_web_resource_statuses_id required' });
+    await assertRootSystemId(b.ar_systems_id);
+    const wrPrefix = getParam('WR_CODE_PREFIX', 'WR-') || 'WR-';
+    const r = await pool.query(queries.web_resources_insert, [
+      wrPrefix, b.short_name, b.purpose || '', b.publication_url || '', b.app_store_links || '',
+      b.ar_systems_id, b.publication_request_number || '', b.publication_date || '',
+      b.ar_web_resource_statuses_id,
+    ]);
+    const full = await pool.query(queries.web_resources_get, [r.rows[0].id]);
+    res.status(201).json(enrichWebResourceRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.short_name) return res.status(400).json({ error: 'short_name required' });
+    if (!b.ar_systems_id) return res.status(400).json({ error: 'ar_systems_id required' });
+    if (!b.ar_web_resource_statuses_id) return res.status(400).json({ error: 'ar_web_resource_statuses_id required' });
+    await assertRootSystemId(b.ar_systems_id);
+    const r = await pool.query(queries.web_resources_update, [
+      b.short_name, b.purpose || '', b.publication_url || '', b.app_store_links || '',
+      b.ar_systems_id, b.publication_request_number || '', b.publication_date || '',
+      b.ar_web_resource_statuses_id, req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const full = await pool.query(queries.web_resources_get, [req.params.id]);
+    res.json(enrichWebResourceRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.web_resources_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/web-resource-statuses', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_select); res.json(applyDisplayName(r.rows, 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resource-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_statuses_insert, [code, name, description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'web_resource_status'));
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_statuses_update, [code, name, description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'web_resource_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
 // --- Settings parameters (issue #27) ---
 function maskSecretParam(row) {
   if (row && row.is_secret && row.value) {
@@ -2293,8 +2417,19 @@ const INTEGRATION_FLOW_METAMODEL_RELATION_TYPES = new Set([
   'integration_flow_module_system',
   'integration_flow_module_module',
 ])
+/** Проекция из реестра веб-ресурсов (FK ar_systems_id). */
+const WEB_RESOURCE_PROJECTION_RELATION_TYPES = new Set(['system_web_resource'])
 function isMetamodelIntegrationFlowProjection(row) {
   return row && row.reference_to_baserow != null && INTEGRATION_FLOW_METAMODEL_RELATION_TYPES.has(row.relation_type)
+}
+function isWebResourceMetamodelProjection(row) {
+  if (!row || !WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(row.relation_type)) return false
+  const payload = row.payload
+  if (payload && typeof payload === 'object' && payload.projection === 'fk') return true
+  return row.to_entity_type === 'web_resource'
+}
+function isManagedMetamodelProjection(row) {
+  return isMetamodelIntegrationFlowProjection(row) || isWebResourceMetamodelProjection(row)
 }
 
 app.get('/api/togaf/relations', async (req, res) => {
@@ -2333,6 +2468,11 @@ app.post('/api/togaf/relations', async (req, res) => {
         error: 'Проекции интеграционных потоков (integration_flow*) создаются только из реестра ar_integration_flows (триггер БД).',
       });
     }
+    if (WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(rt)) {
+      return res.status(400).json({
+        error: 'Связь «Опубликован» (system_web_resource) создаётся только из реестра веб-ресурсов (поле ИС на карточке).',
+      });
+    }
     const r = await pool.query(queries.metamodel_relations_insert, [b.from_entity_type, b.from_entity_id, b.to_entity_type, b.to_entity_id, b.relation_type, b.name, b.description, b.payload ? JSON.stringify(b.payload) : null, b.displayed_name != null ? b.displayed_name : null, b.reference_to_baserow != null ? b.reference_to_baserow : null]);
     res.status(201).json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
@@ -2344,9 +2484,11 @@ app.put('/api/togaf/relations/:id', async (req, res) => {
     const cur = await pool.query(queries.metamodel_relations_get, [req.params.id]);
     if (cur.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const row = cur.rows[0];
-    if (isMetamodelIntegrationFlowProjection(row)) {
+    if (isManagedMetamodelProjection(row)) {
       return res.status(400).json({
-        error: 'Проекция интеграционного потока управляется из реестра потоков. Пересборка: POST /api/togaf/metamodel/rebuild-integration-flow-projections',
+        error: isWebResourceMetamodelProjection(row)
+          ? 'Проекция веб-ресурса управляется из реестра веб-ресурсов (поле ИС на карточке).'
+          : 'Проекция интеграционного потока управляется из реестра потоков. Пересборка: POST /api/togaf/metamodel/rebuild-integration-flow-projections',
       });
     }
     const disp = b.displayed_name !== undefined ? b.displayed_name : row.displayed_name;
@@ -2361,9 +2503,11 @@ app.delete('/api/togaf/relations/:id', async (req, res) => {
     const cur = await pool.query(queries.metamodel_relations_get, [req.params.id]);
     if (cur.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const row = cur.rows[0];
-    if (isMetamodelIntegrationFlowProjection(row)) {
+    if (isManagedMetamodelProjection(row)) {
       return res.status(400).json({
-        error: 'Проекция интеграционного потока удаляется при удалении потока или через пересборку метамодели.',
+        error: isWebResourceMetamodelProjection(row)
+          ? 'Проекция веб-ресурса удаляется при удалении записи реестра или смене ИС на карточке.'
+          : 'Проекция интеграционного потока удаляется при удалении потока или через пересборку метамодели.',
       });
     }
     const r = await pool.query(queries.metamodel_relations_delete, [req.params.id]);

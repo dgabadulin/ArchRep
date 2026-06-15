@@ -21,6 +21,7 @@ export const menuIconNames = {
   desktop: 'Monitor',
   list: 'List',
   share: 'Share2',
+  globe: 'Globe',
   link: 'Link',
   gear: 'Settings',
   gears: 'Settings',

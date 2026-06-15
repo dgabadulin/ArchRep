@@ -97,13 +97,18 @@ function toggleGroup(label) {
 <style scoped>
 .layout {
   display: flex;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
   min-height: 100dvh;
+  overflow: hidden;
   background: var(--ar-bg);
 }
 .sidebar {
   width: 260px;
   flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
   background: var(--ar-surface);
   display: flex;
   flex-direction: column;
@@ -111,6 +116,7 @@ function toggleGroup(label) {
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
 }
 .sidebar-header {
+  flex-shrink: 0;
   padding: 1rem 1.1rem;
   border-bottom: 1px solid var(--ar-border);
   background: linear-gradient(135deg, var(--ar-header) 0%, #252842 100%);
@@ -143,8 +149,11 @@ function toggleGroup(label) {
   min-width: 0;
 }
 .sidebar-nav {
+  flex: 1;
+  min-height: 0;
   padding: 0.4rem 0 0.75rem;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .nav-group {
   margin-bottom: 0.15rem;
@@ -222,6 +231,8 @@ function toggleGroup(label) {
 }
 .main {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   padding: 1.1rem 1.5rem;
   overflow: auto;
 }

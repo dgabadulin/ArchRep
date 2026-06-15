@@ -37,11 +37,14 @@
 }
 
 html {
+  height: 100%;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
   font-family: var(--ar-font);
   background: var(--ar-bg);
   color: var(--ar-text);
@@ -49,7 +52,9 @@ body {
 }
 
 #app {
+  height: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 input,

@@ -12,13 +12,12 @@
           <label>Название <span class="req">*</span></label>
           <input v-model="form.name" required />
         </div>
-        <div class="field">
-          <label>Вендор</label>
-          <select v-model="form.vendor_ar_partners_id">
-            <option :value="null">—</option>
-            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
-          </select>
-        </div>
+        <PartnerSelectField
+          v-model="form.vendor_ar_partners_id"
+          label="Вендор"
+          :options="vendors"
+          @partner-created="mergePartner"
+        />
         <div class="field">
           <label>Класс технологии</label>
           <select v-model="form.technology_classes_id">
@@ -72,6 +71,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { api } from '../api/client'
+import PartnerSelectField from '../components/PartnerSelectField.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -85,6 +85,16 @@ const submitError = ref('')
 const isDirty = ref(false)
 const initialLoadDone = ref(false)
 const vendors = ref([])
+
+function mergePartner(partner) {
+  if (!partner?.id) return
+  if (!vendors.value.some((v) => v.id === partner.id)) {
+    vendors.value = [...vendors.value, partner].sort((a, b) =>
+      String(a.display_name || a.name).localeCompare(String(b.display_name || b.name), 'ru'),
+    )
+  }
+}
+
 const technologyClasses = ref([])
 const technologyTypes = ref([])
 const technologyStatuses = ref([])
