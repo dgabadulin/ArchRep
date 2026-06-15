@@ -50,27 +50,24 @@
             <option :value="true">Да</option>
           </select>
         </div>
-        <div class="field">
-          <label>Вендор</label>
-          <select v-model="form.vendor_ar_partners_id">
-            <option :value="null">—</option>
-            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Поставщик</label>
-          <select v-model="form.supplier_ar_partners_id">
-            <option :value="null">—</option>
-            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Партнёр по поддержке</label>
-          <select v-model="form.supporter_ar_partners_id">
-            <option :value="null">—</option>
-            <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
-          </select>
-        </div>
+        <PartnerSelectField
+          v-model="form.vendor_ar_partners_id"
+          label="Вендор"
+          :options="vendors"
+          @partner-created="mergePartner"
+        />
+        <PartnerSelectField
+          v-model="form.supplier_ar_partners_id"
+          label="Поставщик"
+          :options="vendors"
+          @partner-created="mergePartner"
+        />
+        <PartnerSelectField
+          v-model="form.supporter_ar_partners_id"
+          label="Партнёр по поддержке"
+          :options="vendors"
+          @partner-created="mergePartner"
+        />
         <div class="field">
           <label>Владелец (направление)</label>
           <select v-model="form.ar_system_owners_id">
@@ -214,6 +211,7 @@ import { useFormListReturn } from '../composables/useFormListReturn'
 import { api } from '../api/client'
 import { getConfig } from '@/config/params'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
+import PartnerSelectField from '../components/PartnerSelectField.vue'
 import { nodeId } from '../utils/entityTypeConfig'
 
 const sysCodeMaxLen = computed(() => (getConfig().SYS_CODE_MAXLEN ?? 32) | 0)
@@ -241,6 +239,16 @@ const initialLoadDone = ref(false)
 const parentSystems = ref([])
 const statuses = ref([])
 const vendors = ref([])
+
+function mergePartner(partner) {
+  if (!partner?.id) return
+  if (!vendors.value.some((v) => v.id === partner.id)) {
+    vendors.value = [...vendors.value, partner].sort((a, b) =>
+      String(a.display_name || a.name).localeCompare(String(b.display_name || b.name), 'ru'),
+    )
+  }
+}
+
 const owners = ref([])
 const hostingTypes = ref([])
 const employees = ref([])

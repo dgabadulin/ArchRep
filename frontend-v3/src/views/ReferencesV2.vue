@@ -343,6 +343,27 @@
         <p v-if="gapStates.length === 0" class="empty">Нет записей</p>
       </template>
       <!-- Статусы бизнес-сервисов (TOGAF) -->
+      <template v-else-if="activeTab === 'webResourceStatuses'">
+        <div class="table-actions">
+          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceStatusForm()">Добавить</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in webResourceStatuses" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openWebResourceStatusForm(r)">Изменить</button>
+                <button type="button" class="btn-link danger" @click="deleteWebResourceStatus(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="webResourceStatuses.length === 0" class="empty">Нет записей</p>
+      </template>
       <template v-else-if="activeTab === 'businessServiceStatuses'">
         <div class="table-actions">
           <button type="button" class="btn btn-sm btn-primary" @click="openBusinessServiceStatusForm()">Добавить</button>
@@ -537,6 +558,18 @@
         </div>
       </div>
     </div>
+    <div v-if="webResourceStatusForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ webResourceStatusForm.id ? 'Изменить статус веб-ресурса' : 'Новый статус веб-ресурса' }}</h3>
+        <div class="form-row"><label>Код</label><input v-model="webResourceStatusForm.code" required /></div>
+        <div class="form-row"><label>Наименование</label><input v-model="webResourceStatusForm.name" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="webResourceStatusForm.description" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" @click="saveWebResourceStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceStatusForm = null">Отмена</button>
+        </div>
+      </div>
+    </div>
     <div v-if="businessServiceStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ businessServiceStatusForm.id ? 'Изменить статус' : 'Новый статус бизнес-сервиса' }}</h3>
@@ -645,6 +678,7 @@ const tabs = [
   { id: 'integrationFlowStatuses', label: 'Статусы интеграционных потоков' },
   { id: 'orgUnitCategories', label: 'Категории орг. единиц' },
   { id: 'actorTypes', label: 'Типы заинтересованных лиц' },
+  { id: 'webResourceStatuses', label: 'Статусы веб-ресурсов' },
   { id: 'businessServiceStatuses', label: 'Статусы бизнес-сервисов' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
@@ -667,6 +701,7 @@ const integrationFlowEventTypes = ref([])
 const integrationFlowStatuses = ref([])
 const orgUnitCategories = ref([])
 const actorTypes = ref([])
+const webResourceStatuses = ref([])
 const businessServiceStatuses = ref([])
 const statusForm = ref(null)
 const hostingForm = ref(null)
@@ -679,6 +714,7 @@ const integrationFlowEventTypeForm = ref(null)
 const integrationFlowStatusForm = ref(null)
 const categoryForm = ref(null)
 const actorTypeForm = ref(null)
+const webResourceStatusForm = ref(null)
 const businessServiceStatusForm = ref(null)
 const entityTypeForm = ref(null)
 const relationTypeForm = ref(null)
@@ -707,6 +743,7 @@ async function loadTab() {
     else if (activeTab.value === 'integrationFlowStatuses') integrationFlowStatuses.value = await api.getIntegrationFlowStatuses(q)
     else if (activeTab.value === 'orgUnitCategories') orgUnitCategories.value = await togafApi.refs.organizationUnitCategories()
     else if (activeTab.value === 'actorTypes') actorTypes.value = await togafApi.refs.actorTypes()
+    else if (activeTab.value === 'webResourceStatuses') webResourceStatuses.value = await api.getWebResourceStatuses()
     else if (activeTab.value === 'businessServiceStatuses') businessServiceStatuses.value = await togafApi.refs.businessServiceStatuses()
     else if (activeTab.value === 'metamodelEntityTypes') metamodelEntityTypes.value = await togafApi.entityTypes()
     else if (activeTab.value === 'metamodelRelationTypes') {
@@ -736,7 +773,7 @@ async function exportExcel() {
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
     else if (activeTab.value === 'integrationFlowStatuses') blob = await api.getIntegrationFlowStatuses(q)
-    else if (['orgUnitCategories', 'actorTypes', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
+    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
     if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
   } finally {
     excelLoading.value = false
@@ -758,6 +795,32 @@ function openIntegrationFlowEventTypeForm(r) { integrationFlowEventTypeForm.valu
 function openIntegrationFlowStatusForm(r) { integrationFlowStatusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
 function openCategoryForm(r) { categoryForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
 function openActorTypeForm(r) { actorTypeForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
+function openWebResourceStatusForm(r) {
+  webResourceStatusForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
+async function saveWebResourceStatus() {
+  if (!webResourceStatusForm.value?.code?.trim() || !webResourceStatusForm.value?.name) return
+  try {
+    const payload = {
+      code: webResourceStatusForm.value.code.trim(),
+      name: webResourceStatusForm.value.name,
+      description: webResourceStatusForm.value.description,
+    }
+    if (webResourceStatusForm.value.id) await api.updateWebResourceStatus(webResourceStatusForm.value.id, payload)
+    else await api.createWebResourceStatus(payload)
+    webResourceStatusForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function deleteWebResourceStatus(id) {
+  if (!confirm('Удалить статус?')) return
+  try {
+    await api.deleteWebResourceStatus(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
 function openBusinessServiceStatusForm(r) { businessServiceStatusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
 function openEntityTypeForm(r) {
   entityTypeForm.value = r ? { id: r.id, code: r.code, name: r.name, table_name: r.table_name ?? '', description: r.description ?? '' } : { code: '', name: '', table_name: '', description: '' }

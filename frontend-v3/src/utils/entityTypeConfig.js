@@ -62,6 +62,11 @@ export const entityTypeConfig = {
     icon: 'AlertTriangle',
     listLabel: 'Долги',
   },
+  web_resource: {
+    label: 'Веб-ресурс',
+    icon: 'Globe',
+    listLabel: 'Веб-ресурсы',
+  },
   partner: {
     label: 'Партнёр',
     icon: 'Handshake',
