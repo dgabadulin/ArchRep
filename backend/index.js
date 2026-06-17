@@ -240,6 +240,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   ARR_SEARCH_PLACEHOLDER: 'Поиск по всем полям таблицы',
   GRAPH_LAYOUT_DEF: 'star',
   GRAPH_MAX_NODES: 200,
+  GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
   GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],

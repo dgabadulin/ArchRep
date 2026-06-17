@@ -74,6 +74,7 @@ import {
   fetchEntity,
   buildSubsystemParentSystemMap,
   applyModuleCollapse,
+  bundleIntegrationFlowEdges,
 } from '../api/graphApi'
 import { getConfig } from '@/config/params'
 
@@ -183,15 +184,20 @@ const visibleEdges = computed(() => {
 /** subsystem:nid → system:parentId по связям метамодели system_module */
 const subsystemParentMap = computed(() => buildSubsystemParentSystemMap(relations.value))
 
-const analyzerPresentation = computed(() =>
-  applyModuleCollapse({
+const analyzerPresentation = computed(() => {
+  const collapsed = applyModuleCollapse({
     nodes: visibleNodes.value,
     edges: visibleEdges.value,
     collapsedSystemNodeIds: collapsedSystemNodeIds.value,
     subsystemToParentSystem: subsystemParentMap.value,
     collapsedSystemIcon: getConfig().GRAPH_COLLAPSED_SYSTEM_ICON || 'MonitorDot',
   })
-)
+  const maxVisible = (getConfig().GRAPH_INTEGRATION_FLOW_VISIBLE_MAX ?? 10) | 0
+  return {
+    nodes: collapsed.nodes,
+    edges: bundleIntegrationFlowEdges(collapsed.edges, { threshold: maxVisible }),
+  }
+})
 
 const analyzerGraphNodes = computed(() => analyzerPresentation.value.nodes)
 const analyzerGraphEdges = computed(() => analyzerPresentation.value.edges)
@@ -539,7 +545,16 @@ function onHideNode(nodeId) {
 }
 
 function onHideEdge(edgeId) {
-  hiddenEdgeIds.value = new Set(hiddenEdgeIds.value).add(edgeId)
+  const next = new Set(hiddenEdgeIds.value)
+  const edge = analyzerGraphEdges.value[edgeId]
+  if (edge?.bundled && edge.memberRelationIds?.length) {
+    for (const rid of edge.memberRelationIds) {
+      next.add(`rel-${rid}`)
+    }
+  } else {
+    next.add(edgeId)
+  }
+  hiddenEdgeIds.value = next
   pruneOrphanVisibleNodes()
   nextTick(() => analyzerRef.value?.fitToContents?.())
 }

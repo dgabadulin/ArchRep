@@ -285,3 +285,72 @@ export function applyModuleCollapse(opts) {
 
   return { nodes: nodesOut, edges: edgesOut }
 }
+
+/** Типы связей метамодели — проекции из ar_integration_flows (issues #33, #56). */
+export const INTEGRATION_FLOW_METAMODEL_RELATION_TYPES = new Set([
+  'integration_flow',
+  'integration_flow_system_module',
+  'integration_flow_module_system',
+  'integration_flow_module_module',
+])
+
+/**
+ * Сворачивает пучки интеграционных потоков между одной парой узлов (from → to).
+ * Если потоков больше threshold — одно ребро с подписью «N потоков передачи данных».
+ *
+ * @param {Record<string, object>} edges
+ * @param {{ threshold?: number, relationTypes?: Set<string> }} [options]
+ */
+export function bundleIntegrationFlowEdges(edges, options = {}) {
+  const threshold = Math.max(1, Number(options.threshold) || 10) | 0
+  const flowTypes = options.relationTypes || INTEGRATION_FLOW_METAMODEL_RELATION_TYPES
+
+  /** @type {Array<[string, object]>} */
+  const integrationItems = []
+  const edgesOut = {}
+
+  for (const [eid, e] of Object.entries(edges || {})) {
+    const rt = String(e?.relationType || '').trim()
+    if (flowTypes.has(rt)) {
+      integrationItems.push([eid, e])
+    } else {
+      edgesOut[eid] = e
+    }
+  }
+
+  /** @type {Record<string, Array<[string, object]>>} */
+  const groups = {}
+  for (const [eid, e] of integrationItems) {
+    const key = `${e.source}\0${e.target}`
+    if (!groups[key]) groups[key] = []
+    groups[key].push([eid, e])
+  }
+
+  for (const [key, items] of Object.entries(groups)) {
+    if (items.length <= threshold) {
+      for (const [eid, e] of items) edgesOut[eid] = e
+      continue
+    }
+    const sep = key.indexOf('\0')
+    const source = key.slice(0, sep)
+    const target = key.slice(sep + 1)
+    const memberRelationIds = items.map(([eid, e]) => {
+      if (e.relationId != null) return e.relationId
+      const m = /^rel-(\d+)$/.exec(eid)
+      return m ? Number(m[1]) : null
+    }).filter((id) => id != null)
+    const bundleId = `bundle-${source}-${target}`
+    edgesOut[bundleId] = {
+      source,
+      target,
+      relationType: 'integration_flow',
+      name: `${items.length} потоков передачи данных`,
+      bundled: true,
+      bundleKey: key,
+      memberRelationIds,
+      memberCount: items.length,
+    }
+  }
+
+  return edgesOut
+}
