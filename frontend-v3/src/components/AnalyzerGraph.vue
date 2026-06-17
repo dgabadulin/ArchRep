@@ -127,6 +127,14 @@
         <button type="button" class="ctx-item" @click="onCtxView">Просмотр</button>
       </template>
       <template v-else-if="contextMenu.type === 'edge'">
+        <template v-if="contextMenuBundledEdge">
+          <button type="button" class="ctx-item" @click="onCtxShowBundledFlows">Список потоков данных…</button>
+          <div class="ctx-divider" />
+        </template>
+        <template v-else-if="contextMenuIntegrationFlowId">
+          <button type="button" class="ctx-item" @click="onCtxOpenIntegrationInRegistry">Открыть в реестре</button>
+          <div class="ctx-divider" />
+        </template>
         <template v-if="effectiveContextMenu === 'full'">
           <button type="button" class="ctx-item" @click="onCtxHideEdge">Скрыть объект</button>
           <div class="ctx-divider" />
@@ -144,6 +152,36 @@
         </div>
         <div class="modal-body">
           <pre class="view-json">{{ viewModal.json }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Список потоков в свёрнутом пучке -->
+    <div v-if="flowsListModal.show" class="modal-overlay">
+      <div class="modal-card modal-card-wide">
+        <div class="modal-header">
+          <h3>{{ flowsListModal.title }}</h3>
+          <button type="button" class="modal-close" @click="flowsListModal.show = false">×</button>
+        </div>
+        <div class="modal-body">
+          <table class="flows-table">
+            <tbody>
+              <tr v-for="row in flowsListModal.rows" :key="row.id">
+                <td>{{ row.label }}</td>
+                <td class="flows-table-action">
+                  <a
+                    v-if="row.flowId"
+                    :href="integrationEditHref(row.flowId)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="link"
+                  >Открыть в реестре</a>
+                  <span v-else class="muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="flowsListModal.rows.length === 0" class="empty-inline">Нет данных о потоках</p>
         </div>
       </div>
     </div>
@@ -174,11 +212,14 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { parseNodeId, getEntityTypeConfig } from '../utils/entityTypeConfig'
-import { fetchEntity } from '../api/graphApi'
+import { fetchEntity, relationDisplayName, INTEGRATION_FLOW_METAMODEL_RELATION_TYPES } from '../api/graphApi'
 import { getConfig } from '@/config/params'
 import { downloadBlob } from '../utils/downloadBlob'
 import * as LucideIcons from 'lucide-vue-next'
+
+const router = useRouter()
 
 const iconComponents = {
   Monitor: LucideIcons.Monitor,
@@ -390,12 +431,15 @@ const configs = computed(() => ({
     draggable: !isEmbed.value,
   },
   edge: {
-    normal: { width: 2, color: '#8b9a6b' },
+    normal: {
+      width: (edge) => (edge?.bundled ? 4 : 2),
+      color: (edge) => (edge?.bundled ? '#4a6b3a' : '#8b9a6b'),
+    },
     type: 'curve',
     gap: 12,
     marker: {
       source: { type: 'none' },
-      target: { type: 'arrow', width: 6, height: 6, margin: 0, units: 'userSpaceOnUse' },
+      target: { type: 'arrow', width: (edge) => (edge?.bundled ? 8 : 6), height: (edge) => (edge?.bundled ? 8 : 6), margin: 0, units: 'userSpaceOnUse' },
     },
     margin: 24 * zoomLevel.value,
     label: {
@@ -494,6 +538,38 @@ const viewModal = ref({
   show: false,
   title: '',
   json: '',
+})
+
+const flowsListModal = ref({
+  show: false,
+  title: '',
+  rows: [],
+})
+
+const contextMenuBundledEdge = computed(() => {
+  const eid = contextMenu.value?.edge
+  if (!eid) return false
+  return !!props.edges?.[eid]?.bundled
+})
+
+function integrationFlowRegistryId(edge, edgeId) {
+  if (!edge || edge.bundled) return null
+  const rt = String(edge.relationType || '').trim()
+  if (!INTEGRATION_FLOW_METAMODEL_RELATION_TYPES.has(rt)) return null
+  let relationId = edge.relationId
+  if (relationId == null) {
+    const m = /^rel-(\d+)$/.exec(edgeId || '')
+    relationId = m ? Number(m[1]) : null
+  }
+  if (relationId == null) return null
+  const rel = (props.relations || []).find((r) => r.id === relationId)
+  return rel?.reference_to_baserow || null
+}
+
+const contextMenuIntegrationFlowId = computed(() => {
+  const eid = contextMenu.value?.edge
+  if (!eid) return null
+  return integrationFlowRegistryId(props.edges?.[eid], eid)
 })
 
 const eventHandlers = computed(() => {
@@ -600,6 +676,47 @@ function onCtxViewEdge() {
     show: true,
     title: `Связь: ${edgeId}`,
     json: JSON.stringify(edge || {}, null, 2),
+  }
+}
+
+function nodeDisplayLabel(nodeIdStr) {
+  const n = props.nodes?.[nodeIdStr]
+  if (n?.name) return String(n.name)
+  return nodeIdStr || '—'
+}
+
+function integrationEditHref(flowId) {
+  return router.resolve({ path: `/integrations/${flowId}/edit` }).href
+}
+
+function onCtxOpenIntegrationInRegistry() {
+  const flowId = contextMenuIntegrationFlowId.value
+  closeContextMenu()
+  if (!flowId) return
+  window.open(integrationEditHref(flowId), '_blank', 'noopener,noreferrer')
+}
+
+function onCtxShowBundledFlows() {
+  const edgeId = contextMenu.value.edge
+  if (!edgeId) { closeContextMenu(); return }
+  const edge = props.edges[edgeId]
+  closeContextMenu()
+  if (!edge?.bundled) return
+  const fromLabel = nodeDisplayLabel(edge.source)
+  const toLabel = nodeDisplayLabel(edge.target)
+  const idSet = new Set(edge.memberRelationIds || [])
+  const rows = (props.relations || [])
+    .filter((r) => idSet.has(r.id))
+    .map((r) => ({
+      id: r.id,
+      label: relationDisplayName(r),
+      flowId: r.reference_to_baserow,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+  flowsListModal.value = {
+    show: true,
+    title: `Потоки передачи данных (${fromLabel} -> ${toLabel})`,
+    rows,
   }
 }
 
@@ -1453,6 +1570,28 @@ defineExpose({
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+}
+.modal-card-wide {
+  width: min(720px, 90vw);
+}
+.flows-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.flows-table th,
+.flows-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ar-border);
+  text-align: left;
+  vertical-align: top;
+}
+.flows-table-action {
+  white-space: nowrap;
+  width: 1%;
+}
+.flows-table .muted {
+  color: var(--ar-muted);
 }
 .modal-header {
   display: flex;
