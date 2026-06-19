@@ -5,8 +5,8 @@
       <div class="head-actions">
         <router-link :to="linkTo('/business-functions/new')" class="btn btn-primary">Добавить бизнес-способность</router-link>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" disabled title="Экспорт в Excel для раздела пока не реализован">
-            Экспорт в Excel
+          <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
+            {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
             <button type="button" class="btn btn-secondary btn-same" @click.stop="colPickerOpen = !colPickerOpen">Вид</button>
@@ -62,7 +62,9 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { togafApi } from '../api'
+import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
+import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 import { useListSearch } from '../composables/useListSearch'
 
@@ -79,6 +81,7 @@ const list = ref([])
 const visibleCols = ref(getVisibleColumns('business-functions', columns))
 const colPickerOpen = ref(false)
 const loading = ref(true)
+const excelLoading = ref(false)
 const error = ref('')
 const sortPref = getSortPref('business-functions', 'name', 'asc', columns)
 const sortKey = ref(sortPref.sortKey)
@@ -152,6 +155,18 @@ async function load() {
     error.value = e.message || 'Ошибка загрузки'
   } finally {
     loading.value = false
+  }
+}
+
+async function exportExcel() {
+  excelLoading.value = true
+  try {
+    const blob = await api.getBusinessFunctions({ search: search.value || undefined, excel: true })
+    downloadBlob(blob, 'business-functions.xlsx')
+  } catch (e) {
+    alert(e.message || 'Ошибка выгрузки')
+  } finally {
+    excelLoading.value = false
   }
 }
 
