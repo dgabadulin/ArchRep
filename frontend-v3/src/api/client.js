@@ -184,6 +184,7 @@ export const api = {
   createImpactLevelType: (body) => request('/api/ar-impact-level-types', { method: 'POST', body: JSON.stringify(body) }),
   updateImpactLevelType: (id, body) => request(`/api/ar-impact-level-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteImpactLevelType: (id) => request(`/api/ar-impact-level-types/${id}`, { method: 'DELETE' }),
+  getBusinessFunctions: (params) => request('/api/togaf/business-functions' + buildQuery(params)),
   getWebResources: (params) => request('/api/togaf/web-resources' + buildQuery(params)),
   getWebResource: (id) => request(`/api/togaf/web-resources/${id}`),
   createWebResource: (body) => request('/api/togaf/web-resources', { method: 'POST', body: JSON.stringify(body) }),

@@ -2644,10 +2644,18 @@ app.delete('/api/togaf/business-services/:id', async (req, res) => {
 app.get('/api/togaf/business-functions', async (req, res) => {
   try {
     const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
     const q = search ? queries.togaf_business_functions_select_search : queries.togaf_business_functions_select;
     const params = search ? ['%' + search + '%'] : [];
     const r = await pool.query(q, params);
-    res.json(r.rows);
+    const rows = r.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Бизнес-способности');
+      res.setHeader('Content-Disposition', 'attachment; filename=business-functions.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/business-functions/:id', async (req, res) => {
