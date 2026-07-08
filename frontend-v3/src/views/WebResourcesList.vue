@@ -76,8 +76,9 @@ const webResourceColumns = [
   { key: 'short_name', label: 'Краткое наименование', defaultVisible: true },
   { key: 'purpose', label: 'Назначение', defaultVisible: true },
   { key: 'publication_url', label: 'URL', defaultVisible: true },
-  { key: 'app_store_links', label: 'Магазины приложений', defaultVisible: false },
-  { key: 'system_display_name', label: 'ИС', defaultVisible: true },
+  { key: 'category_name', label: 'Категория', defaultVisible: true },
+  { key: 'stage_type_name', label: 'Стенд', defaultVisible: true },
+  { key: 'system_display_name', label: 'ИС / модуль', defaultVisible: true },
   { key: 'publication_request_number', label: 'Номер заявки', defaultVisible: true },
   { key: 'publication_date', label: 'Дата публикации', defaultVisible: true },
   { key: 'status_name', label: 'Статус', defaultVisible: true },
@@ -126,7 +127,7 @@ function cellValue(row, key) {
     const x = new Date(d)
     return isNaN(x.getTime()) ? d : x.toLocaleDateString('ru-RU')
   }
-  if (key === 'purpose' || key === 'app_store_links') {
+  if (key === 'purpose') {
     const v = row[key]
     if (!v) return '—'
     const s = String(v)

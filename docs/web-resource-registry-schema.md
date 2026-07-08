@@ -8,13 +8,13 @@
 
 ## 1. Назначение
 
-Реестр учитывает публикуемые в сети Интернет веб-ресурсы Общества и их привязку к **информационным системам** (корневым записям `ar_systems`, без модулей).
+Реестр учитывает публикуемые в сети Интернет веб-ресурсы Общества и их привязку к **информационной системе или модулю** (`ar_systems` — корневая ИС или дочерний модуль).
 
 Каждая запись реестра:
 
-- хранит атрибуты публикации (URL, магазины приложений, заявка, даты, статус);
-- через **FK** `ar_systems_id` однозначно относится к одной ИС;
-- автоматически порождает **проекцию** связи метамодели «**Опубликован**» (`system → web_resource`);
+- хранит атрибуты публикации (URL, категория, стенд, заявка, даты, статус);
+- через **FK** `ar_systems_id` однозначно относится к одной ИС или модулю;
+- автоматически порождает **проекцию** связи метамодели «**Опубликован**» (`system → web_resource` или `subsystem → web_resource`);
 - участвует в **анализаторе зависимостей** с первого релиза.
 
 **Исключено из модели (по решению):** атрибут «Техническая информация для публикации».
@@ -25,12 +25,13 @@
 
 | № | Вопрос | Решение |
 |---|--------|---------|
-| 1 | Привязка к ИС | Только **корневая система** (`system`), не к модулю (`subsystem`) |
-| 2 | Ссылки на магазины приложений | **Одно текстовое поле** (произвольный текст / несколько URL в одной строке) |
-| 3 | Основание для публикации | **Строка** — номер заявки на публикацию |
-| 4 | Код записи | **Автогенерация** с префиксом `WR-` (аналог `GAP-` для арх.долга) |
-| 5 | Статус | **Обязателен**; отдельный **справочник статусов** |
-| 6 | Анализатор зависимостей | Тип **`web_resource`** включается **сразу** (picker, граф, `GRAPH_ENTITY_ORDER` / иконки) |
+| 1 | Привязка к ИС | **ИС или модуль** (`ar_systems_id`); тип владельца: корневая ИС → `system_web_resource`, модуль → `subsystem_web_resource` |
+| 2 | Категория и стенд | Справочники **`ar_web_resource_categories`**, **`ar_web_resource_stage_types`** (сиды: `code = name`) |
+| 3 | Ссылки на магазины приложений | **Удалено** (поле `app_store_links` не используется) |
+| 4 | Основание для публикации | **Строка** — номер заявки на публикацию |
+| 5 | Код записи | **Автогенерация** с префиксом `WR-` (аналог `GAP-` для арх.долга) |
+| 6 | Статус | **Обязателен**; отдельный **справочник статусов** |
+| 7 | Анализатор зависимостей | Тип **`web_resource`** включается **сразу** (picker, граф, `GRAPH_ENTITY_ORDER` / иконки) |
 
 ---
 
@@ -57,6 +58,33 @@
 
 ---
 
+## 3.1. Справочник категорий веб-ресурса
+
+**Таблица:** `archrep.ar_web_resource_categories`
+
+| code / name | Назначение |
+|-------------|------------|
+| `Web-app` | Веб-приложение |
+| `Промо/лендинг` | Промо-страница или лендинг |
+| `API` | Программный интерфейс |
+
+CRUD: `/api/togaf/web-resource-categories`, вкладка «Категории веб-ресурсов» в справочниках.
+
+---
+
+## 3.2. Справочник типов стенда
+
+**Таблица:** `archrep.ar_web_resource_stage_types`
+
+| code / name | Назначение |
+|-------------|------------|
+| `prod` | Промышленный стенд |
+| `test/stage` | Тестовый или предпромышленный стенд |
+
+CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стенда веб-ресурсов» в справочниках.
+
+---
+
 ## 4. Основная таблица реестра
 
 **Таблица:** `archrep.ar_web_resources`
@@ -68,8 +96,9 @@
 | short_name | varchar NOT NULL | Краткое наименование | Отображаемое краткое имя |
 | purpose | text NULL | Назначение | Назначение веб-ресурса |
 | publication_url | varchar NULL | Адрес публикации (URL) | Публичный URL; валидация формата на API |
-| app_store_links | text NULL | Ссылка на приложения в Магазинах | Одно текстовое поле |
-| ar_systems_id | int8 NOT NULL FK | ИС Общества | → `archrep.ar_systems(id)`; только корневая ИС (`parent_ar_systems_id IS NULL` в UI) |
+| ar_systems_id | int8 NOT NULL FK | ИС / модуль | → `archrep.ar_systems(id)`; корневая ИС или модуль |
+| ar_web_resource_categories_id | int8 NOT NULL FK | Категория | → `archrep.ar_web_resource_categories(id)` |
+| ar_web_resource_stage_types_id | int8 NOT NULL FK | Тип стенда | → `archrep.ar_web_resource_stage_types(id)` |
 | publication_request_number | varchar NULL | Основание (номер заявки) | Номер заявки на публикацию |
 | publication_date | date NULL | Дата публикации | Фактическая или плановая дата публикации |
 | ar_web_resource_statuses_id | int8 NOT NULL FK | Статус | → `archrep.ar_web_resource_statuses(id)` |
@@ -119,6 +148,7 @@
 | code | name | description | From → To |
 |------|------|-------------|-----------|
 | `system_web_resource` | Опубликован | ИС опубликовала веб-ресурс в сети Интернет | `system → web_resource` |
+| `subsystem_web_resource` | Опубликован | Модуль ИС опубликовал веб-ресурс в сети Интернет | `subsystem → web_resource` |
 
 Код связи в формате матрицы demo: `<сущность_от>_<сущность_к>`.
 
@@ -134,11 +164,11 @@
 
 | Поле | Значение |
 |------|----------|
-| from_entity_type | `system` |
+| from_entity_type | `system` или `subsystem` (по `parent_ar_systems_id` в `ar_systems`) |
 | from_entity_id | `ar_systems_id` |
 | to_entity_type | `web_resource` |
 | to_entity_id | `ar_web_resources.id` |
-| relation_type | `system_web_resource` |
+| relation_type | `system_web_resource` или `subsystem_web_resource` |
 | name | NULL или копия `short_name` (опционально) |
 | description | NULL |
 | payload | опционально `{"projection":"fk","source":"ar_web_resources.ar_systems_id"}` |
@@ -147,7 +177,7 @@
 
 1. **INSERT** веб-ресурса → `INSERT` проекции (если FK задан).
 2. **UPDATE** `ar_systems_id` → удалить старую проекцию для этой записи + `INSERT` с новой парой (или `UPDATE` from_entity_id).
-3. **DELETE** веб-ресурса → удалить проекцию для `(web_resource_id, system_web_resource)`.
+3. **DELETE** веб-ресурса → удалить проекции `system_web_resource` и `subsystem_web_resource` для этой записи.
 4. **Уникальность:** не более одной строки проекции на пару `(relation_type, from_entity_id, to_entity_id)` для данного веб-ресурса.
 5. **Backfill** при миграции: для всех существующих строк `ar_web_resources` с непустым `ar_systems_id`.
 
@@ -203,8 +233,9 @@
 | Краткое наименование | `short_name` |
 | Назначение | `purpose` (сокращение в таблице) |
 | URL | `publication_url` |
-| Магазины приложений | `app_store_links` |
-| ИС | `system_display_name` (из API) |
+| Категория | `category_name` |
+| Стенд | `stage_type_name` |
+| ИС / модуль | `system_display_name` (из API) |
 | Номер заявки | `publication_request_number` |
 | Дата публикации | `publication_date` |
 | Статус | имя из справочника |
@@ -215,7 +246,7 @@
 
 **Экран:** `WebResourceForm.vue`.
 
-**Одна форма (без вкладки «Связи»):** все атрибуты §4; выбор ИС — пикер **только корневых** систем (`exclude_modules`); статус — select из `ar_web_resource_statuses`.
+**Одна форма (без вкладки «Связи»):** все атрибуты §4; выбор **ИС или модуля** (`getSystems()` без `exclude_modules`); категория и стенд — select из справочников; статус — select из `ar_web_resource_statuses`.
 
 **Маршруты:** `/web-resources`, `/web-resources/new`, `/web-resources/:id/edit` в `router/index.js`; пункт в `LayoutV3.vue`.
 
@@ -292,10 +323,8 @@ flowchart TB
 
 ## 12. Вне scope первой версии
 
-- Привязка веб-ресурса к **модулю** (`subsystem`) и проекция `subsystem → web_resource`.
 - Отдельный реестр **заявок на публикацию** (остаётся строка `publication_request_number`).
 - Атрибут «Техническая информация для публикации».
-- Структурированное JSON-поле для магазинов приложений (одно текстовое поле).
 - Вкладка «Связи» на карточке веб-ресурса.
 - RBAC (`web_resource:*`).
 
@@ -308,10 +337,11 @@ flowchart TB
 | Краткое наименование | `short_name` |
 | Назначение | `purpose` |
 | URL | `publication_url` |
-| Магазины приложений | `app_store_links` (text) |
-| ИС Общества | `ar_systems_id` → проекция «Опубликован» |
+| Категория | `ar_web_resource_categories_id` + справочник |
+| Стенд | `ar_web_resource_stage_types_id` + справочник |
+| ИС / модуль | `ar_systems_id` → проекция «Опубликован» |
 | Номер заявки | `publication_request_number` |
 | Дата публикации | `publication_date` |
 | Статус | `ar_web_resource_statuses_id` + справочник |
 | Код записи | `WR-*` автогенерация |
-| Связь system–web_resource | `system_web_resource`, автопроекция |
+| Связь system/subsystem–web_resource | `system_web_resource` / `subsystem_web_resource`, автопроекция |

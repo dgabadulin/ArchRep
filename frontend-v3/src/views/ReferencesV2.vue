@@ -364,6 +364,48 @@
         </table>
         <p v-if="webResourceStatuses.length === 0" class="empty">Нет записей</p>
       </template>
+      <template v-else-if="activeTab === 'webResourceCategories'">
+        <div class="table-actions">
+          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceCategoryForm()">Добавить</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in webResourceCategories" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openWebResourceCategoryForm(r)">Изменить</button>
+                <button type="button" class="btn-link danger" @click="deleteWebResourceCategory(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="webResourceCategories.length === 0" class="empty">Нет записей</p>
+      </template>
+      <template v-else-if="activeTab === 'webResourceStageTypes'">
+        <div class="table-actions">
+          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceStageTypeForm()">Добавить</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in webResourceStageTypes" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openWebResourceStageTypeForm(r)">Изменить</button>
+                <button type="button" class="btn-link danger" @click="deleteWebResourceStageType(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="webResourceStageTypes.length === 0" class="empty">Нет записей</p>
+      </template>
       <template v-else-if="activeTab === 'businessServiceStatuses'">
         <div class="table-actions">
           <button type="button" class="btn btn-sm btn-primary" @click="openBusinessServiceStatusForm()">Добавить</button>
@@ -570,6 +612,30 @@
         </div>
       </div>
     </div>
+    <div v-if="webResourceCategoryForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ webResourceCategoryForm.id ? 'Изменить категорию' : 'Новая категория веб-ресурса' }}</h3>
+        <div class="form-row"><label>Код</label><input v-model="webResourceCategoryForm.code" required /></div>
+        <div class="form-row"><label>Наименование</label><input v-model="webResourceCategoryForm.name" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="webResourceCategoryForm.description" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" @click="saveWebResourceCategory">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceCategoryForm = null">Отмена</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="webResourceStageTypeForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ webResourceStageTypeForm.id ? 'Изменить тип стенда' : 'Новый тип стенда' }}</h3>
+        <div class="form-row"><label>Код</label><input v-model="webResourceStageTypeForm.code" required /></div>
+        <div class="form-row"><label>Наименование</label><input v-model="webResourceStageTypeForm.name" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="webResourceStageTypeForm.description" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" @click="saveWebResourceStageType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceStageTypeForm = null">Отмена</button>
+        </div>
+      </div>
+    </div>
     <div v-if="businessServiceStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ businessServiceStatusForm.id ? 'Изменить статус' : 'Новый статус бизнес-сервиса' }}</h3>
@@ -679,6 +745,8 @@ const tabs = [
   { id: 'orgUnitCategories', label: 'Категории орг. единиц' },
   { id: 'actorTypes', label: 'Типы заинтересованных лиц' },
   { id: 'webResourceStatuses', label: 'Статусы веб-ресурсов' },
+  { id: 'webResourceCategories', label: 'Категории веб-ресурсов' },
+  { id: 'webResourceStageTypes', label: 'Типы стенда веб-ресурсов' },
   { id: 'businessServiceStatuses', label: 'Статусы бизнес-сервисов' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
@@ -702,6 +770,8 @@ const integrationFlowStatuses = ref([])
 const orgUnitCategories = ref([])
 const actorTypes = ref([])
 const webResourceStatuses = ref([])
+const webResourceCategories = ref([])
+const webResourceStageTypes = ref([])
 const businessServiceStatuses = ref([])
 const statusForm = ref(null)
 const hostingForm = ref(null)
@@ -715,6 +785,8 @@ const integrationFlowStatusForm = ref(null)
 const categoryForm = ref(null)
 const actorTypeForm = ref(null)
 const webResourceStatusForm = ref(null)
+const webResourceCategoryForm = ref(null)
+const webResourceStageTypeForm = ref(null)
 const businessServiceStatusForm = ref(null)
 const entityTypeForm = ref(null)
 const relationTypeForm = ref(null)
@@ -744,6 +816,8 @@ async function loadTab() {
     else if (activeTab.value === 'orgUnitCategories') orgUnitCategories.value = await togafApi.refs.organizationUnitCategories()
     else if (activeTab.value === 'actorTypes') actorTypes.value = await togafApi.refs.actorTypes()
     else if (activeTab.value === 'webResourceStatuses') webResourceStatuses.value = await api.getWebResourceStatuses()
+    else if (activeTab.value === 'webResourceCategories') webResourceCategories.value = await api.getWebResourceCategories()
+    else if (activeTab.value === 'webResourceStageTypes') webResourceStageTypes.value = await api.getWebResourceStageTypes()
     else if (activeTab.value === 'businessServiceStatuses') businessServiceStatuses.value = await togafApi.refs.businessServiceStatuses()
     else if (activeTab.value === 'metamodelEntityTypes') metamodelEntityTypes.value = await togafApi.entityTypes()
     else if (activeTab.value === 'metamodelRelationTypes') {
@@ -773,7 +847,7 @@ async function exportExcel() {
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
     else if (activeTab.value === 'integrationFlowStatuses') blob = await api.getIntegrationFlowStatuses(q)
-    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
+    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
     if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
   } finally {
     excelLoading.value = false
@@ -818,6 +892,58 @@ async function deleteWebResourceStatus(id) {
   if (!confirm('Удалить статус?')) return
   try {
     await api.deleteWebResourceStatus(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+function openWebResourceCategoryForm(r) {
+  webResourceCategoryForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
+async function saveWebResourceCategory() {
+  if (!webResourceCategoryForm.value?.code?.trim() || !webResourceCategoryForm.value?.name) return
+  try {
+    const payload = {
+      code: webResourceCategoryForm.value.code.trim(),
+      name: webResourceCategoryForm.value.name,
+      description: webResourceCategoryForm.value.description,
+    }
+    if (webResourceCategoryForm.value.id) await api.updateWebResourceCategory(webResourceCategoryForm.value.id, payload)
+    else await api.createWebResourceCategory(payload)
+    webResourceCategoryForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function deleteWebResourceCategory(id) {
+  if (!confirm('Удалить категорию?')) return
+  try {
+    await api.deleteWebResourceCategory(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+function openWebResourceStageTypeForm(r) {
+  webResourceStageTypeForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
+async function saveWebResourceStageType() {
+  if (!webResourceStageTypeForm.value?.code?.trim() || !webResourceStageTypeForm.value?.name) return
+  try {
+    const payload = {
+      code: webResourceStageTypeForm.value.code.trim(),
+      name: webResourceStageTypeForm.value.name,
+      description: webResourceStageTypeForm.value.description,
+    }
+    if (webResourceStageTypeForm.value.id) await api.updateWebResourceStageType(webResourceStageTypeForm.value.id, payload)
+    else await api.createWebResourceStageType(payload)
+    webResourceStageTypeForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function deleteWebResourceStageType(id) {
+  if (!confirm('Удалить тип стенда?')) return
+  try {
+    await api.deleteWebResourceStageType(id)
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }
 }

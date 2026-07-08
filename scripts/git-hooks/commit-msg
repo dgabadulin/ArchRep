@@ -1,0 +1,10 @@
+#!/bin/sh
+# Удаляет автоматические строки авторства Cursor из сообщения коммита.
+# Установка (один раз локально): cp scripts/git-hooks/commit-msg .git/hooks/commit-msg
+
+msg_file="$1"
+[ -f "$msg_file" ] || exit 0
+
+tmp="${msg_file}.strip-cursor"
+grep -v '^Co-authored-by: Cursor ' "$msg_file" | grep -v '^Made-with: Cursor' > "$tmp"
+mv "$tmp" "$msg_file"
