@@ -12,6 +12,7 @@ yarn-error.log
 *.dump
 dump-*.sql
 DB/dump-*.sql
+!DB/schema/demo/dump-archrep.sql
 
 # Docker
 .dockerenv
