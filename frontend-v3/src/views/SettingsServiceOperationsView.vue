@@ -64,6 +64,36 @@
       </ul>
     </section>
 
+    <section class="ops-section" aria-label="Данные">
+      <h2 class="section-title">Данные</h2>
+      <ul class="op-list">
+        <li class="op-card">
+          <div class="op-card-body">
+            <h3 class="op-title">Импорт данных</h3>
+            <p class="op-desc">
+              Загрузка записей в реестры из Excel по шаблону: проверка (dry-run), частичная запись и протокол ошибок.
+            </p>
+            <p class="op-desc">
+              <button type="button" class="btn-link help-rules-link" @click="openImportHelp">Справка по импорту</button>
+            </p>
+          </div>
+          <div class="op-card-actions">
+            <router-link class="btn btn-primary" to="/settings/service-operations/import">Открыть…</router-link>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <div v-if="importHelpOpen" class="modal-overlay">
+      <div class="modal modal-help" role="dialog" aria-modal="true" aria-labelledby="import-help-title">
+        <h3 id="import-help-title">Импорт данных — справка</h3>
+        <div class="help-markdown modal-help-body" v-html="importHelpHtml"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" @click="importHelpOpen = false">Закрыть</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Двухшаговое подтверждение перезапуска API -->
     <div v-if="restartModalStep > 0" class="modal-overlay">
       <div class="modal">
@@ -110,8 +140,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { marked } from 'marked'
 import { togafApi, adminApi } from '../api'
+import importHelpText from '../content/data-import-help.md?raw'
+
+const importHelpOpen = ref(false)
+const importHelpHtml = computed(() => marked.parse(importHelpText || ''))
+
+function openImportHelp() {
+  importHelpOpen.value = true
+}
 
 const rebuildBusy = ref(false)
 const message = ref('')
@@ -338,5 +377,51 @@ h1 { margin: 0 0 0.5rem; font-size: 1.35rem; }
   color: var(--ar-danger);
   font-size: 0.88rem;
   margin-bottom: 0.5rem;
+}
+.help-rules-link {
+  padding: 0;
+  font-size: 0.9rem;
+}
+.modal.modal-help {
+  max-width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal.modal-help h3 {
+  flex-shrink: 0;
+}
+.modal-help-body {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.help-markdown {
+  margin: 0;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+}
+.help-markdown :deep(h2) {
+  margin: 0.75rem 0 0.4rem;
+  font-size: 1rem;
+}
+.help-markdown :deep(h2:first-child) {
+  margin-top: 0;
+}
+.help-markdown :deep(p),
+.help-markdown :deep(li) {
+  margin: 0.35rem 0;
+  line-height: 1.45;
+}
+.help-markdown :deep(ol),
+.help-markdown :deep(ul) {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+.help-markdown :deep(strong) {
+  font-weight: 600;
+}
+.modal.modal-help .modal-actions {
+  flex-shrink: 0;
 }
 </style>

@@ -432,7 +432,7 @@
           <button type="button" class="btn btn-sm btn-primary" @click="openEntityTypeForm()">Добавить</button>
         </div>
         <table class="table">
-          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Таблица</th><th>Описание</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Таблица</th><th>Описание</th><th>Импорт</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in metamodelEntityTypes" :key="r.id">
               <td>{{ r.id }}</td>
@@ -440,6 +440,7 @@
               <td>{{ r.name }}</td>
               <td>{{ r.table_name ?? '—' }}</td>
               <td>{{ r.description ?? '—' }}</td>
+              <td>{{ r.import_allowed ? 'да' : 'нет' }}</td>
               <td>
                 <button type="button" class="btn-link" @click="openEntityTypeForm(r)">Изменить</button>
                 <button type="button" class="btn-link danger" @click="deleteEntityType(r.id)">Удалить</button>
@@ -687,6 +688,7 @@
         <div class="form-row"><label>Наименование <span class="req">*</span></label><input v-model="entityTypeForm.name" /></div>
         <div class="form-row"><label>Таблица в БД</label><input v-model="entityTypeForm.table_name" placeholder="напр. ar_systems" /></div>
         <div class="form-row"><label>Описание</label><input v-model="entityTypeForm.description" /></div>
+        <div class="form-row"><label><input type="checkbox" v-model="entityTypeForm.import_allowed" /> Допустимо для импорта</label></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-primary" @click="saveEntityType">Сохранить</button>
           <button type="button" class="btn btn-secondary" @click="entityTypeForm = null">Отмена</button>
@@ -949,7 +951,9 @@ async function deleteWebResourceStageType(id) {
 }
 function openBusinessServiceStatusForm(r) { businessServiceStatusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
 function openEntityTypeForm(r) {
-  entityTypeForm.value = r ? { id: r.id, code: r.code, name: r.name, table_name: r.table_name ?? '', description: r.description ?? '' } : { code: '', name: '', table_name: '', description: '' }
+  entityTypeForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, table_name: r.table_name ?? '', description: r.description ?? '', import_allowed: !!r.import_allowed }
+    : { code: '', name: '', table_name: '', description: '', import_allowed: false }
 }
 function openRelationTypeForm(r) {
   relationTypeForm.value = r
@@ -1076,7 +1080,13 @@ async function saveBusinessServiceStatus() {
 async function saveEntityType() {
   if (!entityTypeForm.value?.code?.trim() || !entityTypeForm.value?.name?.trim()) return
   try {
-    const payload = { code: entityTypeForm.value.code.trim(), name: entityTypeForm.value.name.trim(), table_name: entityTypeForm.value.table_name?.trim() || null, description: entityTypeForm.value.description?.trim() || null }
+    const payload = {
+      code: entityTypeForm.value.code.trim(),
+      name: entityTypeForm.value.name.trim(),
+      table_name: entityTypeForm.value.table_name?.trim() || null,
+      description: entityTypeForm.value.description?.trim() || null,
+      import_allowed: !!entityTypeForm.value.import_allowed,
+    }
     if (entityTypeForm.value.id) await togafApi.refs.updateEntityType(entityTypeForm.value.id, payload)
     else await togafApi.refs.createEntityType(payload)
     entityTypeForm.value = null

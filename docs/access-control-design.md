@@ -1,8 +1,8 @@
 # Разграничение прав доступа в ИСАР
 
-**Статус:** проект / обсуждение  
+**Статус:** **не реализовано в репозитории** — только проектная спека / обсуждение. В коде продукта RBAC/аутентификация по этой модели **отсутствуют** (API открыт, как в §2).  
 **Версия:** 0.2  
-**Связанные материалы:** `docs/settings-parameters-design.md` (Keycloak), `docs/github-issue-drafts/metamodel-rebuild-rbac-ux.md`, `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`
+**Связанные материалы:** `docs/settings-parameters-design.md` (Keycloak), `docs/github-issue-drafts/metamodel-rebuild-rbac-ux.md`, `docs/data-import-service.md` (импорт — без RBAC до внедрения этой спеки), `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`
 
 ---
 

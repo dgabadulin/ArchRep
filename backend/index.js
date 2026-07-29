@@ -4,6 +4,10 @@ const express = require('express');
 const { Pool } = require('pg');
 const queries = require('./queries');
 const { buildExcelBuffer } = require('./excelHelper');
+const { createWebResourceService } = require('./webResourceService');
+const { buildTemplateBuffer, buildExportBuffer } = require('./webResourceExcel');
+const { runImport, buildTemplate, buildExport } = require('./dataImport');
+const { getImportEntity, listSupportedEntityCodes } = require('./importEntities');
 const { loadParams, getParam } = require('./settingsParams');
 const {
   loadRefCodes,
@@ -81,7 +85,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 const DISPLAY_NAME_PATHS = [
   [/^\/api\/ar-systems(?:\/\d+)?$/, 'system'],
@@ -2168,13 +2172,8 @@ function enrichWebResourceRow(row) {
   return out;
 }
 
-async function assertWebResourceSystemId(systemId) {
-  const r = await pool.query(queries.web_resources_system_check, [systemId]);
-  if (r.rowCount === 0) {
-    const err = new Error('Указанная информационная система или модуль не найдены.');
-    err.status = 400;
-    throw err;
-  }
+function webResourceService() {
+  return createWebResourceService(pool, { getParam, queries });
 }
 
 app.get('/api/togaf/web-resources', async (req, res) => {
@@ -2186,7 +2185,7 @@ app.get('/api/togaf/web-resources', async (req, res) => {
     const r = await pool.query(q, params);
     const rows = r.rows.map(enrichWebResourceRow);
     if (excel) {
-      const buf = buildExcelBuffer(rows, 'Веб-ресурсы');
+      const buf = await buildExportBuffer(pool, queries, rows);
       res.setHeader('Content-Disposition', 'attachment; filename=web-resources.xlsx');
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       return res.send(buf);
@@ -2203,20 +2202,8 @@ app.get('/api/togaf/web-resources/:id', async (req, res) => {
 });
 app.post('/api/togaf/web-resources', async (req, res) => {
   try {
-    const b = req.body || {};
-    if (!b.short_name) return res.status(400).json({ error: 'short_name required' });
-    if (!b.ar_systems_id) return res.status(400).json({ error: 'ar_systems_id required' });
-    if (!b.ar_web_resource_statuses_id) return res.status(400).json({ error: 'ar_web_resource_statuses_id required' });
-    if (!b.ar_web_resource_categories_id) return res.status(400).json({ error: 'ar_web_resource_categories_id required' });
-    if (!b.ar_web_resource_stage_types_id) return res.status(400).json({ error: 'ar_web_resource_stage_types_id required' });
-    await assertWebResourceSystemId(b.ar_systems_id);
-    const wrPrefix = getParam('WR_CODE_PREFIX', 'WR-') || 'WR-';
-    const r = await pool.query(queries.web_resources_insert, [
-      wrPrefix, b.short_name, b.purpose || '', b.publication_url || '',
-      b.ar_systems_id, b.publication_request_number || '', b.publication_date || '',
-      b.ar_web_resource_statuses_id, b.ar_web_resource_categories_id, b.ar_web_resource_stage_types_id,
-    ]);
-    const full = await pool.query(queries.web_resources_get, [r.rows[0].id]);
+    const created = await webResourceService().create(req.body || {});
+    const full = await pool.query(queries.web_resources_get, [created.id]);
     res.status(201).json(enrichWebResourceRow(full.rows[0]));
   } catch (err) {
     console.error(err);
@@ -2225,20 +2212,7 @@ app.post('/api/togaf/web-resources', async (req, res) => {
 });
 app.put('/api/togaf/web-resources/:id', async (req, res) => {
   try {
-    const b = req.body || {};
-    if (!b.short_name) return res.status(400).json({ error: 'short_name required' });
-    if (!b.ar_systems_id) return res.status(400).json({ error: 'ar_systems_id required' });
-    if (!b.ar_web_resource_statuses_id) return res.status(400).json({ error: 'ar_web_resource_statuses_id required' });
-    if (!b.ar_web_resource_categories_id) return res.status(400).json({ error: 'ar_web_resource_categories_id required' });
-    if (!b.ar_web_resource_stage_types_id) return res.status(400).json({ error: 'ar_web_resource_stage_types_id required' });
-    await assertWebResourceSystemId(b.ar_systems_id);
-    const r = await pool.query(queries.web_resources_update, [
-      b.short_name, b.purpose || '', b.publication_url || '',
-      b.ar_systems_id, b.publication_request_number || '', b.publication_date || '',
-      b.ar_web_resource_statuses_id, b.ar_web_resource_categories_id, b.ar_web_resource_stage_types_id,
-      req.params.id,
-    ]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await webResourceService().update(req.params.id, req.body || {});
     const full = await pool.query(queries.web_resources_get, [req.params.id]);
     res.json(enrichWebResourceRow(full.rows[0]));
   } catch (err) {
@@ -2427,7 +2401,9 @@ app.post('/api/togaf/entity-types', async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
-    const r = await pool.query(queries.metamodel_entity_types_insert, [b.code, b.name, b.table_name || '', b.description || '']);
+    const r = await pool.query(queries.metamodel_entity_types_insert, [
+      b.code, b.name, b.table_name || '', b.description || '', !!b.import_allowed,
+    ]);
     res.status(201).json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
@@ -2435,7 +2411,9 @@ app.put('/api/togaf/entity-types/:id', async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
-    const r = await pool.query(queries.metamodel_entity_types_update, [b.code, b.name, b.table_name || '', b.description || '', req.params.id]);
+    const r = await pool.query(queries.metamodel_entity_types_update, [
+      b.code, b.name, b.table_name || '', b.description || '', !!b.import_allowed, req.params.id,
+    ]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -2535,6 +2513,93 @@ app.post('/api/togaf/metamodel/rebuild-integration-flow-projections', async (req
     res.status(500).json({ error: err.message || 'rebuild failed' });
   }
 });
+
+// --- Data import (issue #64, docs/data-import-service.md) ---
+app.get('/api/import/entities', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_entity_types_importable);
+    const supported = new Set(listSupportedEntityCodes());
+    res.json(r.rows
+      .filter((row) => supported.has(row.code))
+      .map((row) => ({
+        code: row.code,
+        name: row.name,
+        entity_type_id: row.id,
+        import_allowed: row.import_allowed,
+      })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/import/template', async (req, res) => {
+  try {
+    const entity = String(req.query.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    const buf = await buildTemplate(entity, pool, queries);
+    res.setHeader('Content-Disposition', `attachment; filename=import-template-${entity}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buf);
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'template failed' });
+  }
+});
+
+app.get('/api/import/export', async (req, res) => {
+  try {
+    const entity = String(req.query.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    const buf = await buildExport(entity, pool, queries, {
+      web_resource: enrichWebResourceRow,
+    });
+    res.setHeader('Content-Disposition', `attachment; filename=import-export-${entity}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buf);
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'export failed' });
+  }
+});
+
+async function handleImportRun(req, res, apply) {
+  try {
+    const b = req.body || {};
+    const entity = String(b.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    if (!b.fileBase64) return res.status(400).json({ error: 'fileBase64 required' });
+    const onExists = ['skip', 'update', 'fail'].includes(b.onExists) ? b.onExists : 'update';
+    const protocolMode = b.protocolMode === 'errors' ? 'errors' : 'all';
+    const buffer = Buffer.from(String(b.fileBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+    const result = await runImport(entity, {
+      buffer,
+      apply,
+      onExists,
+      protocolMode,
+      pool,
+      queries,
+      getParam,
+    });
+    res.json({
+      summary: result.summary,
+      protocolBase64: result.protocolBuffer.toString('base64'),
+      filename: apply ? 'import-protocol.xlsx' : 'import-validate-protocol.xlsx',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'import failed' });
+  }
+}
+
+app.post('/api/import/validate', (req, res) => handleImportRun(req, res, false));
+app.post('/api/import/apply', (req, res) => handleImportRun(req, res, true));
 app.post('/api/togaf/relations', async (req, res) => {
   try {
     const b = req.body || {};

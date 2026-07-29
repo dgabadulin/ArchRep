@@ -62,6 +62,7 @@ const routes = [
       { path: 'references-togaf', redirect: { name: 'references' } },
       { path: 'settings/parameters', name: 'settings-parameters', component: () => import('../views/SettingsParametersView.vue'), meta: { title: 'Параметры' } },
       { path: 'settings/service-operations', name: 'settings-service-operations', component: () => import('../views/SettingsServiceOperationsView.vue'), meta: { title: 'Сервисные операции' } },
+      { path: 'settings/service-operations/import', name: 'settings-data-import', component: () => import('../views/DataImportView.vue'), meta: { title: 'Импорт данных' } },
     ],
   },
 ]

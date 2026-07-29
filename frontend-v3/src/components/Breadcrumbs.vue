@@ -63,6 +63,7 @@ function formatTitle(segment, index, parts, _fullPath) {
     'references-togaf': 'Справочники (метамодель)',
     parameters: 'Параметры',
     'service-operations': 'Сервисные операции',
+    import: 'Импорт данных',
     settings: 'Настройки',
     goals: 'Цели и задачи',
     new: 'Новая запись',

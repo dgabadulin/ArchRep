@@ -83,6 +83,25 @@ module.exports = {
         LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
         WHERE s.id = $1
     `,
+    systems_get_by_code: `
+        SELECT s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
+          vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
+          so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
+          parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
+          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.it_lead_employee_id, s.business_lead_employee_id,
+          it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
+        FROM archrep.ar_systems s
+        LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
+        LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
+        LEFT JOIN archrep.ar_partners supl ON s.supplier_ar_partners_id = supl.id
+        LEFT JOIN archrep.ar_partners supp ON s.supporter_ar_partners_id = supp.id
+        LEFT JOIN archrep.ar_system_owners so ON s.ar_system_owners_id = so.id
+        LEFT JOIN archrep.ar_system_hosting_types sht ON s.ar_system_hosting_types_id = sht.id
+        LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
+        LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
+        WHERE s.code = $1
+    `,
     parent_systems_select: `
     SELECT
       s.id
@@ -267,6 +286,15 @@ module.exports = {
     VALUES ($1, NULLIF($2,'')::BIGINT, NULLIF($3,'')::BIGINT, NULLIF($4,''), NULLIF($5,'')::BIGINT, NULLIF($6,'')::BIGINT, $7, NULLIF($8,''), $9) RETURNING *`,
   technologies_update: `UPDATE archrep.ar_technologies SET name=$1, vendor_ar_partners_id=NULLIF($2,'')::BIGINT, technology_classes_id=NULLIF($3,'')::BIGINT, approve_document=NULLIF($4,''), technology_types_id=NULLIF($5,'')::BIGINT, technology_statuses_id=NULLIF($6,'')::BIGINT, radar_include_flag=$7, description=NULLIF($8,''), domestic_flag=$9 WHERE id=$10 RETURNING *`,
   technologies_delete: `DELETE FROM archrep.ar_technologies WHERE id = $1`,
+  technologies_get_by_name: `
+    SELECT t.*, v.name as vendor_name, tc.name as technology_class_name, tt.name as technology_type_name, ts.name as technology_status_name
+    FROM archrep.ar_technologies t
+    LEFT JOIN archrep.ar_partners v ON t.vendor_ar_partners_id = v.id
+    LEFT JOIN archrep.ar_technology_classes tc ON t.technology_classes_id = tc.id
+    LEFT JOIN archrep.ar_technology_types tt ON t.technology_types_id = tt.id
+    LEFT JOIN archrep.ar_technology_statuses ts ON t.technology_statuses_id = ts.id
+    WHERE lower(trim(t.name)) = lower(trim($1))
+    LIMIT 1`,
 
   technology_classes_select: `SELECT id, name, description FROM archrep.ar_technology_classes ORDER BY name`,
   technology_classes_select_search: `SELECT id, name, description FROM archrep.ar_technology_classes WHERE name ILIKE $1 OR COALESCE(description,'') ILIKE $1 ORDER BY name`,
@@ -293,6 +321,7 @@ module.exports = {
   principles_insert: `INSERT INTO archrep.ar_principles (name, statement, rationale, implications, is_approved, approve_document) VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), COALESCE($5, false), NULLIF($6,'')) RETURNING *`,
   principles_update: `UPDATE archrep.ar_principles SET name=$1, statement=NULLIF($2,''), rationale=NULLIF($3,''), implications=NULLIF($4,''), is_approved=COALESCE($5, false), approve_document=NULLIF($6,'') WHERE id=$7 RETURNING *`,
   principles_delete: `DELETE FROM archrep.ar_principles WHERE id = $1`,
+  principles_get_by_name: `SELECT * FROM archrep.ar_principles WHERE lower(trim(name)) = lower(trim($1)) LIMIT 1`,
 
   // --- Classificators, System assignments ---
   classificators_select: `SELECT id, name FROM archrep.ar_classificators ORDER BY name`,
@@ -362,6 +391,7 @@ module.exports = {
   adrs_principle_insert: `INSERT INTO archrep.ar_adrs_principle (code, name, context, decision, consequences, ar_adr_statuses_id, author) VALUES ($1 || nextval('archrep.adrp_code_seq')::text, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), NULLIF($6,'')::BIGINT, NULLIF($7,'')) RETURNING *`,
   adrs_principle_update: `UPDATE archrep.ar_adrs_principle SET name=$1, context=NULLIF($2,''), decision=NULLIF($3,''), consequences=NULLIF($4,''), ar_adr_statuses_id=NULLIF($5,'')::BIGINT, updated_at=current_timestamp, author=NULLIF($6,'') WHERE id=$7 RETURNING *`,
   adrs_principle_delete: `DELETE FROM archrep.ar_adrs_principle WHERE id = $1`,
+  adrs_principle_get_by_code: `SELECT p.*, s.name as status_name FROM archrep.ar_adrs_principle p LEFT JOIN archrep.ar_adr_statuses s ON p.ar_adr_statuses_id = s.id WHERE p.code = $1`,
 
   adrs_applied_select: `SELECT a.id, a.code, a.task_name, a.task_link, a.conclusion, a.ar_adr_statuses_id, a.created_at, a.updated_at, a.author, s.name as status_name FROM archrep.ar_adrs_applied a LEFT JOIN archrep.ar_adr_statuses s ON a.ar_adr_statuses_id = s.id ORDER BY a.code`,
   adrs_applied_select_search: `SELECT a.id, a.code, a.task_name, a.task_link, a.conclusion, a.ar_adr_statuses_id, a.created_at, a.updated_at, a.author, s.name as status_name FROM archrep.ar_adrs_applied a LEFT JOIN archrep.ar_adr_statuses s ON a.ar_adr_statuses_id = s.id WHERE a.code ILIKE $1 OR COALESCE(a.task_name,'') ILIKE $1 OR COALESCE(a.task_link,'') ILIKE $1 OR COALESCE(a.conclusion,'') ILIKE $1 ORDER BY a.code`,
@@ -463,11 +493,12 @@ module.exports = {
   integration_flow_statuses_delete: `DELETE FROM archrep.ar_integration_flow_statuses WHERE id = $1`,
 
   // --- TOGAF Metamodel (task #14) ---
-  metamodel_entity_types_select: `SELECT id, code, name, table_name, description FROM archrep.ar_metamodel_entity_types ORDER BY code`,
-  metamodel_entity_types_get: `SELECT id, code, name, table_name, description FROM archrep.ar_metamodel_entity_types WHERE id = $1`,
-  metamodel_entity_types_insert: `INSERT INTO archrep.ar_metamodel_entity_types (code, name, table_name, description) VALUES ($1, $2, NULLIF($3,''), NULLIF($4,'')) RETURNING *`,
-  metamodel_entity_types_update: `UPDATE archrep.ar_metamodel_entity_types SET code = $1, name = $2, table_name = NULLIF($3,''), description = NULLIF($4,'') WHERE id = $5 RETURNING *`,
+  metamodel_entity_types_select: `SELECT id, code, name, table_name, description, COALESCE(import_allowed, false) AS import_allowed FROM archrep.ar_metamodel_entity_types ORDER BY code`,
+  metamodel_entity_types_get: `SELECT id, code, name, table_name, description, COALESCE(import_allowed, false) AS import_allowed FROM archrep.ar_metamodel_entity_types WHERE id = $1`,
+  metamodel_entity_types_insert: `INSERT INTO archrep.ar_metamodel_entity_types (code, name, table_name, description, import_allowed) VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), COALESCE($5, false)) RETURNING *`,
+  metamodel_entity_types_update: `UPDATE archrep.ar_metamodel_entity_types SET code = $1, name = $2, table_name = NULLIF($3,''), description = NULLIF($4,''), import_allowed = COALESCE($5, false) WHERE id = $6 RETURNING *`,
   metamodel_entity_types_delete: `DELETE FROM archrep.ar_metamodel_entity_types WHERE id = $1`,
+  metamodel_entity_types_importable: `SELECT id, code, name, table_name, description, import_allowed FROM archrep.ar_metamodel_entity_types WHERE import_allowed = true ORDER BY name`,
 
   metamodel_relation_types_select: `
     SELECT r.id, r.code, r.name, r.description, r.from_entity_type_id, r.to_entity_type_id,
@@ -547,6 +578,7 @@ module.exports = {
   togaf_organization_units_select: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id ORDER BY o.name`,
   togaf_organization_units_select_search: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE (o.name ILIKE $1 OR COALESCE(o.fullname,'') ILIKE $1 OR COALESCE(o.description,'') ILIKE $1 OR COALESCE(o.leader,'') ILIKE $1 OR COALESCE(c.name,'') ILIKE $1) ORDER BY o.name`,
   togaf_organization_units_get: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE o.id = $1`,
+  togaf_organization_units_get_by_name: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE lower(trim(o.name)) = lower(trim($1)) LIMIT 1`,
   togaf_organization_units_insert: `INSERT INTO archrep.ar_organization_units (name, fullname, parent_id, description, leader, organization_unit_categories_id) VALUES ($1, NULLIF($2,''), NULLIF($3,'')::BIGINT, NULLIF($4,''), NULLIF($5,''), NULLIF($6,'')::BIGINT) RETURNING id, name, fullname, parent_id, description, leader, organization_unit_categories_id, created_at, updated_at`,
   togaf_organization_units_update: `UPDATE archrep.ar_organization_units SET name=$1, fullname=NULLIF($2,''), parent_id=NULLIF($3,'')::BIGINT, description=NULLIF($4,''), leader=NULLIF($5,''), organization_unit_categories_id=NULLIF($6,'')::BIGINT, updated_at=current_timestamp WHERE id=$7 RETURNING id, name, fullname, parent_id, description, leader, organization_unit_categories_id, created_at, updated_at`,
   togaf_organization_units_delete: `DELETE FROM archrep.ar_organization_units WHERE id = $1`,
@@ -554,6 +586,7 @@ module.exports = {
   togaf_actors_select: `SELECT a.id, a.name, a.description, a.organization_unit_id, a.actor_type_id, a.created_at, a.updated_at, o.name as organization_unit_name, t.name as actor_type_name FROM archrep.ar_actors a LEFT JOIN archrep.ar_organization_units o ON a.organization_unit_id = o.id LEFT JOIN archrep.ar_actor_types t ON a.actor_type_id = t.id ORDER BY a.name`,
   togaf_actors_select_search: `SELECT a.id, a.name, a.description, a.organization_unit_id, a.actor_type_id, a.created_at, a.updated_at, o.name as organization_unit_name, t.name as actor_type_name FROM archrep.ar_actors a LEFT JOIN archrep.ar_organization_units o ON a.organization_unit_id = o.id LEFT JOIN archrep.ar_actor_types t ON a.actor_type_id = t.id WHERE (a.name ILIKE $1 OR COALESCE(a.description,'') ILIKE $1 OR COALESCE(o.name,'') ILIKE $1 OR COALESCE(t.name,'') ILIKE $1) ORDER BY a.name`,
   togaf_actors_get: `SELECT a.id, a.name, a.description, a.organization_unit_id, a.actor_type_id, a.created_at, a.updated_at, o.name as organization_unit_name, t.name as actor_type_name FROM archrep.ar_actors a LEFT JOIN archrep.ar_organization_units o ON a.organization_unit_id = o.id LEFT JOIN archrep.ar_actor_types t ON a.actor_type_id = t.id WHERE a.id = $1`,
+  togaf_actors_get_by_name: `SELECT a.id, a.name, a.description, a.organization_unit_id, a.actor_type_id, a.created_at, a.updated_at, o.name as organization_unit_name, t.name as actor_type_name FROM archrep.ar_actors a LEFT JOIN archrep.ar_organization_units o ON a.organization_unit_id = o.id LEFT JOIN archrep.ar_actor_types t ON a.actor_type_id = t.id WHERE lower(trim(a.name)) = lower(trim($1)) LIMIT 1`,
   togaf_actors_insert: `INSERT INTO archrep.ar_actors (name, description, organization_unit_id, actor_type_id) VALUES ($1, NULLIF($2,''), NULLIF($3,'')::BIGINT, NULLIF($4,'')::BIGINT) RETURNING id, name, description, organization_unit_id, actor_type_id, created_at, updated_at`,
   togaf_actors_update: `UPDATE archrep.ar_actors SET name=$1, description=NULLIF($2,''), organization_unit_id=NULLIF($3,'')::BIGINT, actor_type_id=NULLIF($4,'')::BIGINT, updated_at=current_timestamp WHERE id=$5 RETURNING id, name, description, organization_unit_id, actor_type_id, created_at, updated_at`,
   togaf_actors_delete: `DELETE FROM archrep.ar_actors WHERE id = $1`,
@@ -561,6 +594,7 @@ module.exports = {
   togaf_business_services_select: `SELECT b.id, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.created_at, b.updated_at, o.name as owner_name, s.name as status_name FROM archrep.ar_business_services b LEFT JOIN archrep.ar_organization_units o ON b.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_service_statuses s ON b.ar_business_service_statuses_id = s.id ORDER BY b.name`,
   togaf_business_services_select_search: `SELECT b.id, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.created_at, b.updated_at, o.name as owner_name, s.name as status_name FROM archrep.ar_business_services b LEFT JOIN archrep.ar_organization_units o ON b.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_service_statuses s ON b.ar_business_service_statuses_id = s.id WHERE (b.name ILIKE $1 OR COALESCE(b.fullname,'') ILIKE $1 OR COALESCE(b.description,'') ILIKE $1 OR COALESCE(o.name,'') ILIKE $1 OR COALESCE(s.name,'') ILIKE $1) ORDER BY b.name`,
   togaf_business_services_get: `SELECT b.id, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.created_at, b.updated_at, o.name as owner_name, s.name as status_name FROM archrep.ar_business_services b LEFT JOIN archrep.ar_organization_units o ON b.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_service_statuses s ON b.ar_business_service_statuses_id = s.id WHERE b.id = $1`,
+  togaf_business_services_get_by_name: `SELECT b.id, b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, b.created_at, b.updated_at, o.name as owner_name, s.name as status_name FROM archrep.ar_business_services b LEFT JOIN archrep.ar_organization_units o ON b.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_service_statuses s ON b.ar_business_service_statuses_id = s.id WHERE lower(trim(b.name)) = lower(trim($1)) LIMIT 1`,
   togaf_business_services_insert: `INSERT INTO archrep.ar_business_services (name, fullname, description, ar_organization_units_id, ar_business_service_statuses_id) VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,'')::BIGINT, NULLIF($5,'')::BIGINT) RETURNING id, name, fullname, description, ar_organization_units_id, ar_business_service_statuses_id, created_at, updated_at`,
   togaf_business_services_update: `UPDATE archrep.ar_business_services SET name=$1, fullname=NULLIF($2,''), description=NULLIF($3,''), ar_organization_units_id=NULLIF($4,'')::BIGINT, ar_business_service_statuses_id=NULLIF($5,'')::BIGINT, updated_at=current_timestamp WHERE id=$6 RETURNING id, name, fullname, description, ar_organization_units_id, ar_business_service_statuses_id, created_at, updated_at`,
   togaf_business_services_delete: `DELETE FROM archrep.ar_business_services WHERE id = $1`,
@@ -568,6 +602,7 @@ module.exports = {
   togaf_business_functions_select: `SELECT f.id, f.name, f.description, f.parent_id, f.ar_organization_units_id, f.created_at, f.updated_at, o.name as owner_name, p.name as parent_name FROM archrep.ar_business_functions f LEFT JOIN archrep.ar_organization_units o ON f.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_functions p ON f.parent_id = p.id ORDER BY f.name`,
   togaf_business_functions_select_search: `SELECT f.id, f.name, f.description, f.parent_id, f.ar_organization_units_id, f.created_at, f.updated_at, o.name as owner_name, p.name as parent_name FROM archrep.ar_business_functions f LEFT JOIN archrep.ar_organization_units o ON f.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_functions p ON f.parent_id = p.id WHERE (f.name ILIKE $1 OR COALESCE(f.description,'') ILIKE $1 OR COALESCE(o.name,'') ILIKE $1) ORDER BY f.name`,
   togaf_business_functions_get: `SELECT f.id, f.name, f.description, f.parent_id, f.ar_organization_units_id, f.created_at, f.updated_at, o.name as owner_name, p.name as parent_name FROM archrep.ar_business_functions f LEFT JOIN archrep.ar_organization_units o ON f.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_functions p ON f.parent_id = p.id WHERE f.id = $1`,
+  togaf_business_functions_get_by_name: `SELECT f.id, f.name, f.description, f.parent_id, f.ar_organization_units_id, f.created_at, f.updated_at, o.name as owner_name, p.name as parent_name FROM archrep.ar_business_functions f LEFT JOIN archrep.ar_organization_units o ON f.ar_organization_units_id = o.id LEFT JOIN archrep.ar_business_functions p ON f.parent_id = p.id WHERE lower(trim(f.name)) = lower(trim($1)) LIMIT 1`,
   togaf_business_functions_insert: `INSERT INTO archrep.ar_business_functions (name, description, parent_id, ar_organization_units_id) VALUES ($1, NULLIF($2,''), NULLIF($3,'')::BIGINT, NULLIF($4,'')::BIGINT) RETURNING id, name, description, parent_id, ar_organization_units_id, created_at, updated_at`,
   togaf_business_functions_update: `UPDATE archrep.ar_business_functions SET name=$1, description=NULLIF($2,''), parent_id=NULLIF($3,'')::BIGINT, ar_organization_units_id=NULLIF($4,'')::BIGINT, updated_at=current_timestamp WHERE id=$5 RETURNING id, name, description, parent_id, ar_organization_units_id, created_at, updated_at`,
   togaf_business_functions_delete: `DELETE FROM archrep.ar_business_functions WHERE id = $1`,
@@ -610,6 +645,14 @@ module.exports = {
     VALUES ($1 || nextval('archrep.ar_gaps_code_seq')::text, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,'')::BIGINT, NULLIF($6,''), NULLIF($7,'')::date, NULLIF($8,'')::BIGINT, NULLIF($9,'')::date, NULLIF($10,'')::BIGINT, NULLIF($11,'')::BIGINT, NULLIF($12,''), NULLIF($13,'')) RETURNING *`,
   gaps_update: `UPDATE archrep.ar_gaps SET name=$1, description=NULLIF($2,''), consequences=NULLIF($3,''), ar_impact_level_types_id=NULLIF($4,'')::BIGINT, remediation_effort=NULLIF($5,''), target_date=NULLIF($6,'')::date, ar_gap_states_id=NULLIF($7,'')::BIGINT, resolved_date=NULLIF($8,'')::date, ar_adr_statuses_id=NULLIF($9,'')::BIGINT, ar_gap_types_id=NULLIF($10,'')::BIGINT, source=NULLIF($11,''), responsible_person=NULLIF($12,''), updated_at=current_timestamp WHERE id=$13 RETURNING *`,
   gaps_delete: `DELETE FROM archrep.ar_gaps WHERE id = $1`,
+  gaps_get_by_code: `
+    SELECT g.*, il.name as impact_level_name, gs.name as gap_state_name, st.name as adr_status_name, gt.name as gap_type_name
+    FROM archrep.ar_gaps g
+    LEFT JOIN archrep.ar_impact_level_types il ON g.ar_impact_level_types_id = il.id
+    LEFT JOIN archrep.ar_gap_states gs ON g.ar_gap_states_id = gs.id
+    LEFT JOIN archrep.ar_adr_statuses st ON g.ar_adr_statuses_id = st.id
+    LEFT JOIN archrep.ar_gap_types gt ON g.ar_gap_types_id = gt.id
+    WHERE g.code = $1`,
 
   gap_types_select: `SELECT id, name, description FROM archrep.ar_gap_types ORDER BY name`,
   gap_types_get: `SELECT id, name, description FROM archrep.ar_gap_types WHERE id = $1`,
@@ -713,6 +756,29 @@ module.exports = {
     JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
     JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
     WHERE w.id = $1`,
+  web_resources_get_by_code: `
+    SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url,
+           w.ar_systems_id, w.publication_request_number, w.publication_date,
+           w.ar_web_resource_statuses_id, w.ar_web_resource_categories_id, w.ar_web_resource_stage_types_id,
+           w.created_at, w.updated_at,
+           s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
+           s.parent_ar_systems_id AS system_parent_id,
+           ps.name AS parent_system_name,
+           st.name AS status_name, st.code AS status_code,
+           cat.name AS category_name, cat.code AS category_code,
+           sg.name AS stage_type_name, sg.code AS stage_type_code
+    FROM archrep.ar_web_resources w
+    JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
+    LEFT JOIN archrep.ar_systems ps ON ps.id = s.parent_ar_systems_id
+    JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
+    JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
+    JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
+    WHERE w.code = $1`,
+  systems_select_for_import_labels: `
+    SELECT s.id, s.code, s.name,
+      COALESCE(NULLIF(TRIM(s.name), ''), s.code, '') AS import_label
+    FROM archrep.ar_systems s
+    ORDER BY import_label`,
   web_resources_insert: `INSERT INTO archrep.ar_web_resources (
       code, short_name, purpose, publication_url,
       ar_systems_id, publication_request_number, publication_date,

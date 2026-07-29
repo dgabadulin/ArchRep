@@ -106,3 +106,36 @@ export const adminApi = {
     return api.post('/admin/restart-node', {}, { headers })
   },
 }
+
+/** Сервисный импорт данных (issue #64). */
+export const importApi = {
+  entities: () => api.get('/import/entities'),
+  template: async (entity) => {
+    const url = `${apiBase}/api/import/template?entity=${encodeURIComponent(entity)}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      let msg = res.statusText
+      try {
+        const j = await res.json()
+        if (j?.error) msg = j.error
+      } catch (_) { /* ignore */ }
+      throw new Error(msg || 'template failed')
+    }
+    return res.blob()
+  },
+  export: async (entity) => {
+    const url = `${apiBase}/api/import/export?entity=${encodeURIComponent(entity)}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      let msg = res.statusText
+      try {
+        const j = await res.json()
+        if (j?.error) msg = j.error
+      } catch (_) { /* ignore */ }
+      throw new Error(msg || 'export failed')
+    }
+    return res.blob()
+  },
+  validate: (body) => api.post('/import/validate', body),
+  apply: (body) => api.post('/import/apply', body),
+}
