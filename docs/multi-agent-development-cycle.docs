@@ -1,0 +1,61 @@
+# Multi-Agent Full Development Cycle
+
+## Status
+
+**Not implemented yet.**  
+This document describes a target process design for organizing role-based agent handoffs.
+
+## Goal
+
+Build a stage-gated workflow where different agents execute distinct roles and hand work over through explicit artifacts.
+
+## Roles and Sequence
+
+1. Analyst
+2. Architect
+3. Developer
+4. Tester
+5. Product/Owner decision
+
+## Handoff Contracts
+
+### 1) Analyst -> Architect
+- Problem statement and business goal
+- Scope and non-scope
+- Acceptance criteria (testable checklist)
+- Edge cases and assumptions
+
+### 2) Architect -> Developer
+- Solution design summary
+- Component/file impact map
+- API/data contract changes
+- Risks and rollback notes
+
+### 3) Developer -> Tester
+- Implemented changes (branch + commits + PR)
+- Mapping from acceptance criteria to implementation
+- Reproduction and verification steps
+- Known limitations
+
+### 4) Tester -> Owner
+- Test report (functional + regression)
+- Evidence and failed cases
+- Severity-based bug list
+- Go/No-Go recommendation
+
+## Gates
+
+- No design before analysis is complete.
+- No implementation before design approval.
+- No merge/release before QA result and owner approval.
+
+## Required Shared Artifacts
+
+- One source-of-truth task (GitHub Issue)
+- Architecture/design note (ADR or equivalent)
+- Pull request with change summary and test plan
+- QA report/checklist
+
+## Suggested Task States
+
+Backlog -> Analysis -> Architecture -> Implementation -> QA -> Ready for merge -> Done
