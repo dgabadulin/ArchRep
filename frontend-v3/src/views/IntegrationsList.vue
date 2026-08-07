@@ -3,9 +3,21 @@
     <div class="page-head">
       <h1>Интеграционные потоки</h1>
       <div class="head-actions">
-        <router-link :to="linkTo('/integrations/new')" class="btn btn-primary">Добавить поток</router-link>
+        <router-link
+          v-if="canWrite"
+          :to="linkTo('/integrations/new')"
+          class="btn btn-primary"
+        >
+          Добавить поток
+        </router-link>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
+          <button
+            v-if="canExport"
+            type="button"
+            class="btn btn-excel btn-same"
+            :disabled="excelLoading"
+            @click="exportExcel"
+          >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
@@ -47,15 +59,29 @@
           <tr v-for="row in sortedRows" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'source'">
-                <router-link v-if="row.source_ar_systems_id" :to="`/systems/${row.source_ar_systems_id}/edit`" class="link">{{ row.source_name ?? '—' }}</router-link>
-                <span v-else>—</span>
+                <router-link
+                  v-if="row.source_ar_systems_id && canReadSystem"
+                  :to="`/systems/${row.source_ar_systems_id}/edit`"
+                  class="link"
+                >{{ row.source_name ?? '—' }}</router-link>
+                <span v-else>{{ row.source_name ?? '—' }}</span>
               </template>
               <template v-else-if="key === 'target'">
-                <router-link v-if="row.target_ar_systems_id" :to="`/systems/${row.target_ar_systems_id}/edit`" class="link">{{ row.target_name ?? '—' }}</router-link>
-                <span v-else>—</span>
+                <router-link
+                  v-if="row.target_ar_systems_id && canReadSystem"
+                  :to="`/systems/${row.target_ar_systems_id}/edit`"
+                  class="link"
+                >{{ row.target_name ?? '—' }}</router-link>
+                <span v-else>{{ row.target_name ?? '—' }}</span>
               </template>
               <template v-else-if="key === 'actions'">
-                <router-link :to="linkTo(`/integrations/${row.id}/edit`)" class="link">Изменить</router-link>
+                <router-link
+                  v-if="canRead"
+                  :to="linkTo(`/integrations/${row.id}/edit`)"
+                  class="link"
+                >
+                  {{ canWrite ? 'Изменить' : 'Открыть' }}
+                </router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -74,8 +100,11 @@ import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 import { useListSearch } from '../composables/useListSearch'
+import { usePermissions } from '../composables/usePermissions'
 
 const { search, linkTo } = useListSearch()
+const { canRead, canWrite, canExport } = usePermissions('integration_flow')
+const { canRead: canReadSystem } = usePermissions('system')
 
 const columns = [
   { key: 'source', label: 'Система источник', defaultVisible: true },

@@ -22,6 +22,11 @@ const {
   DEFAULT_DRAWIO_EDGE_STYLE,
   DEFAULT_DRAWIO_LAYOUT_STYLE,
 } = require('./drawioStyles');
+const { isAuthEnabled, assertAuthConfig } = require('./auth/authConfig');
+const { createAuthMiddleware } = require('./auth/middleware');
+const { createAuthRouter } = require('./auth/authRoutes');
+const { createAdminRouter } = require('./auth/adminRoutes');
+const { bootstrapAuth } = require('./auth/bootstrapAuth');
 
 // Параметры ADR: только коды справочников (issue #31).
 const DEFAULT_FLOW_STATUS_MAP_BY_CODE = {
@@ -81,11 +86,14 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', allowed[0]);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Restart-Secret');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Restart-Secret');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 app.use(express.json({ limit: '20mb' }));
+app.use(createAuthMiddleware(pool));
+app.use('/api/auth', createAuthRouter(pool));
+app.use('/api/admin', createAdminRouter(pool));
 
 const DISPLAY_NAME_PATHS = [
   [/^\/api\/ar-systems(?:\/\d+)?$/, 'system'],
@@ -296,6 +304,7 @@ app.get('/api/config', (req, res) => {
   if (techRadarEnv != null && String(techRadarEnv).trim() !== '') {
     out.TECH_RADAR_EMBED_URL = String(techRadarEnv).trim();
   }
+  out.auth_enabled = isAuthEnabled();
   res.json(out);
 });
 
@@ -2819,6 +2828,14 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
   } catch (e) {
     console.warn('refCodes load failed (run migration archrep_issue31_adr_ref_codes.sql?):', e.message);
   }
+  try {
+    assertAuthConfig();
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  await bootstrapAuth(pool);
+  console.log('AUTH_ENABLED:', isAuthEnabled());
   mountFrontendStatic();
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;
   app.listen(port, () => {

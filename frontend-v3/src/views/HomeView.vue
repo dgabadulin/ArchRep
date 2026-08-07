@@ -63,9 +63,10 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { menuItems } from '../config/menu'
+import { menuItems, filterMenuItems } from '../config/menu'
 import { getMenuIconComponent } from '../config/icons'
 import { api } from '../api/client'
+import { authStore } from '../auth/authStore'
 
 const statsLoaded = ref(false)
 const homeStatsError = ref(false)
@@ -118,11 +119,28 @@ const tileDescriptions = {
   '/references-togaf': 'Категории орг. единиц, типы заинтересованных лиц, статусы',
   '/settings/parameters': 'Настроечные параметры системы (Keycloak, лимиты, флаги)',
   '/settings/service-operations': 'Массовые операции (пересборка проекций и др.)',
+  '/settings/administration/users': 'Учётные записи приложения',
+  '/settings/administration/roles': 'Роли и матрица permissions',
+}
+
+function collectTiles(nodes, into) {
+  for (const node of nodes || []) {
+    if (node.path) {
+      into.push({
+        path: node.path,
+        title: node.label,
+        desc: tileDescriptions[node.path] || '',
+        icon: iconComponentFor(node.icon),
+      })
+    }
+    if (node.children?.length) collectTiles(node.children, into)
+  }
 }
 
 const sections = computed(() => {
   const result = []
-  for (const item of menuItems) {
+  const visible = filterMenuItems(menuItems, (code) => authStore.hasPermission(code))
+  for (const item of visible) {
     const tiles = []
     if (item.path) {
       tiles.push({
@@ -132,18 +150,7 @@ const sections = computed(() => {
         icon: iconComponentFor(item.icon),
       })
     }
-    if (item.children?.length) {
-      for (const child of item.children) {
-        if (child.path) {
-          tiles.push({
-            path: child.path,
-            title: child.label,
-            desc: tileDescriptions[child.path] || '',
-            icon: iconComponentFor(child.icon),
-          })
-        }
-      }
-    }
+    if (item.children?.length) collectTiles(item.children, tiles)
     if (tiles.length > 0) {
       result.push({ title: item.label, tiles })
     }

@@ -3,9 +3,21 @@
     <div class="page-head">
       <h1>Реестр веб-ресурсов</h1>
       <div class="head-actions">
-        <router-link :to="linkTo('/web-resources/new')" class="btn btn-primary">Добавить запись</router-link>
+        <router-link
+          v-if="canWrite"
+          :to="linkTo('/web-resources/new')"
+          class="btn btn-primary"
+        >
+          Добавить запись
+        </router-link>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
+          <button
+            v-if="canExport"
+            type="button"
+            class="btn btn-excel btn-same"
+            :disabled="excelLoading"
+            @click="exportExcel"
+          >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
@@ -47,8 +59,21 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="linkTo(`/web-resources/${row.id}/edit`)" class="link">Изменить</router-link>
-                <button type="button" class="btn-link danger" @click="remove(row.id)">Удалить</button>
+                <router-link
+                  v-if="canRead"
+                  :to="linkTo(`/web-resources/${row.id}/edit`)"
+                  class="link"
+                >
+                  {{ canWrite ? 'Изменить' : 'Открыть' }}
+                </router-link>
+                <button
+                  v-if="canDelete"
+                  type="button"
+                  class="btn-link danger"
+                  @click="remove(row.id)"
+                >
+                  Удалить
+                </button>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -67,8 +92,10 @@ import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 import { useListSearch } from '../composables/useListSearch'
+import { usePermissions } from '../composables/usePermissions'
 
 const { search, linkTo } = useListSearch()
+const { canRead, canWrite, canExport, canDelete } = usePermissions('web_resource')
 
 const webResourceColumns = [
   { key: 'id', label: 'ID', defaultVisible: false },

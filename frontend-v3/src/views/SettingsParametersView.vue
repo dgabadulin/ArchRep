@@ -2,6 +2,7 @@
   <div class="page">
     <h1>Параметры</h1>
     <p class="lead">Настроечные параметры системы: подключения, лимиты, флаги. Меню → Настройки → Параметры.</p>
+    <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>settings_parameters:write</code>.</p>
 
     <TableToolbar
       v-model:search="search"
@@ -9,7 +10,7 @@
     />
 
     <div class="table-actions">
-      <button type="button" class="btn btn-sm btn-primary" @click="openForm()">Добавить параметр</button>
+      <button v-if="canWrite" type="button" class="btn btn-sm btn-primary" @click="openForm()">Добавить параметр</button>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
@@ -33,8 +34,19 @@
             <td class="value-cell">{{ displayValue(p) }}</td>
             <td>{{ p.read_only ? 'Да' : '—' }}</td>
             <td>
-              <button type="button" class="btn-link" :disabled="p.read_only" @click="openForm(p)">Изменить</button>
-              <button type="button" class="btn-link danger" :disabled="p.read_only" @click="remove(p)">Удалить</button>
+              <button
+                type="button"
+                class="btn-link"
+                :disabled="canWrite && p.read_only"
+                @click="openForm(p)"
+              >{{ canWrite && !p.read_only ? 'Изменить' : 'Открыть' }}</button>
+              <button
+                v-if="canWrite"
+                type="button"
+                class="btn-link danger"
+                :disabled="p.read_only"
+                @click="remove(p)"
+              >Удалить</button>
             </td>
           </tr>
         </tbody>
@@ -45,7 +57,8 @@
     <!-- Модалка добавления/редактирования -->
     <div v-if="form" class="modal-overlay">
       <div class="modal modal-wide">
-        <h3>{{ form.id ? 'Изменить параметр' : 'Новый параметр' }}</h3>
+        <h3>{{ formModalTitle }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateForm">
         <div class="form-row">
           <label>Код <span class="req">*</span></label>
           <input v-model="form.code" type="text" placeholder="AR_Keycloak_Enabled" :readonly="!!form.id" class="code-input" />
@@ -101,9 +114,10 @@
             <button type="button" class="btn btn-sm btn-secondary" @click="form.valueList.push('')">+ Добавить</button>
           </div>
         </div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" :disabled="saving || !canSave" @click="save">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="form = null">Отмена</button>
+          <button v-if="canMutateForm" type="button" class="btn btn-primary" :disabled="saving || !canSave" @click="save">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="form = null">{{ canMutateForm ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
@@ -114,6 +128,9 @@
 import { ref, computed, watch } from 'vue'
 import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
+import { usePermissions } from '../composables/usePermissions'
+
+const { canWrite } = usePermissions('settings_parameters')
 
 const VALUE_TYPES = {
   string: 'Строка',
@@ -131,8 +148,16 @@ const saving = ref(false)
 const jsonError = ref('')
 const jsonLoadWarning = ref('')
 
+const canMutateForm = computed(() => canWrite.value && form.value && !form.value.read_only)
+
+const formModalTitle = computed(() => {
+  if (!form.value) return ''
+  if (!form.value.id) return 'Новый параметр'
+  return canMutateForm.value ? 'Изменить параметр' : 'Просмотр параметра'
+})
+
 const canSave = computed(() => {
-  if (!form.value) return false
+  if (!form.value || !canMutateForm.value) return false
   if (!form.value.code || !form.value.code.trim()) return false
   if (form.value.value_type === 'json' && jsonError.value) return false
   return true
@@ -191,6 +216,7 @@ async function load() {
 }
 
 function openForm(param = null) {
+  if (!param && !canWrite.value) return
   jsonLoadWarning.value = ''
   if (param) {
     let value = param.value
@@ -271,6 +297,7 @@ function getPayload() {
 }
 
 async function save() {
+  if (!canMutateForm.value) return
   const payload = getPayload()
   if (!payload) {
     if (form.value?.value_type === 'json' && !jsonError.value) {
@@ -305,7 +332,7 @@ async function save() {
 }
 
 async function remove(p) {
-  if (p.read_only) return
+  if (!canWrite.value || p.read_only) return
   if (!confirm(`Удалить параметр "${p.code}"?`)) return
   try {
     await api.deleteSettingsParameter(p.id)
@@ -348,6 +375,20 @@ load()
   color: var(--ar-muted);
   font-size: 0.9rem;
   margin-bottom: 1rem;
+}
+.readonly-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-table-head-bg);
+  color: var(--ar-muted);
+  font-size: 0.9rem;
+}
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
 }
 .table-actions {
   margin-bottom: 0.75rem;

@@ -1,12 +1,13 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование архитектурного заключения' : 'Новое архитектурное заключение' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
     <form v-else class="card form unified-form" @submit.prevent="submit">
+      <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>adr_applied:write</code>.</p>
       <!-- Верх: код + название в одной логической строке; ссылка и заключение — на всю ширину (без «рваной» сетки 1fr×3). -->
       <div class="form-head-row">
         <div class="field field-code">
@@ -37,7 +38,7 @@
       <div class="form-grid form-grid-narrow">
         <div class="field">
           <label>Статус</label>
-          <select v-model="form.ar_adr_statuses_id">
+          <select v-model="form.ar_adr_statuses_id" :disabled="!canWrite">
             <option :value="null">—</option>
             <option v-for="s in adrStatuses" :key="s.id" :value="s.id">{{ s.display_name || s.name }}</option>
           </select>
@@ -108,7 +109,12 @@
                   </select>
                   <button type="button" class="btn btn-primary btn-sm" :disabled="!selectedSystemId || systemsSaving" @click="addSystem">Добавить</button>
                 </div>
-                <a href="#" class="btn btn-secondary btn-sm" @click.prevent="goToNewSystem">+ Новая система</a>
+                <a
+                  v-if="canWriteSystem"
+                  href="#"
+                  class="btn btn-secondary btn-sm"
+                  @click.prevent="goToNewSystem"
+                >+ Новая система</a>
               </div>
               <div v-if="systemsLoading" class="loading">Загрузка...</div>
               <table v-else class="table">
@@ -188,6 +194,7 @@
                   Создать схему решения
                 </button>
               </div>
+              <div v-if="diagramsError" class="error">{{ diagramsError }}</div>
               <div v-if="diagramsLoading" class="loading">Загрузка диаграмм…</div>
               <table v-else class="table diagrams-table">
                 <thead>
@@ -196,7 +203,7 @@
                     <th>Создано</th>
                     <th>Изменено</th>
                     <th>Пользователь</th>
-                    <th v-if="!isFormReadOnly">Действия</th>
+                    <th>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,16 +212,31 @@
                     <td>{{ formatDiagramDate(row.created_at) }}</td>
                     <td>{{ formatDiagramDate(row.updated_at) }}</td>
                     <td>{{ row.last_edited_by || '—' }}</td>
-                    <td v-if="!isFormReadOnly" class="diagrams-actions">
-                      <button type="button" class="btn-link btn-sm" :disabled="diagramsBusy" @click="mergeIncrementDiagramRow(row)">Обновить</button>
+                    <td class="diagrams-actions">
+                      <button
+                        v-if="!isFormReadOnly"
+                        type="button"
+                        class="btn-link btn-sm"
+                        :disabled="diagramsBusy"
+                        @click="mergeIncrementDiagramRow(row)"
+                      >Обновить</button>
                       <button type="button" class="btn-link btn-sm" :disabled="diagramsBusy" @click="openDiagramEditorTab(row)">Открыть</button>
                       <button type="button" class="btn-link btn-sm" :disabled="diagramsBusy" @click="downloadDiagramRow(row)">Скачать</button>
-                      <button type="button" class="btn-link danger btn-sm" :disabled="diagramsBusy" @click="deleteDiagramRow(row)">Удалить</button>
+                      <button
+                        v-if="!isFormReadOnly"
+                        type="button"
+                        class="btn-link danger btn-sm"
+                        :disabled="diagramsBusy"
+                        @click="deleteDiagramRow(row)"
+                      >Удалить</button>
                     </td>
                   </tr>
                 </tbody>
               </table>
-              <p v-if="!diagramsLoading && incrementDiagrams.length === 0" class="empty">Нет сохранённых схем. Нажмите «Создать схему решения».</p>
+              <p v-if="!diagramsLoading && !diagramsError && incrementDiagrams.length === 0" class="empty">
+                Нет сохранённых схем.
+                <template v-if="!isFormReadOnly"> Нажмите «Создать схему решения».</template>
+              </p>
             </div>
           </div>
         </div>
@@ -223,8 +245,13 @@
 
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions actions-bottom">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <button type="button" class="btn btn-secondary" @click="cancel">Отмена</button>
+        <button
+          v-if="canWrite"
+          type="submit"
+          class="btn btn-primary"
+          :disabled="saving"
+        >{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <button type="button" class="btn btn-secondary" @click="cancel">{{ canWrite ? 'Отмена' : 'К реестру' }}</button>
       </div>
     </form>
 
@@ -323,6 +350,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 import IncrementSystemFunctionsModal from '../components/IncrementSystemFunctionsModal.vue'
 import { api } from '../api/client'
 import { getConfig } from '@/config/params'
@@ -335,6 +363,8 @@ const adrCodeMaxLen = computed(() => (getConfig().ADR_CODE_MAXLEN ?? 15) | 0)
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/decisions/applied')
+const { canWrite } = usePermissions('adr_applied')
+const { canWrite: canWriteSystem } = usePermissions('system')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
 
@@ -398,9 +428,14 @@ const defaultApplyStatusId = computed(() => {
   return st ? st.id : null
 })
 
-const isFormReadOnly = computed(() => {
+const isStatusReadOnly = computed(() => {
   const s = (adrStatuses.value || []).find(x => x.id === form.ar_adr_statuses_id)
   return s ? s.name !== 'Черновик' : false
+})
+const isFormReadOnly = computed(() => isStatusReadOnly.value || !canWrite.value)
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новое архитектурное заключение'
+  return isFormReadOnly.value ? 'Просмотр архитектурного заключения' : 'Редактирование архитектурного заключения'
 })
 
 /** Решения привязаны к записи ADRA; на /new нет id — иначе уходит /applied/undefined/increments. */
@@ -441,6 +476,7 @@ const relationError = ref('')
 const incrementDiagrams = ref([])
 const diagramsLoading = ref(false)
 const diagramsBusy = ref(false)
+const diagramsError = ref('')
 
 function formatDiagramDate(iso) {
   if (!iso) return '—'
@@ -468,15 +504,18 @@ function diagramDisplayName(row) {
 async function loadIncrementDiagrams() {
   if (!selectedIncrementId.value) {
     incrementDiagrams.value = []
+    diagramsError.value = ''
     return
   }
   diagramsLoading.value = true
+  diagramsError.value = ''
   try {
     const rows = (await api.getIncrementDiagrams(selectedIncrementId.value)) || []
     rows.sort((a, b) => (Number(b.version_no) || 0) - (Number(a.version_no) || 0))
     incrementDiagrams.value = rows
-  } catch {
+  } catch (e) {
     incrementDiagrams.value = []
+    diagramsError.value = e.body?.error || e.message || 'Ошибка загрузки схем'
   } finally {
     diagramsLoading.value = false
   }
@@ -527,7 +566,11 @@ function openDiagramEditorTab(row) {
       schemeLabel: diagramDisplayName(row),
     },
   }).href
-  window.open(url, '_blank', 'noopener')
+  // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API схем.
+  const w = window.open(url, '_blank')
+  if (w) {
+    try { w.opener = null } catch (_) { /* ignore */ }
+  }
 }
 
 async function downloadDiagramRow(row) {
@@ -825,6 +868,7 @@ async function onFunctionsModalSaved() {
 }
 
 function goToNewSystem() {
+  if (!canWriteSystem.value) return
   const payload = {
     form: formSnapshot(),
     appliedId: id.value || null,
@@ -884,6 +928,7 @@ async function removeRelation(relationId) {
 }
 
 async function submit(opts = {}) {
+  if (!canWrite.value) return
   submitError.value = ''
   saving.value = true
   try {
@@ -895,7 +940,7 @@ async function submit(opts = {}) {
       author: form.author?.trim() || undefined,
     }
     if (isEdit.value) {
-      if (isFormReadOnly.value) {
+      if (isStatusReadOnly.value) {
         await api.updateDecisionAppliedFull(id.value, { ar_adr_statuses_id: form.ar_adr_statuses_id ?? undefined })
       } else {
         const incrementsPayload = []
@@ -943,6 +988,10 @@ async function submit(opts = {}) {
 }
 
 function cancel() {
+  if (!canWrite.value) {
+    router.push(listRouteLocation.value)
+    return
+  }
   if (lastLoadedSnapshot.value) {
     form.code = lastLoadedSnapshot.value.code ?? ''
     form.task_name = lastLoadedSnapshot.value.task_name ?? ''
@@ -958,10 +1007,22 @@ function cancel() {
   submitError.value = ''
 }
 
-useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  () => submit({ skipNavigate: true })
+)
 </script>
 
 <style scoped>
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .form-head-row {
   display: grid;
   grid-template-columns: minmax(7.5rem, 10rem) 1fr;

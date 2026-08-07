@@ -1,12 +1,14 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование интеграционного потока' : 'Новый интеграционный поток' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
 
     <div v-if="loading && isEdit" class="loading">Загрузка...</div>
     <form v-else class="card form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>integration_flow:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
         <div class="field">
           <label>Система источник <span class="req">*</span></label>
@@ -49,10 +51,11 @@
           <input v-model="form.transfer_method" />
         </div>
       </div>
+      </fieldset>
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
+        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К списку' }}</router-link>
       </div>
     </form>
   </div>
@@ -63,13 +66,19 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 import { api } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/integrations')
+const { canWrite } = usePermissions('integration_flow')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новый интеграционный поток'
+  return canWrite.value ? 'Редактирование интеграционного потока' : 'Просмотр интеграционного потока'
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -147,6 +156,7 @@ watch(() => ({ ...form }), () => {
 }, { deep: true })
 
 async function submit(opts = {}) {
+  if (!canWrite.value) return
   submitError.value = ''
   if (form.source_ar_systems_id == null || form.target_ar_systems_id == null) {
     submitError.value = 'Укажите систему источник и систему получатель'
@@ -182,10 +192,28 @@ async function submit(opts = {}) {
   }
 }
 
-useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  () => submit({ skipNavigate: true })
+)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .error {
   margin-top: 0.5rem;
 }

@@ -7,6 +7,7 @@
         <option v-for="p in options" :key="p.id" :value="p.id">{{ p.display_name || p.name }}</option>
       </select>
       <button
+        v-if="canCreatePartner"
         type="button"
         class="btn btn-secondary btn-add-partner"
         title="Добавить партнёра"
@@ -17,6 +18,7 @@
       </button>
     </div>
     <PartnerQuickCreateDialog
+      v-if="canCreatePartner"
       v-model="dialogOpen"
       :existing-partners="options"
       @created="onPartnerCreated"
@@ -27,12 +29,22 @@
 <script setup>
 import { ref, computed } from 'vue'
 import PartnerQuickCreateDialog from './PartnerQuickCreateDialog.vue'
+import { authStore } from '../auth/authStore'
 
 const props = defineProps({
   modelValue: { type: [Number, String, null], default: null },
   label: { type: String, required: true },
   options: { type: Array, default: () => [] },
+  /** false — скрыть быстрое создание; по умолчанию — по partner:write */
+  allowCreate: { type: Boolean, default: undefined },
 })
+
+const canCreatePartner = computed(() => {
+  if (props.allowCreate === false) return false
+  if (props.allowCreate === true) return true
+  return authStore.hasPermission('partner:write')
+})
+
 
 const emit = defineEmits(['update:modelValue', 'partner-created'])
 

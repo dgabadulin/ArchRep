@@ -24,7 +24,7 @@
       <!-- Statuses -->
       <template v-if="activeTab === 'statuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openStatusForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -35,8 +35,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -46,7 +46,7 @@
       <!-- Hosting -->
       <template v-else-if="activeTab === 'hosting'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openHostingForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openHostingForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -56,8 +56,8 @@
               <td>{{ r.id }}</td>
               <td>{{ r.name }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openHostingForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteHosting(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openHostingForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteHosting(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -67,7 +67,7 @@
       <!-- Owners -->
       <template v-else-if="activeTab === 'owners'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openOwnerForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openOwnerForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -78,8 +78,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.leader ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openOwnerForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteOwner(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openOwnerForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteOwner(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -89,7 +89,7 @@
       <!-- Vendors (Partners) -->
       <template v-else-if="activeTab === 'vendors'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openVendorForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openVendorForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -99,8 +99,8 @@
               <td>{{ r.id }}</td>
               <td>{{ r.name }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openVendorForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteVendor(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openVendorForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteVendor(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -110,7 +110,7 @@
       <!-- Сотрудники -->
       <template v-else-if="activeTab === 'employees'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openEmployeeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openEmployeeForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -121,8 +121,8 @@
               <td>{{ r.display_name || r.full_name }}</td>
               <td>{{ r.status === 'active' ? 'active' : 'inactive' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openEmployeeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteEmployee(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openEmployeeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteEmployee(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -132,7 +132,7 @@
       <!-- ADR: статусы систем в решении -->
       <template v-else-if="activeTab === 'adrSystemStatuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openAdrSystemStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openAdrSystemStatusForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -144,8 +144,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openAdrSystemStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteAdrSystemStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openAdrSystemStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteAdrSystemStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -155,7 +155,7 @@
       <!-- ADR: статусы интеграций в решении -->
       <template v-else-if="activeTab === 'adrRelationStatuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openAdrRelationStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openAdrRelationStatusForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -167,8 +167,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openAdrRelationStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteAdrRelationStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openAdrRelationStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteAdrRelationStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -178,7 +178,7 @@
       <!-- Тип события интеграций -->
       <template v-else-if="activeTab === 'integrationFlowEventTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openIntegrationFlowEventTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openIntegrationFlowEventTypeForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -189,8 +189,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openIntegrationFlowEventTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteIntegrationFlowEventType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openIntegrationFlowEventTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteIntegrationFlowEventType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -200,7 +200,7 @@
       <!-- Статусы интеграционных потоков -->
       <template v-else-if="activeTab === 'integrationFlowStatuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openIntegrationFlowStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openIntegrationFlowStatusForm()">Добавить</button>
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
@@ -212,8 +212,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openIntegrationFlowStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteIntegrationFlowStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openIntegrationFlowStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteIntegrationFlowStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -223,7 +223,7 @@
       <!-- Категории орг. единиц (TOGAF) -->
       <template v-else-if="activeTab === 'orgUnitCategories'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openCategoryForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openCategoryForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -234,8 +234,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openCategoryForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteCategory(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openCategoryForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteCategory(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -245,7 +245,7 @@
       <!-- Типы заинтересованных лиц (TOGAF) -->
       <template v-else-if="activeTab === 'actorTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openActorTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openActorTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -256,8 +256,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openActorTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteActorType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openActorTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteActorType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -282,7 +282,7 @@
       <!-- Типы архитектурного долга -->
       <template v-else-if="activeTab === 'gapTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openGapTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openGapTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -292,8 +292,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openGapTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteGapType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openGapTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteGapType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -303,7 +303,7 @@
       <!-- Степени влияния -->
       <template v-else-if="activeTab === 'impactLevelTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openImpactLevelTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openImpactLevelTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -313,8 +313,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openImpactLevelTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteImpactLevelType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openImpactLevelTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteImpactLevelType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -324,7 +324,7 @@
       <!-- Состояния арх.долга -->
       <template v-else-if="activeTab === 'gapStates'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openGapStateForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openGapStateForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -334,8 +334,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openGapStateForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteGapState(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openGapStateForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteGapState(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -345,7 +345,7 @@
       <!-- Статусы бизнес-сервисов (TOGAF) -->
       <template v-else-if="activeTab === 'webResourceStatuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openWebResourceStatusForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -356,8 +356,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openWebResourceStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteWebResourceStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openWebResourceStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteWebResourceStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -366,7 +366,7 @@
       </template>
       <template v-else-if="activeTab === 'webResourceCategories'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceCategoryForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openWebResourceCategoryForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -377,8 +377,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openWebResourceCategoryForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteWebResourceCategory(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openWebResourceCategoryForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteWebResourceCategory(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -387,7 +387,7 @@
       </template>
       <template v-else-if="activeTab === 'webResourceStageTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openWebResourceStageTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openWebResourceStageTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -398,8 +398,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openWebResourceStageTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteWebResourceStageType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openWebResourceStageTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteWebResourceStageType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -408,7 +408,7 @@
       </template>
       <template v-else-if="activeTab === 'businessServiceStatuses'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openBusinessServiceStatusForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openBusinessServiceStatusForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
@@ -418,8 +418,8 @@
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openBusinessServiceStatusForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteBusinessServiceStatus(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openBusinessServiceStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteBusinessServiceStatus(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -429,7 +429,7 @@
       <!-- Типы сущностей метамодели (ar_metamodel_entity_types) -->
       <template v-else-if="activeTab === 'metamodelEntityTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openEntityTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openEntityTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Таблица</th><th>Описание</th><th>Импорт</th><th></th></tr></thead>
@@ -442,8 +442,8 @@
               <td>{{ r.description ?? '—' }}</td>
               <td>{{ r.import_allowed ? 'да' : 'нет' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openEntityTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteEntityType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openEntityTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteEntityType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -453,7 +453,7 @@
       <!-- Типы связей метамодели (ar_metamodel_relation_types) -->
       <template v-else-if="activeTab === 'metamodelRelationTypes'">
         <div class="table-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="openRelationTypeForm()">Добавить</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openRelationTypeForm()">Добавить</button>
         </div>
         <table class="table">
           <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th>От типа</th><th>К типу</th><th></th></tr></thead>
@@ -466,8 +466,8 @@
               <td>{{ r.from_entity_type_name || r.from_entity_type_code || '—' }}</td>
               <td>{{ r.to_entity_type_name || r.to_entity_type_code || '—' }}</td>
               <td>
-                <button type="button" class="btn-link" @click="openRelationTypeForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="deleteRelationType(r.id)">Удалить</button>
+                <button type="button" class="btn-link" @click="openRelationTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteRelationType(r.id)">Удалить</button>
               </td>
             </tr>
           </tbody>
@@ -480,224 +480,263 @@
     <div v-if="statusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ statusForm.id ? 'Изменить статус' : 'Новый статус' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="statusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="statusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="statusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="statusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="hostingForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ hostingForm.id ? 'Изменить тип хостинга' : 'Новый тип хостинга' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="hostingForm.name" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveHosting">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="hostingForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveHosting">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="hostingForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="ownerForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ ownerForm.id ? 'Изменить владельца' : 'Новый владелец' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="ownerForm.name" /></div>
         <div class="form-row"><label>Руководитель</label><input v-model="ownerForm.leader" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveOwner">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="ownerForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveOwner">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="ownerForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="vendorForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ vendorForm.id ? 'Изменить партнёра' : 'Новый партнёр' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="vendorForm.name" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveVendor">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="vendorForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveVendor">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="vendorForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="employeeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ employeeForm.id ? 'Изменить сотрудника' : 'Новый сотрудник' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>ФИО</label><input v-model="employeeForm.full_name" placeholder="Иванов Иван Иванович" /></div>
         <div class="form-row"><label>Активен</label><select v-model="employeeForm.active"><option :value="true">Да (active)</option><option :value="false">Нет (inactive)</option></select></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveEmployee">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="employeeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveEmployee">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="employeeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="adrSystemStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ adrSystemStatusForm.id ? 'Изменить статус системы в решении' : 'Новый статус (системы в решении)' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="adrSystemStatusForm.code" placeholder="ADR_INCR_SYS_…" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="adrSystemStatusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="adrSystemStatusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveAdrSystemStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="adrSystemStatusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveAdrSystemStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="adrSystemStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="adrRelationStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ adrRelationStatusForm.id ? 'Изменить статус интеграции в решении' : 'Новый статус (интеграции в решении)' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="adrRelationStatusForm.code" type="text" placeholder="ADR_INCR_REL_…" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="adrRelationStatusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="adrRelationStatusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveAdrRelationStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="adrRelationStatusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveAdrRelationStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="adrRelationStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="integrationFlowEventTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ integrationFlowEventTypeForm.id ? 'Изменить тип события' : 'Новый тип инициирующего события' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="integrationFlowEventTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="integrationFlowEventTypeForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveIntegrationFlowEventType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="integrationFlowEventTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveIntegrationFlowEventType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="integrationFlowEventTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="integrationFlowStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ integrationFlowStatusForm.id ? 'Изменить статус потока' : 'Новый статус интеграционного потока' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="integrationFlowStatusForm.code" type="text" placeholder="FLOW_STATUS_…" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="integrationFlowStatusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="integrationFlowStatusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveIntegrationFlowStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="integrationFlowStatusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveIntegrationFlowStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="integrationFlowStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="categoryForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ categoryForm.id ? 'Изменить категорию' : 'Новая категория орг. единицы' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="categoryForm.code" placeholder="необязательно" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="categoryForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="categoryForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveCategory">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="categoryForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveCategory">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="categoryForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="actorTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ actorTypeForm.id ? 'Изменить тип заинтересованного лица' : 'Новый тип заинтересованного лица' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="actorTypeForm.code" placeholder="необязательно" /></div>
         <div class="form-row"><label>Наименование</label><input v-model="actorTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="actorTypeForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveActorType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="actorTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveActorType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="actorTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="webResourceStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ webResourceStatusForm.id ? 'Изменить статус веб-ресурса' : 'Новый статус веб-ресурса' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="webResourceStatusForm.code" required /></div>
         <div class="form-row"><label>Наименование</label><input v-model="webResourceStatusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="webResourceStatusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveWebResourceStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="webResourceStatusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveWebResourceStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="webResourceCategoryForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ webResourceCategoryForm.id ? 'Изменить категорию' : 'Новая категория веб-ресурса' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="webResourceCategoryForm.code" required /></div>
         <div class="form-row"><label>Наименование</label><input v-model="webResourceCategoryForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="webResourceCategoryForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveWebResourceCategory">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="webResourceCategoryForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveWebResourceCategory">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceCategoryForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="webResourceStageTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ webResourceStageTypeForm.id ? 'Изменить тип стенда' : 'Новый тип стенда' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код</label><input v-model="webResourceStageTypeForm.code" required /></div>
         <div class="form-row"><label>Наименование</label><input v-model="webResourceStageTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="webResourceStageTypeForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveWebResourceStageType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="webResourceStageTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveWebResourceStageType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="webResourceStageTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="businessServiceStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ businessServiceStatusForm.id ? 'Изменить статус' : 'Новый статус бизнес-сервиса' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="businessServiceStatusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="businessServiceStatusForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveBusinessServiceStatus">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="businessServiceStatusForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveBusinessServiceStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="businessServiceStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="gapTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ gapTypeForm.id ? 'Изменить тип арх.долга' : 'Новый тип архитектурного долга' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="gapTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="gapTypeForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveGapType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="gapTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveGapType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="gapTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="impactLevelTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ impactLevelTypeForm.id ? 'Изменить степень влияния' : 'Новая степень влияния' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="impactLevelTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="impactLevelTypeForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveImpactLevelType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="impactLevelTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveImpactLevelType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="impactLevelTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="gapStateForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ gapStateForm.id ? 'Изменить состояние арх.долга' : 'Новое состояние арх.долга' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="gapStateForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="gapStateForm.description" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveGapState">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="gapStateForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveGapState">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="gapStateForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="entityTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ entityTypeForm.id ? 'Изменить тип сущности' : 'Новый тип сущности метамодели' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="entityTypeForm.code" placeholder="напр. system" /></div>
         <div class="form-row"><label>Наименование <span class="req">*</span></label><input v-model="entityTypeForm.name" /></div>
         <div class="form-row"><label>Таблица в БД</label><input v-model="entityTypeForm.table_name" placeholder="напр. ar_systems" /></div>
         <div class="form-row"><label>Описание</label><input v-model="entityTypeForm.description" /></div>
         <div class="form-row"><label><input type="checkbox" v-model="entityTypeForm.import_allowed" /> Допустимо для импорта</label></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveEntityType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="entityTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveEntityType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="entityTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
     <div v-if="relationTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ relationTypeForm.id ? 'Изменить тип связи' : 'Новый тип связи метамодели' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="relationTypeForm.code" placeholder="напр. realizes" /></div>
         <div class="form-row"><label>Наименование <span class="req">*</span></label><input v-model="relationTypeForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="relationTypeForm.description" /></div>
@@ -713,9 +752,10 @@
             <option v-for="et in metamodelEntityTypes" :key="et.id" :value="et.id">{{ et.display_name || (et.name + ' (' + et.code + ')') }}</option>
           </select>
         </div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="saveRelationType">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="relationTypeForm = null">Отмена</button>
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveRelationType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="relationTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
         </div>
       </div>
     </div>
@@ -723,13 +763,31 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api/client'
 import { togafApi } from '../api'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
+import { usePermissions } from '../composables/usePermissions'
+
+const { canWrite: canWriteReferences } = usePermissions('references')
+const { canWrite: canWritePartner } = usePermissions('partner')
+const { canWrite: canWriteEmployee } = usePermissions('employee')
+const { canWrite: canWriteMetamodelCatalog } = usePermissions('metamodel_catalog')
 
 const activeTab = ref('statuses')
+
+function canMutateTab(tabKey) {
+  if (tabKey === 'vendors') return canWritePartner.value
+  if (tabKey === 'employees') return canWriteEmployee.value
+  if (tabKey === 'metamodelEntityTypes' || tabKey === 'metamodelRelationTypes') {
+    return canWriteMetamodelCatalog.value
+  }
+  return canWriteReferences.value
+}
+
+const canMutateActive = computed(() => canMutateTab(activeTab.value))
+
 const tabs = [
   { id: 'statuses', label: 'Статусы систем' },
   { id: 'hosting', label: 'Типы хостинга' },
@@ -1245,5 +1303,11 @@ async function deleteRelationType(id) { if (confirm('Удалить тип св�
 .modal-actions .btn {
   min-height: 40px;
   padding: 0.6rem 1rem;
+}
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
 }
 </style>

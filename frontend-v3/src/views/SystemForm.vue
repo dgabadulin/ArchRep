@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование системы' : 'Новая система' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">← Возврат</router-link>
       <router-link v-else :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
@@ -16,6 +16,8 @@
 
     <div v-if="loading && isEdit && activeTab === 'data'" class="loading">Загрузка...</div>
     <form v-else-if="activeTab === 'data' || !isEdit" class="card form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
         <div class="field">
           <label>Код <span class="req">*</span></label>
@@ -105,16 +107,29 @@
           <input v-model="form.comment" />
         </div>
       </div>
+      </fieldset>
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">Отмена</router-link>
-        <router-link v-else :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
+        <button
+          v-if="canWrite"
+          type="submit"
+          class="btn btn-primary"
+          :disabled="saving"
+        >
+          {{ saving ? 'Сохранение...' : 'Сохранить' }}
+        </button>
+        <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">
+          {{ canWrite ? 'Отмена' : 'Назад' }}
+        </router-link>
+        <router-link v-else :to="listRouteLocation" class="btn btn-secondary">
+          {{ canWrite ? 'Отмена' : 'К списку' }}
+        </router-link>
       </div>
     </form>
 
-    <!-- Вкладка "Технологический стек" (только при редактировании) -->
+    <!-- Вкладка "Технологический стек" — срез карточки ИС (system:read / system:write) -->
     <div v-else-if="isEdit && activeTab === 'tech'" class="card tech-stack">
+      <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
       <EntityLinksTableGraph
         :loading="techStackLoading"
         :relations="techStackGraphRelations"
@@ -126,7 +141,7 @@
           на сервере (корневая ИС / модуль).
         </template>
         <template #toolbar>
-          <div class="tech-add">
+          <div v-if="canWrite" class="tech-add">
             <select v-model="selectedTechnologyId" class="tech-select">
               <option value="">— Выберите технологию —</option>
               <option v-for="t in availableTechnologies" :key="t.id" :value="t.id">{{ t.display_name || t.name }}</option>
@@ -141,27 +156,29 @@
             <thead>
               <tr>
                 <th>Технология</th>
-                <th></th>
+                <th v-if="canWrite"></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="link in systemTechnologies" :key="link.id">
                 <td>{{ link.technology_name }}</td>
-                <td>
+                <td v-if="canWrite">
                   <button type="button" class="btn-link danger" @click="removeTechnologyLink(link.id)">Удалить</button>
                 </td>
               </tr>
             </tbody>
           </table>
           <p v-if="!techStackLoading && systemTechnologies.length === 0" class="empty">
-            Нет связанных технологий. Выберите технологию из каталога и добавьте связь.
+            Нет связанных технологий.
+            <template v-if="canWrite"> Выберите технологию из каталога и добавьте связь.</template>
           </p>
         </template>
       </EntityLinksTableGraph>
     </div>
 
-    <!-- Вкладка "Интеграции" (только просмотр) -->
+    <!-- Вкладка "Интеграции" — срез карточки ИС (system:read); переход в карточку потока — integration_flow:* -->
     <div v-else-if="isEdit && activeTab === 'integrations'" class="card integrations-tab">
+      <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
       <p class="tab-hint">Интеграционные потоки, где эта система — источник или получатель.</p>
       <div v-if="integrationFlowsError" class="error integration-flows-err">{{ integrationFlowsError }}</div>
       <div v-else-if="integrationsLoading" class="loading">Загрузка...</div>
@@ -174,7 +191,7 @@
             <th>Передаваемые данные</th>
             <th>Способ передачи</th>
             <th>Статус</th>
-            <th></th>
+            <th v-if="canReadIntegration"></th>
           </tr>
         </thead>
         <tbody>
@@ -191,8 +208,13 @@
             <td>{{ row.transferred_data ?? '—' }}</td>
             <td>{{ row.transfer_method ?? '—' }}</td>
             <td>{{ row.status_name ?? '—' }}</td>
-            <td>
-              <router-link :to="`/integrations/${row.id}/edit`" class="link">Изменить</router-link>
+            <td v-if="canReadIntegration">
+              <router-link
+                :to="`/integrations/${row.id}/edit`"
+                class="link"
+              >
+                {{ canWriteIntegration ? 'Изменить' : 'Открыть' }}
+              </router-link>
             </td>
           </tr>
         </tbody>
@@ -208,6 +230,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 import { api } from '../api/client'
 import { getConfig } from '@/config/params'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
@@ -219,8 +242,14 @@ const sysCodeMaxLen = computed(() => (getConfig().SYS_CODE_MAXLEN ?? 32) | 0)
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/systems')
+const { canWrite } = usePermissions('system')
+const { canRead: canReadIntegration, canWrite: canWriteIntegration } = usePermissions('integration_flow')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новая система'
+  return canWrite.value ? 'Редактирование системы' : 'Просмотр системы'
+})
 
 const returnToConclusion = computed(() => route.query.returnTo === 'decision-applied-edit' || route.query.returnTo === 'decision-applied-new')
 const returnConclusionPath = computed(() => {
@@ -430,7 +459,7 @@ async function loadIntegrationFlows() {
 }
 
 async function addTechnologyLink() {
-  if (!selectedTechnologyId.value || !id.value) return
+  if (!canWrite.value || !selectedTechnologyId.value || !id.value) return
   techSaving.value = true
   try {
     await api.createSystemTechnology({ systems_id: id.value, technologies_id: selectedTechnologyId.value })
@@ -444,6 +473,7 @@ async function addTechnologyLink() {
 }
 
 async function removeTechnologyLink(linkId) {
+  if (!canWrite.value) return
   if (!confirm('Удалить связь с технологией?')) return
   try {
     await api.deleteSystemTechnology(linkId)
@@ -461,6 +491,7 @@ function fkOrNull(v) {
 }
 
 async function submit(opts = {}) {
+  if (!canWrite.value) return
   submitError.value = ''
   saving.value = true
   try {
@@ -503,15 +534,33 @@ async function submit(opts = {}) {
       }
     }
   } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    submitError.value = e.message || e.body?.error || 'Ошибка сохранения'
     throw e
   } finally { saving.value = false }
 }
 
-useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  () => submit({ skipNavigate: true })
+)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .error {
   margin-top: 0.5rem;
 }

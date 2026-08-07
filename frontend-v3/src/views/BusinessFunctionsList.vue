@@ -3,9 +3,21 @@
     <div class="page-head">
       <h1>Бизнес-способности</h1>
       <div class="head-actions">
-        <router-link :to="linkTo('/business-functions/new')" class="btn btn-primary">Добавить бизнес-способность</router-link>
+        <router-link
+          v-if="canWrite"
+          :to="linkTo('/business-functions/new')"
+          class="btn btn-primary"
+        >
+          Добавить бизнес-способность
+        </router-link>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
+          <button
+            v-if="canExport"
+            type="button"
+            class="btn btn-excel btn-same"
+            :disabled="excelLoading"
+            @click="exportExcel"
+          >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
@@ -47,7 +59,13 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="linkTo(`/business-functions/${row.id}/edit`)" class="link">Изменить</router-link>
+                <router-link
+                  v-if="canRead"
+                  :to="linkTo(`/business-functions/${row.id}/edit`)"
+                  class="link"
+                >
+                  {{ canWrite ? 'Изменить' : 'Открыть' }}
+                </router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -67,8 +85,10 @@ import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 import { useListSearch } from '../composables/useListSearch'
+import { usePermissions } from '../composables/usePermissions'
 
 const { search, linkTo } = useListSearch()
+const { canRead, canWrite, canExport, canDelete } = usePermissions('business_function')
 
 const columns = [
   { key: 'name', label: 'Наименование', defaultVisible: true },

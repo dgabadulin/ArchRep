@@ -31,6 +31,7 @@ export const menuIconNames = {
   wrench: 'Wrench',
   book: 'BookOpen',
   target: 'Target',
+  shield: 'Shield',
 }
 
 export function getMenuIconName(name) {

@@ -1,12 +1,14 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование веб-ресурса' : 'Новый веб-ресурс' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
     <form v-else-if="form" class="card form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>web_resource:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
         <div class="field field-code" v-if="isEdit">
           <label>Код</label>
@@ -61,10 +63,11 @@
           <input v-model="form.publication_date" type="date" />
         </div>
       </div>
+      </fieldset>
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions actions-bottom">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
+        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
       </div>
     </form>
     <div v-else class="error">{{ error || 'Не найдено' }}</div>
@@ -76,12 +79,18 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/web-resources')
+const { canWrite } = usePermissions('web_resource')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новый веб-ресурс'
+  return canWrite.value ? 'Редактирование веб-ресурса' : 'Просмотр веб-ресурса'
+})
 
 const form = ref(null)
 const loading = ref(true)
@@ -166,6 +175,7 @@ async function load() {
 }
 
 async function submit() {
+  if (!canWrite.value) return
   submitError.value = ''
   saving.value = true
   const payload = {
@@ -199,6 +209,21 @@ onMounted(load)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

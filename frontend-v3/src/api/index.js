@@ -1,5 +1,13 @@
+import { getToken, clearToken } from '../auth/session'
+import { messageFromApiError } from '../utils/apiErrors'
+
 // Базовый URL API (при dev — proxy в vite; при prod — тот же хост)
 export const apiBase = (typeof window !== 'undefined' && window.location?.origin) ? '' : ''
+
+function authHeaders() {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${apiBase}/api${path.startsWith('/') ? path : '/' + path}`
@@ -8,14 +16,27 @@ async function request(path, options = {}) {
     ...fetchRest,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
       ...optHeaders,
     },
   })
+  if (res.status === 401 && !String(path).includes('/auth/login')) {
+    clearToken()
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+      window.location.assign(`/login?redirect=${redirect}`)
+    }
+  }
   if (res.status === 204) return null
   const text = await res.text()
   if (!text) return null
   const data = text ? JSON.parse(text) : null
-  if (!res.ok) throw new Error(data?.error || res.statusText || 'Request failed')
+  if (!res.ok) {
+    const err = new Error(messageFromApiError(res.status, data, res.statusText || 'Request failed'))
+    err.status = res.status
+    err.body = data
+    throw err
+  }
   return data
 }
 
@@ -112,7 +133,7 @@ export const importApi = {
   entities: () => api.get('/import/entities'),
   template: async (entity) => {
     const url = `${apiBase}/api/import/template?entity=${encodeURIComponent(entity)}`
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: { ...authHeaders() } })
     if (!res.ok) {
       let msg = res.statusText
       try {
@@ -125,7 +146,7 @@ export const importApi = {
   },
   export: async (entity) => {
     const url = `${apiBase}/api/import/export?entity=${encodeURIComponent(entity)}`
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: { ...authHeaders() } })
     if (!res.ok) {
       let msg = res.statusText
       try {
@@ -136,6 +157,7 @@ export const importApi = {
     }
     return res.blob()
   },
+
   validate: (body) => api.post('/import/validate', body),
   apply: (body) => api.post('/import/apply', body),
 }

@@ -53,6 +53,12 @@ cd REPO
 | `CORS_ORIGIN` | Да для доступа с браузера с другого origin | URL, с которого открывается фронт (часто `http://<ваш-сервер>:3000`). Можно несколько значений через запятую. |
 | `DRAWIO_EMBED_BASE` | Да для встраивания Draw.io | Базовый URL Draw.io для клиента; обычно `http://<ваш-сервер>:8080`. |
 | `ALLOW_INSECURE_RESTART_WITHOUT_SECRET` | По политике безопасности | Для демо часто `true`; для публичных сред лучше `false` и задать секрет перезапуска в коде/compose (см. корневой `.env.example`). |
+| `AUTH_ENABLED` | Нет (default `false`) | `true` — локальный login + JWT + RBAC. Подробно: `docs/access-control-design.md` §3.1. |
+| `JWT_SECRET` | Да при `AUTH_ENABLED=true` | Секрет подписи JWT. |
+| `AUTH_BOOTSTRAP_DEMO_PASSWORD` | Нет | При старте API создаёт/обновляет login `demo` (SYSTEM_ADMIN). **Не SQL** — код `backend/auth/bootstrapAuth.js`. |
+| `AUTH_BOOTSTRAP_ARADMIN_PASSWORD` | Нет | То же для login `aradmin`. |
+| `AUTH_BOOTSTRAP_RESET_PASSWORDS` | Нет | `true` — перезаписать hash существующих bootstrap-пользователей из env. |
+| `AUTH_BOOTSTRAP_MUST_CHANGE_PASSWORD` | Нет | Флаг `must_change_password` у создаваемых bootstrap-пользователей. |
 
 Шаблон без секретов: **`infra/demo/env.demo.example`** — скопируйте в `env.demo` и заполните:
 
@@ -64,7 +70,13 @@ DB_NAME=archrep
 CORS_ORIGIN=http://<DEMO_HOST>:3000
 DRAWIO_EMBED_BASE=http://<DEMO_HOST>:8080
 ALLOW_INSECURE_RESTART_WITHOUT_SECRET=true
+# AUTH_ENABLED=true
+# JWT_SECRET=…
+# AUTH_BOOTSTRAP_DEMO_PASSWORD=…
+# AUTH_BOOTSTRAP_ARADMIN_PASSWORD=…
 ```
+
+Пользователи `demo` / `aradmin` **не создаются SQL-скриптом**: после наката миграции RBAC они появляются при **старте контейнера API**, если заданы `AUTH_BOOTSTRAP_*_PASSWORD` (см. `docs/access-control-design.md` §3.1). Остальных пользователей — в UI «Настройки → Пользователи».
 
 **Важно:** файл должен быть с окончаниями строк **LF** (в репозитории помогает `.gitattributes`). Скрипт деплоя на сервере дополнительно выполняет `sed` для снятия CR, но правильные LF в репозитории предпочтительны.
 

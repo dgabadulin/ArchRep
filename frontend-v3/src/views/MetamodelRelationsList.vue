@@ -3,9 +3,21 @@
     <div class="page-head">
       <h1>Связи объектов управления</h1>
       <div class="head-actions">
-        <router-link :to="linkTo('/metamodel-relations/new')" class="btn btn-primary">Добавить связь</router-link>
+        <router-link
+          v-if="canWrite"
+          :to="linkTo('/metamodel-relations/new')"
+          class="btn btn-primary"
+        >
+          Добавить связь
+        </router-link>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" disabled title="Экспорт в Excel для раздела пока не реализован">
+          <button
+            v-if="canExport"
+            type="button"
+            class="btn btn-excel btn-same"
+            disabled
+            title="Экспорт в Excel для раздела пока не реализован"
+          >
             Экспорт в Excel
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
@@ -47,7 +59,13 @@
           <tr v-for="row in sortedList" :key="row.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <router-link :to="linkTo(`/metamodel-relations/${row.id}/edit`)" class="link">Изменить</router-link>
+                <router-link
+                  v-if="canRead"
+                  :to="linkTo(`/metamodel-relations/${row.id}/edit`)"
+                  class="link"
+                >
+                  {{ canWrite ? 'Изменить' : 'Открыть' }}
+                </router-link>
               </template>
               <template v-else>{{ cellValue(row, key) }}</template>
             </td>
@@ -66,8 +84,10 @@ import { relationDisplayName } from '../api/graphApi'
 import TableToolbar from '../components/TableToolbar.vue'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
 import { useListSearch } from '../composables/useListSearch'
+import { usePermissions } from '../composables/usePermissions'
 
 const { search, linkTo } = useListSearch()
+const { canRead, canWrite, canExport, canDelete } = usePermissions('metamodel_relation')
 
 const columns = [
   { key: 'from', label: 'От (тип : id)', defaultVisible: true },

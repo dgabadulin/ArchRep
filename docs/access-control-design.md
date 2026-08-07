@@ -1,7 +1,7 @@
 # Разграничение прав доступа в ИСАР
 
-**Статус:** **не реализовано в репозитории** — проектная спека. В коде продукта RBAC/аутентификация по этой модели **отсутствуют** (API открыт, как в §2).  
-**Версия:** 0.3.6  
+**Статус:** **реализация в коде (#66)** — локальный login/JWT, таблицы RBAC, middleware, UI login + администрирование; default `AUTH_ENABLED=false` (open mode).  
+**Версия:** 0.3.13  
 **GitHub:** https://github.com/dgabadulin/ArchRep/issues/66  
 **Связанные материалы:** `docs/settings-parameters-design.md` (Keycloak — фаза позже), `docs/data-import-service.md`, `docs/web-resource-registry-schema.md`, `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`, `.env.example` (`AUTH_ENABLED`, bootstrap)
 
@@ -67,24 +67,41 @@
 | `demo` | Демонстрационный вход с полным доступом |
 | `aradmin` | Администратор репозитория/платформы |
 
+**Где создаются (нет отдельного SQL-скрипта):**
+
+| Что | Где |
+|-----|-----|
+| Bootstrap `demo` / `aradmin` | Код **`backend/auth/bootstrapAuth.js`**, вызывается при старте API из `backend/index.js` (после миграций и `loadParams`) |
+| Матрица ролей → permissions | Тот же bootstrap (`ensureRolesAndPermissions`) + сиды permissions/ролей в dual-миграции `DB/scripts/migrate_20260807120000_rbac_auth_tables.sql` |
+| Остальные пользователи | UI **Администрирование → Пользователи** / API `POST /api/admin/users` (нужны `users:write`, роли — `roles:assign`) |
+
+Plaintext паролей в SQL-миграциях и в git **не допускается** — поэтому bootstrap не вынесен в `DB/scripts/*.sql`, а выполняется в runtime из env.
+
 Правила:
 
-- В БД хранится только **`password_hash`** (bcrypt или argon2id). Plaintext паролей в SQL-миграциях и в git **не допускается**.
+- В БД хранится только **`password_hash`** (в текущей реализации — **scrypt**, формат `scrypt$N$r$p$salt$hash`).
 - Пароли задаются **только через env** на стенде (см. таблицу переменных ниже).
-- Создание **идемпотентное**: если пользователь с таким `login` уже есть — не дублировать; hash обновлять только при `AUTH_BOOTSTRAP_RESET_PASSWORDS=true`.
+- Создание **идемпотентное**: если пользователь с таким `login` уже есть — не дублировать; **роли не менять и не добавлять** (в т.ч. не возвращать снятый `SYSTEM_ADMIN`); hash обновлять только при `AUTH_BOOTSTRAP_RESET_PASSWORDS=true`.
+- Роль `SYSTEM_ADMIN` назначается **только при первом создании** `demo` / `aradmin`.
 - Если соответствующий `*_PASSWORD` в env **не задан** — пользователя с этим login **не создавать** (или не менять пароль): bootstrap не должен падать в CI без секретов.
 - Флаг `must_change_password` при создании bootstrap-пользователей задаётся **из env** (`AUTH_BOOTSTRAP_MUST_CHANGE_PASSWORD`).
 
 | Переменная env | Смысл |
 |----------------|--------|
 | `AUTH_ENABLED` | Вкл/выкл авторизации; default если не задан — `false` |
-| `JWT_SECRET` | Секрет подписи локального JWT (обязателен при `AUTH_ENABLED=true`) |
+| `JWT_SECRET` | Секрет подписи локального JWT (обязателен при `AUTH_ENABLED=true`); пример длины — ≥32 байт случайных данных (Base64) |
 | `AUTH_BOOTSTRAP_DEMO_PASSWORD` | Plaintext пароль для login `demo` → hash при bootstrap |
 | `AUTH_BOOTSTRAP_ARADMIN_PASSWORD` | Plaintext пароль для login `aradmin` → hash при bootstrap |
 | `AUTH_BOOTSTRAP_RESET_PASSWORDS` | `true` — перезаписать hash существующих `demo`/`aradmin` из env при старте/bootstrap (осторожно на prod) |
 | `AUTH_BOOTSTRAP_MUST_CHANGE_PASSWORD` | `true`/`false` — значение `must_change_password` для создаваемых bootstrap-пользователей |
 
-Шаблон: `.env.example`. Значения с реальными паролями — только в `.env.*` на сервере / secret manager, не в репозитории.
+Куда класть env на стендах:
+
+| Стенд / скрипт | Файл |
+|----------------|------|
+| Demo (`deploy_demo_api` / `deploy_demo_full`) | **`infra/demo/env.demo`** |
+| Prod-скрипт (`deploy_local` → `infra/prod/deploy.bat`) | **`.env.production`** в корне репозитория |
+| Шаблон без секретов | **`.env.example`**, **`infra/demo/env.demo.example`** |
 
 **Фаза A (первая реализация) — локальная авторизация в БД ИСАР** (при `AUTH_ENABLED=true`)
 
@@ -133,7 +150,7 @@ Effective permissions = объединение permissions всех назнач
 | `VIEWER` | Наблюдатель | Чтение каталогов, аналитика, дашборды, экспорт где разрешён |
 | `ARCHITECT` | Архитектор | CRUD доменных реестров, ADR, интеграции, диаграммы, связи метамодели |
 | `REPOSITORY_ADMIN` | Администратор репозитория | Как ARCHITECT + параметры, справочники, сервисные операции, пересборка, пользователи/роли |
-| `SYSTEM_ADMIN` | Администратор платформы | Как REPOSITORY_ADMIN + restart API |
+| `SYSTEM_ADMIN` | Администратор платформы | **Весь каталог permissions** (при старте API матрица роли пересобирается из `permissionsCatalog.js`) |
 
 Роли системные (`is_system`): коды фиксированы, удалять нельзя; матрица permission сидится миграциями.
 
@@ -206,11 +223,20 @@ Effective permissions = объединение permissions всех назнач
 | `settings_parameters:read` / `write` | Системные параметры |
 | `service_operations:execute` | Сервисные операции UI (пересборка и пр., **кроме** импорта данных) |
 | `import:execute` | Сервисный импорт Excel: экран `/settings/service-operations/import` и `/api/import/*` |
-| `users:read` / `write` | Учётные записи приложения |
-| `roles:read` / `assign` | Просмотр ролей и назначение ролей пользователям |
+| `users:read` | Список и карточка учётных записей (`ar_app_users`) |
+| `users:write` | Создание/изменение пользователя, активность, сброс пароля админом, `must_change_password` |
+| `users:delete` | Удаление учётной записи (кроме запрета удалить себя / последнего SYSTEM_ADMIN — правило реализации) |
+| `users:export` | Выгрузка списка пользователей в Excel |
+| `roles:read` | Справочник ролей и просмотр матрицы роль→permission |
+| `roles:assign` | Назначение и снятие ролей пользователю (`ar_user_roles`) |
+| `roles:write` | Изменение названия/описания роли и состава `ar_role_permissions` |
 | `system_admin:restart` | Перезапуск процесса API |
 
 Импорт Excel: доступ к экрану и API — **`import:execute`**. На `apply` дополнительно требуется `<resource>:write` целевого реестра (например `web_resource:write`). Выгрузка из списка реестра — `<resource>:export`; шаблон/экспорт из формы импорта — `import:execute`.
+
+Редактирование состава permissions у ролей (`ar_role_permissions`) — в UI через экран роли (`roles:write`). Сиды/миграции и bootstrap по-прежнему задают исходную матрицу.
+
+Смена **своего** пароля (залогиненным пользователем) — без `users:write`; отдельный endpoint после auth.
 
 ### 4.7. Публичные endpoint (без JWT)
 
@@ -264,8 +290,13 @@ Effective permissions = объединение permissions всех назнач
 | `settings_parameters:write` | — | — | W | W |
 | `service_operations:execute` | — | — | X | X |
 | `import:execute` | — | — | X | X |
-| `users:read` / `write` | — | — | R,W | R,W |
-| `roles:read` / `assign` | — | — | R,A | R,A |
+| `users:read` | — | — | R | R |
+| `users:write` | — | — | W | W |
+| `users:delete` | — | — | D | D |
+| `users:export` | — | — | E | E |
+| `roles:read` | — | — | R | R |
+| `roles:assign` | — | — | A | A |
+| `roles:write` | — | — | W | W |
 | `system_admin:restart` | — | — | — | X |
 
 ---
@@ -303,9 +334,13 @@ Effective permissions = объединение permissions всех назнач
 | 25 | Параметры | `/settings/parameters` | `settings_parameters:read` | `settings_parameters:write` | — | |
 | 26 | Сервисные операции | `/settings/service-operations` | `service_operations:execute` | — | — | |
 | 26a | Импорт данных | `/settings/service-operations/import` | `import:execute` | — | — | apply → ещё `<resource>:write` |
-| 27 | Пользователи и роли *(новый UI)* | `/settings/users` (условно) | `users:read` | `users:write`, `roles:assign` | — | |
+| | **Администрирование** (отдельная группа меню, рядом с Настройками) |
+| 27 | Пользователи | `/settings/administration/users` | `users:read` | `users:write` | `users:delete` | export → `users:export`; пункт меню при `users:read` |
+| 28 | Роли | `/settings/administration/roles` (+ edit) | `roles:read` | `roles:write` | — | назначение ролей пользователям — `roles:assign`; правка матрицы role↔permission — `roles:write` |
 
-**Фронт:** `requiredPermissions` в `menu.js` / `meta` маршрута; guard `router.beforeEach`; кнопки по `write` / `delete` / `export`.
+Группа меню **Администрирование** (на одном уровне с **Настройки**) показывается, если есть хотя бы одно из: `users:read`, `roles:read`.
+
+**Фронт:** `requiredPermissions` в `menu.js` / `meta` маршрута; guard `router.beforeEach`; кнопки по `write` / `delete` / `export` / `assign`.
 
 ---
 
@@ -338,11 +373,17 @@ Effective permissions = объединение permissions всех назнач
 |-----|------------|
 | `/api/ar-systems`, add/update | `system:*` |
 | `/api/ar-systems/:id/system-functions` | `system_function:*` |
-| `/api/integration-flows` | `integration_flow:*` |
+| `GET /api/integration-flows?system_id=` | **anyOf** `integration_flow:read` \| `system:read` (срез карточки ИС) |
+| `/api/integration-flows` (реестр / карточка потока) | `integration_flow:*` |
 | `/api/web-resources` | `web_resource:*` |
-| `/api/partners` | `partner:*` |
-| `/api/ar-employees` | `employee:*` |
-| `/api/systems-technologies` | `system:write` + `technology:read` |
+| `GET /api/partners` (список) | **anyOf** `partner:read` \| `system:read` (lookup); Excel → `partner:export` |
+| `/api/partners` (карточка / мутации) | `partner:*` |
+| `GET /api/ar-employees` (список) | **anyOf** `employee:read` \| `system:read` |
+| `/api/ar-employees` (карточка / мутации) | `employee:*` |
+| `GET /api/technologies` (список) | **anyOf** `technology:read` \| `system:read` |
+| `GET/POST/DELETE /api/systems-technologies` | `system:read` / `system:write` (связь на карточке ИС) |
+
+См. §10.6 (реестр ≠ lookup, вкладки-срезы карточки).
 
 ### 7.4. Technology / Business / Metamodel
 
@@ -365,7 +406,12 @@ Effective permissions = объединение permissions всех назнач
 | `/api/settings-parameters` | `settings_parameters:*` |
 | Справочники статусов/типов (в т.ч. web-resource refs) | `references:*` (read для форм — мягко при любом `*:write` домена) |
 | `/api/import/entities`, `template`, `export`, `validate`, `apply` | `import:execute`; apply также требует `<entity>:write` |
-| `/api/users`, назначение ролей | `users:*`, `roles:assign` |
+| `/api/users` GET list/get | `users:read` |
+| `/api/users` POST/PUT, reset-password, activate | `users:write` |
+| `/api/users` DELETE | `users:delete` |
+| `/api/users/:id/roles` GET | `roles:read` или `users:read` |
+| `/api/users/:id/roles` PUT/PATCH (назначение) | `roles:assign` |
+| `/api/roles` GET (список + permissions роли) | `roles:read` |
 | `/api/admin/restart-node` | `system_admin:restart` (+ опционально секрет break-glass) |
 
 ---
@@ -378,12 +424,21 @@ Effective permissions = объединение permissions всех назнач
 | Создать / Сохранить | `<resource>:write` |
 | Удалить | `<resource>:delete` |
 | Выгрузить в Excel (из списка) | `<resource>:export` |
+| Вкладки-срезы на карточке ИС (стек, интеграции этой системы) | показ — `system:read`; мутации — `system:write` |
+| Переход из среза в чужую карточку/реестр | право **целевой** сущности (`integration_flow:read` и т.п.) |
+| FK-select (lookup) на форме | не требует `*:read` реестра связанной сущности; «+» — её `:write` |
 | Редактор схемы / инкременты ADRA | `adr_applied:write` |
 | Пересобрать проекции интеграций | `metamodel:rebuild` |
 | Импорт данных (проверить/загрузить) | `import:execute` + на apply ещё `<resource>:write` |
 | Перезапустить API | `system_admin:restart` |
-| Создать пользователя / сбросить пароль | `users:write` |
-| Назначить роли | `roles:assign` |
+| Создать / изменить пользователя, сбросить пароль | `users:write` |
+| Удалить пользователя | `users:delete` |
+| Выгрузить пользователей в Excel | `users:export` |
+| Просмотр ролей и матрицы прав | `roles:read` |
+| Назначить / снять роли пользователю | `roles:assign` |
+| Изменить роль и её permissions | `roles:write` |
+
+Детали UX и согласованность API — §10.6.
 
 ---
 
@@ -467,7 +522,7 @@ ar_user_roles (
 3. `requirePermission(...)` — проверка effective permissions из ролей. Не хватает прав → **403** (см. §10.4).
 4. По умолчанию **deny** для `/api/*`, кроме whitelist: health, login, публичный config.
 
-`requirePermission` принимает один код или список (AND): например импорт apply — `['import:execute', 'web_resource:write']`. В ответе 403 перечисляются **только недостающие** из запрошенных для этого действия.
+`requirePermission` / маппинг маршрутов принимает один код или список (AND): например импорт apply — `['import:execute', 'web_resource:write']`. Для lookup и срезов карточки — `anyOf` (достаточно одного кода). В ответе 403 перечисляются **недостающие** (для anyOf — весь список кандидатов и `required_mode: "anyOf"`).
 
 ### 10.2. Frontend
 
@@ -584,6 +639,34 @@ Content-Type: application/json
 - Embed может быть без auth на уровне nginx.
 - **Сохранение** mxfile — только API с JWT и `adr_applied:write`; отказ — тот же контракт 403.
 
+### 10.6. UI-конвенции RBAC
+
+Эталон — `SystemsList` / `SystemForm`. **Раскатано** на доменные списки/формы (ИС, интеграции, веб-ресурсы, технологии, ADRA/ADR, долг, бизнес-сущности, связи метамодели, принципы), справочники (`ReferencesV2`: `references` / `partner` / `employee` / `metamodel_catalog`) и параметры (`settings_parameters`).
+
+1. **Форма = основной ресурс.** Нет `<host>:write` → режим просмотра: баннер + disabled полей; создание новой записи недоступно без write.
+2. **Скрывать мутации заранее** (`v-if` на «Добавить», «Сохранить», «Удалить», «+»), а не полагаться на UX после 403.
+3. **403 — запасной контур.** Текст на русском с кодом(ами) разрешения; шаблон уже в middleware / `apiErrors`.
+4. **Права в shared-компонентах**, не хардкод на каждой форме (пример: `PartnerSelectField` сам решает показ «+» по `partner:write`).
+5. **Реестр ≠ lookup.** Нет `partner:read` → пункт меню и маршрут реестра партнёров скрыты; FK-select на форме системы при этом работает. Быстрое создание («+») требует `partner:write`.
+6. **Вкладки-срезы текущей сущности** (техстек, интеграции **этой** системы) — часть карточки хоста: показ при `system:read`, мутации при `system:write`. Не прятать из‑за отсутствия `technology:read` / `integration_flow:read`.
+7. **Ссылки в чужую карточку/реестр** — по праву **цели** (например «Открыть/Изменить» поток → `integration_flow:read` / `:write`).
+8. **Пункты меню реестров** по-прежнему на своём `*:read`.
+9. **API согласован с UI:** срез/lookup для карточки и select не должен требовать полный `*:read` связанного реестра (в middleware — `anyOf`, см. `routePermissions.js`). Excel/полный реестр — по-прежнему свои `*:read` / `*:export`.
+10. **Предпочтение hide**, а не массовый `disabled` контролов мутации.
+11. **Фиксация в спеке** (этот раздел) — источник правды при раскатке на другие сущности.
+
+Примеры API (`routePermissions.js`, `anyOf`):
+
+| Запрос | Достаточно |
+|--------|------------|
+| `GET /api/integration-flows?system_id=` | `system:read` / `integration_flow:read` / `adr_applied:read` |
+| `GET /api/ar-systems` (список, FK) | `system:read` или host с FK на ИС (`integration_flow`, `web_resource`, `adr_applied`, `gap`) |
+| `GET /api/partners`, technologies, employees (список) | свой `*:read` или host-форма (`system` / `technology` …) |
+| `GET /api/togaf/organization-units` (список) | `organization_unit:read` или `actor` / `business_service` / `business_function` |
+| Справочники `GET /api/…` (типы/статусы) | `references:read` **или** read хост-формы |
+| `DELETE /api/systems-technologies`, `DELETE` инкрементов ADRA | write хоста (`system:write` / `adr_applied:write`) |
+| `DELETE /api/togaf/relations` с карточки gap | `gap:write` **или** `metamodel_relation:delete` |
+
 ---
 
 ## 11. Этапы внедрения
@@ -631,12 +714,17 @@ Content-Type: application/json
 
 ## 13. Связь с текущими задачами
 
-| Задача / файл | Действие |
-|---------------|----------|
-| `data-import-service.md` | После RBAC: `import:execute` + resource write на apply |
-| `web-resource-registry-schema.md` | Permissions `web_resource:*` |
-| `settings-parameters-design.md` | Keycloak — фаза B; локальный auth не зависит от KC |
-| Demo-стенд | Убрать insecure restart после появления `SYSTEM_ADMIN` |
+| Задача / файл | Связь с RBAC |
+|---------------|--------------|
+| **[#66](https://github.com/dgabadulin/ArchRep/issues/66)** — эта спека | Основная реализация: local auth, роли, middleware, UI login/users |
+| `data-import-service.md` / [#64](https://github.com/dgabadulin/ArchRep/issues/64) | После RBAC: `import:execute`; apply + `<resource>:write` |
+| `web-resource-registry-schema.md` | Permissions `web_resource:*` уже в каталоге §4 |
+| `settings-parameters-design.md` | Keycloak — фаза B; локальный auth и `AUTH_ENABLED` не зависят от KC |
+| `docs/github-issue-drafts/metamodel-rebuild-rbac-ux.md` / [#36](https://github.com/dgabadulin/ArchRep/issues/36) | Endpoint rebuild → `metamodel:rebuild` (+ `service_operations:execute` для UI) |
+| Demo / `.env` | `AUTH_ENABLED`; bootstrap `demo`/`aradmin`; после SYSTEM_ADMIN — убрать `ALLOW_INSECURE_RESTART_WITHOUT_SECRET` на защищённых стендах |
+| `process-issue-tracking.md` | Строка `access-control-design.md` ↔ #66 |
+
+**Администрирование доступа (в объёме #66):** UI группа **Администрирование** (рядом с Настройками): `/settings/administration/users`, `.../roles`; API — `users:read|write|delete|export`, `roles:read|assign|write`.
 
 ---
 
@@ -661,7 +749,8 @@ Content-Type: application/json
 | `employee` | `ar_employees` |
 | `metamodel_relation` | `ar_metamodel_relations` |
 | `metamodel_catalog` | `ar_metamodel_entity_types`, `ar_metamodel_relation_types` |
-| `users` / `roles` | `ar_app_users`, `ar_roles`, `ar_user_roles` |
+| `users` | `ar_app_users` |
+| `roles` | `ar_roles`, `ar_user_roles` (assign); `ar_role_permissions` — только чтение/сиды |
 
 ---
 
@@ -694,3 +783,10 @@ Content-Type: application/json
 | 0.3.4 | 2026-08-07 | Обязательные пользователи `demo` / `aradmin`; пароли через `AUTH_BOOTSTRAP_*` env |
 | 0.3.5 | 2026-08-07 | Решения §12: default AUTH off; config public; multi-role; break-glass; `import:execute`; must_change из env |
 | 0.3.6 | 2026-08-07 | JWT на фронте: `sessionStorage`; §12 полностью закрыт |
+| 0.3.7 | 2026-08-07 | §13 актуализация (#66); permissions users/roles детализированы (`users:delete`, API/UI) |
+| 0.3.8 | 2026-08-07 | §6: UI RBAC в меню Настройки → Администрирование |
+| 0.3.9 | 2026-08-07 | Реализация #66 в коде: dual-миграция, JWT/scrypt, middleware, login + admin UI |
+| 0.3.10 | 2026-08-07 | §3.1: явно — bootstrap в `bootstrapAuth.js` (не SQL); куда класть env на demo/prod |
+| 0.3.11 | 2026-08-07 | §10.6 UI-конвенции RBAC; реестр≠lookup / срезы карточки; API anyOf для пилота ИС |
+| 0.3.12 | 2026-08-07 | Раскатка §10.6 на все доменные реестры + References/Settings; расширен anyOf lookup в API |
+| 0.3.13 | 2026-08-07 | SYSTEM_ADMIN = полный каталог + resync при bootstrap; схемы ADRA: Open/Download в readonly, JWT во вкладке редактора |

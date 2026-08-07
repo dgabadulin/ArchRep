@@ -1,15 +1,17 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование связи' : 'Новая связь метамодели' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn">Назад</router-link>
     </div>
     <form v-if="form" class="form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>metamodel_relation:write</code>.</p>
       <p v-if="isManagedIntegrationProjection" class="banner">
         Проекция интеграционного потока (поток id {{ form.reference_to_baserow }}). Редактируйте запись в
-        <router-link to="/integrations">реестре потоков</router-link>; пересборка проекций — в
-        <router-link to="/settings/service-operations">Настройки → Сервисные операции</router-link>.
+        <router-link v-if="hasPermission('integration_flow:read')" to="/integrations">реестре потоков</router-link><template v-else>реестре потоков</template>; пересборка проекций — в
+        <router-link v-if="hasPermission('service_operations:execute')" to="/settings/service-operations">Настройки → Сервисные операции</router-link><template v-else>Настройки → Сервисные операции</template>.
       </p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-row">
         <label>Тип сущности «От» *</label>
         <select v-model="form.from_entity_type" required :disabled="isManagedIntegrationProjection">
@@ -48,9 +50,10 @@
         <label>Описание</label>
         <textarea v-model="form.description" rows="2" :disabled="isManagedIntegrationProjection"></textarea>
       </div>
+      </fieldset>
       <div class="form-actions">
-        <button v-if="!isManagedIntegrationProjection" type="submit" class="btn btn-primary">Сохранить</button>
-        <router-link :to="listRouteLocation" class="btn">Назад к списку</router-link>
+        <button v-if="canWrite && !isManagedIntegrationProjection" type="submit" class="btn btn-primary">Сохранить</button>
+        <router-link :to="listRouteLocation" class="btn">{{ canWrite ? 'Отмена' : 'Назад к списку' }}</router-link>
       </div>
     </form>
     <div v-else-if="loading" class="msg">Загрузка...</div>
@@ -63,12 +66,18 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { togafApi } from '../api'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation } = useFormListReturn('/metamodel-relations')
+const { canWrite, hasPermission } = usePermissions('metamodel_relation')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новая связь метамодели'
+  return canWrite.value ? 'Редактирование связи' : 'Просмотр связи'
+})
 const form = ref(null)
 const loading = ref(true)
 const error = ref('')
@@ -131,6 +140,7 @@ async function load() {
 }
 
 async function submit() {
+  if (!canWrite.value) return
   if (isManagedIntegrationProjection.value) return
   const payload = {
     from_entity_type: form.value.from_entity_type,
@@ -158,6 +168,21 @@ watch(id, load)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .form {
   max-width: 500px;
   background: var(--ar-surface);

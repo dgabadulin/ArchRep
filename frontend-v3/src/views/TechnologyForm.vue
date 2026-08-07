@@ -1,12 +1,14 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование технологии' : 'Новая технология' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
 
     <div v-if="loading && isEdit" class="loading">Загрузка...</div>
     <form v-else class="card form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>technology:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
         <div class="field field-wide">
           <label>Название <span class="req">*</span></label>
@@ -56,10 +58,11 @@
           <input v-model="form.approve_document" />
         </div>
       </div>
+      </fieldset>
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
+        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К списку' }}</router-link>
       </div>
     </form>
   </div>
@@ -70,14 +73,20 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 import { api } from '../api/client'
 import PartnerSelectField from '../components/PartnerSelectField.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/technologies')
+const { canWrite } = usePermissions('technology')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новая технология'
+  return canWrite.value ? 'Редактирование технологии' : 'Просмотр технологии'
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -174,6 +183,7 @@ watch(() => ({ ...form }), () => {
 }, { deep: true })
 
 async function submit(opts = {}) {
+  if (!canWrite.value) return
   submitError.value = ''
   saving.value = true
   try {
@@ -207,10 +217,28 @@ async function submit(opts = {}) {
   }
 }
 
-useUnsavedGuard(isDirty, () => submit({ skipNavigate: true }))
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  () => submit({ skipNavigate: true })
+)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .error {
   margin-top: 0.5rem;
 }

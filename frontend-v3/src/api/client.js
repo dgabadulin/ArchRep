@@ -1,3 +1,6 @@
+import { getToken, clearToken } from '../auth/session'
+import { messageFromApiError } from '../utils/apiErrors'
+
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
 function buildQuery(params) {
@@ -13,11 +16,30 @@ function buildQuery(params) {
   return s ? '?' + s : ''
 }
 
+function authHeaders() {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function handleUnauthorized(path) {
+  if (path === '/api/auth/login' || path === '/api/config') return
+  clearToken()
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.assign(`/login?redirect=${redirect}`)
+  }
+}
+
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`
+  const { headers: optHeaders = {}, ...rest } = options
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
+    ...rest,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+      ...optHeaders,
+    },
   })
   if (!res.ok) {
     const err = new Error(res.statusText || 'API error')
@@ -26,8 +48,14 @@ async function request(path, options = {}) {
     try {
       const body = JSON.parse(text)
       err.body = body
-      if (body && typeof body.error === 'string') err.message = body.error
-    } catch { err.body = text }
+      err.message = messageFromApiError(res.status, body, res.statusText || 'API error')
+    } catch {
+      err.body = text
+      if (res.status === 403) {
+        err.message = messageFromApiError(403, null, res.statusText)
+      }
+    }
+    if (res.status === 401) handleUnauthorized(path)
     throw err
   }
   if (res.status === 204) return null
@@ -37,7 +65,24 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  login: (body) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  getAuthMe: () => request('/api/auth/me'),
+  changePassword: (body) => request('/api/auth/change-password', { method: 'POST', body: JSON.stringify(body) }),
+  getAdminUsers: (params) => request('/api/admin/users' + buildQuery(params)),
+  getAdminUser: (id) => request(`/api/admin/users/${id}`),
+  createAdminUser: (body) => request('/api/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateAdminUser: (id, body) => request(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAdminUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),
+  setAdminUserRoles: (id, roles) => request(`/api/admin/users/${id}/roles`, { method: 'PUT', body: JSON.stringify({ roles }) }),
+  getAdminRoles: () => request('/api/admin/roles'),
+  getAdminRole: (id) => request(`/api/admin/roles/${id}`),
+  updateAdminRole: (id, body) => request(`/api/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  setAdminRolePermissions: (id, permissions) =>
+    request(`/api/admin/roles/${id}/permissions`, { method: 'PUT', body: JSON.stringify({ permissions }) }),
+  getAdminPermissions: () => request('/api/admin/permissions'),
+
   getSystems: (params) => request('/api/ar-systems' + buildQuery(params)),
+
   getSystem: (id) => request(`/api/ar-systems/${id}`),
   createSystem: (body) => request('/api/add-ar-systems', { method: 'POST', body: JSON.stringify(body) }),
   updateSystem: (id, body) => request(`/api/update-ar-systems/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

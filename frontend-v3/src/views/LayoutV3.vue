@@ -8,11 +8,16 @@
         </router-link>
       </div>
       <nav class="sidebar-nav">
-        <router-link to="/" class="nav-link nav-link-home" :class="{ active: route.path === '/' }">
+        <router-link
+          v-if="canSeeHome"
+          to="/"
+          class="nav-link nav-link-home"
+          :class="{ active: route.path === '/' }"
+        >
           <component :is="getMenuIconComponent('home')" :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
           Главная
         </router-link>
-        <template v-for="item in menuItems" :key="item.label">
+        <template v-for="item in visibleMenu" :key="item.label">
           <div v-if="item.children?.length" class="nav-group">
             <button type="button" class="nav-group-title" :aria-expanded="isGroupOpen(item.label)" @click="toggleGroup(item.label)">
               <component :is="getMenuIconComponent(item.icon)" :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
@@ -20,10 +25,33 @@
               <span class="nav-group-chevron">{{ isGroupOpen(item.label) ? '▼' : '▶' }}</span>
             </button>
             <div v-show="isGroupOpen(item.label)" class="nav-group-children">
-              <router-link v-for="child in item.children" :key="child.label" :to="child.path" class="nav-link nav-link-sub" active-class="active">
-                <component :is="getMenuIconComponent(child.icon)" :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
-                {{ child.label }}
-              </router-link>
+              <template v-for="child in item.children" :key="child.label">
+                <div v-if="child.children?.length" class="nav-subgroup">
+                  <div class="nav-subgroup-title">
+                    <component :is="getMenuIconComponent(child.icon)" :size="14" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
+                    {{ child.label }}
+                  </div>
+                  <router-link
+                    v-for="leaf in child.children"
+                    :key="leaf.label"
+                    :to="leaf.path"
+                    class="nav-link nav-link-sub nav-link-nested"
+                    active-class="active"
+                  >
+                    <component :is="getMenuIconComponent(leaf.icon)" :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
+                    {{ leaf.label }}
+                  </router-link>
+                </div>
+                <router-link
+                  v-else-if="child.path"
+                  :to="child.path"
+                  class="nav-link nav-link-sub"
+                  active-class="active"
+                >
+                  <component :is="getMenuIconComponent(child.icon)" :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
+                  {{ child.label }}
+                </router-link>
+              </template>
             </div>
           </div>
           <router-link v-else-if="item.path" :to="item.path" class="nav-link" active-class="active">
@@ -32,6 +60,11 @@
           </router-link>
         </template>
       </nav>
+      <div v-if="authEnabled && currentUser" class="sidebar-user">
+        <div class="sidebar-user-name">{{ currentUser.display_name || currentUser.login }}</div>
+        <router-link to="/change-password" class="btn-logout btn-logout-link">Сменить пароль</router-link>
+        <button type="button" class="btn-logout" @click="logout">Выйти</button>
+      </div>
     </aside>
     <main class="main" :class="{ 'main--minimal': minimalLayout }">
       <Breadcrumbs v-if="!minimalLayout" />
@@ -42,15 +75,28 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { menuItems } from '../config/menu'
+import { useRoute, useRouter } from 'vue-router'
+import { menuItems, filterMenuItems } from '../config/menu'
 import { getMenuIconComponent } from '../config/icons'
 import Breadcrumbs from '../components/Breadcrumbs.vue'
 import { getConfig } from '@/config/params'
+import { authStore } from '../auth/authStore'
 
 const route = useRoute()
+const router = useRouter()
 const minimalLayout = computed(() => Boolean(route.meta.minimalLayout))
 const expandedGroups = ref([])
+const authEnabled = computed(() => authStore.state.authEnabled)
+const currentUser = computed(() => authStore.state.user)
+const canSeeHome = computed(() => authStore.hasPermission('dashboard:read'))
+const visibleMenu = computed(() =>
+  filterMenuItems(menuItems, (code) => authStore.hasPermission(code))
+)
+
+function logout() {
+  authStore.logout()
+  router.replace({ name: 'login' })
+}
 
 function getCookie() {
   const COOKIE_NAME = getConfig().ARR_MENU_COOKIE || 'ar-v3-menu-expanded'
@@ -70,12 +116,17 @@ function setCookie(arr) {
   const maxAge = days * 24 * 60 * 60
   document.cookie = COOKIE_NAME + '=' + encodeURIComponent(JSON.stringify(arr)) + ';path=/;max-age=' + maxAge
 }
+function menuItemMatchesPath(item, path) {
+  if (item.path && (path === item.path || path.startsWith(item.path + '/'))) return true
+  if (item.children?.length) return item.children.some((c) => menuItemMatchesPath(c, path))
+  return false
+}
+
 function openGroupForCurrentRoute() {
   const path = route.path
-  for (const item of menuItems) {
+  for (const item of visibleMenu.value) {
     if (!item.children?.length) continue
-    const hasActiveChild = item.children.some(c => c.path && (path === c.path || path.startsWith(c.path + '/')))
-    if (hasActiveChild && !expandedGroups.value.includes(item.label)) {
+    if (menuItemMatchesPath(item, path) && !expandedGroups.value.includes(item.label)) {
       expandedGroups.value = [...expandedGroups.value, item.label]
       setCookie(expandedGroups.value)
     }
@@ -252,5 +303,55 @@ function toggleGroup(label) {
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+}
+.sidebar-user {
+  flex-shrink: 0;
+  border-top: 1px solid var(--ar-border);
+  padding: 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sidebar-user-name {
+  font-size: 0.8rem;
+  color: var(--ar-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn-logout {
+  align-self: flex-start;
+  border: 1px solid var(--ar-border);
+  background: transparent;
+  border-radius: var(--ar-radius-sm);
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--ar-text);
+  text-decoration: none;
+}
+.btn-logout:hover {
+  border-color: var(--ar-accent);
+  color: var(--ar-link);
+}
+.btn-logout-link {
+  display: inline-block;
+}
+.nav-subgroup {
+  margin: 0.15rem 0 0.35rem;
+}
+.nav-subgroup-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem 0.25rem 1.85rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ar-muted);
+}
+.nav-link-nested {
+  padding-left: 2.35rem !important;
 }
 </style>

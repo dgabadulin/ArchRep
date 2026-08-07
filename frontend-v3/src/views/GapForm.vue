@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ isEdit ? 'Редактирование архитектурного долга' : 'Новый архитектурный долг' }}</h1>
+      <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
@@ -14,6 +14,8 @@
 
     <div v-if="loading && (activeTab === 'data' || !isEdit)" class="loading">Загрузка...</div>
     <form v-else-if="activeTab === 'data' || !isEdit" class="card form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>gap:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
         <div class="field field-code" v-if="isEdit">
           <label>Код</label>
@@ -80,15 +82,17 @@
           <input v-model="form.source" placeholder="Источник информации" />
         </div>
       </div>
+      </fieldset>
       <div v-if="submitError" class="error">{{ submitError }}</div>
       <div class="actions actions-bottom">
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">Отмена</router-link>
+        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
       </div>
     </form>
 
-    <!-- Вкладка «Связи» -->
+    <!-- Вкладка «Связи» — host slice (gap:read / gap:write) -->
     <div v-else-if="isEdit && activeTab === 'relations'" class="card relations-tab">
+      <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>gap:write</code>.</p>
       <RelationPickerModal
         v-model="showRelationPicker"
         title="Добавить связь"
@@ -109,7 +113,13 @@
           только строки из таблицы слева.
         </template>
         <template #toolbar>
-          <button type="button" class="btn btn-primary btn-sm" :disabled="relationsSaving" @click="showRelationPicker = true">
+          <button
+            v-if="canWrite"
+            type="button"
+            class="btn btn-primary btn-sm"
+            :disabled="relationsSaving"
+            @click="showRelationPicker = true"
+          >
             {{ relationsSaving ? 'Добавление...' : 'Добавить связь' }}
           </button>
         </template>
@@ -120,7 +130,7 @@
                 <th>Объект «от»</th>
                 <th>Связь</th>
                 <th>Объект «к»</th>
-                <th class="col-actions">Действия</th>
+                <th v-if="canWrite" class="col-actions">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -128,13 +138,16 @@
                 <td>{{ r._fromLabel }}</td>
                 <td>{{ r._relLabel }}</td>
                 <td>{{ r._toLabel }}</td>
-                <td class="col-actions">
+                <td v-if="canWrite" class="col-actions">
                   <button type="button" class="btn-link danger" @click="removeRelation(r.id)">Удалить</button>
                 </td>
               </tr>
             </tbody>
           </table>
-          <p v-if="relations.length === 0" class="empty">Нет связей. Добавьте связь с системой, технологией или другой сущностью.</p>
+          <p v-if="relations.length === 0" class="empty">
+            Нет связей.
+            <template v-if="canWrite"> Добавьте связь с системой, технологией или другой сущностью.</template>
+          </p>
         </template>
       </EntityLinksTableGraph>
     </div>
@@ -151,12 +164,18 @@ import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
 import { fetchEntity } from '../api/graphApi'
 import { nodeId } from '../utils/entityTypeConfig'
 import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
 
 const route = useRoute()
 const router = useRouter()
 const { listRouteLocation, routeWithListSearch } = useFormListReturn('/architecture-debt')
+const { canWrite } = usePermissions('gap')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новый архитектурный долг'
+  return canWrite.value ? 'Редактирование архитектурного долга' : 'Просмотр архитектурного долга'
+})
 
 const loading = ref(true)
 const saving = ref(false)
@@ -281,6 +300,7 @@ async function load() {
 }
 
 async function submit() {
+  if (!canWrite.value) return
   saving.value = true
   submitError.value = ''
   const body = {
@@ -329,6 +349,7 @@ async function loadRelations() {
 }
 
 async function onRelationPicked(payload) {
+  if (!canWrite.value) return
   if (!payload.to_entity_type || !payload.to_entity_id || !payload.relation_type) return
   relationsSaving.value = true
   try {
@@ -348,6 +369,7 @@ async function onRelationPicked(payload) {
 }
 
 async function removeRelation(relId) {
+  if (!canWrite.value) return
   if (!confirm('Удалить связь?')) return
   try {
     await togafApi.deleteRelation(relId)
@@ -370,6 +392,21 @@ watch(id, load)
 </script>
 
 <style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
 .field input.readonly {
   background: var(--ar-table-head-bg);
 }

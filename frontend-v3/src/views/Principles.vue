@@ -3,9 +3,22 @@
     <div class="page-head">
       <h1>Архитектурные принципы</h1>
       <div class="head-actions">
-        <button type="button" class="btn btn-primary" @click="openForm()">Добавить принцип</button>
+        <button
+          v-if="canWrite"
+          type="button"
+          class="btn btn-primary"
+          @click="openForm()"
+        >
+          Добавить принцип
+        </button>
         <div class="head-buttons-row">
-          <button type="button" class="btn btn-excel btn-same" :disabled="excelLoading" @click="exportExcel">
+          <button
+            v-if="canExport"
+            type="button"
+            class="btn btn-excel btn-same"
+            :disabled="excelLoading"
+            @click="exportExcel"
+          >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
           <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
@@ -47,8 +60,22 @@
           <tr v-for="r in sortedList" :key="r.id">
             <td v-for="key in visibleCols" :key="key">
               <template v-if="key === 'actions'">
-                <button type="button" class="btn-link" @click="openForm(r)">Изменить</button>
-                <button type="button" class="btn-link danger" @click="remove(r.id)">Удалить</button>
+                <button
+                  v-if="canRead"
+                  type="button"
+                  class="btn-link"
+                  @click="openForm(r)"
+                >
+                  {{ canWrite ? 'Изменить' : 'Открыть' }}
+                </button>
+                <button
+                  v-if="canDelete"
+                  type="button"
+                  class="btn-link danger"
+                  @click="remove(r.id)"
+                >
+                  Удалить
+                </button>
               </template>
               <template v-else-if="key === 'statement'">{{ (r.statement || '—').slice(0, 80) }}{{ (r.statement && r.statement.length > 80) ? '…' : '' }}</template>
               <template v-else-if="key === 'is_approved'">{{ r.is_approved ? 'Да' : 'Нет' }}</template>
@@ -62,16 +89,20 @@
 
     <div v-if="form" class="modal-overlay">
       <div class="modal modal-wide">
-        <h3>{{ form.id ? 'Изменить принцип' : 'Новый принцип' }}</h3>
-        <div class="form-row"><label>Наименование *</label><input v-model="form.name" required /></div>
-        <div class="form-row"><label>Утверждение</label><textarea v-model="form.statement" rows="2"></textarea></div>
-        <div class="form-row"><label>Обоснование</label><textarea v-model="form.rationale" rows="2"></textarea></div>
-        <div class="form-row"><label>Применение</label><textarea v-model="form.implications" rows="2"></textarea></div>
-        <div class="form-row"><label>Утверждён</label><input v-model="form.is_approved" type="checkbox" /></div>
-        <div class="form-row"><label>Документ утверждения</label><input v-model="form.approve_document" /></div>
+        <h3>{{ formTitle }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canWrite">
+          <div class="form-row"><label>Наименование *</label><input v-model="form.name" required /></div>
+          <div class="form-row"><label>Утверждение</label><textarea v-model="form.statement" rows="2"></textarea></div>
+          <div class="form-row"><label>Обоснование</label><textarea v-model="form.rationale" rows="2"></textarea></div>
+          <div class="form-row"><label>Применение</label><textarea v-model="form.implications" rows="2"></textarea></div>
+          <div class="form-row"><label>Утверждён</label><input v-model="form.is_approved" type="checkbox" /></div>
+          <div class="form-row"><label>Документ утверждения</label><input v-model="form.approve_document" /></div>
+        </fieldset>
         <div class="modal-actions">
-          <button type="button" class="btn btn-primary" @click="save">Сохранить</button>
-          <button type="button" class="btn btn-secondary" @click="form = null">Отмена</button>
+          <button v-if="canWrite" type="button" class="btn btn-primary" @click="save">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="form = null">
+            {{ canWrite ? 'Отмена' : 'Закрыть' }}
+          </button>
         </div>
       </div>
     </div>
@@ -84,6 +115,9 @@ import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { usePermissions } from '../composables/usePermissions'
+
+const { canRead, canWrite, canExport, canDelete } = usePermissions('principle')
 
 const principleColumns = [
   { key: 'id', label: 'ID', defaultVisible: false },
@@ -120,6 +154,11 @@ const sortedList = computed(() => {
     return order === 'asc' ? cmp : -cmp
   })
   return rows
+})
+
+const formTitle = computed(() => {
+  if (!form.value?.id) return 'Новый принцип'
+  return canWrite.value ? 'Изменить принцип' : 'Просмотр принципа'
 })
 
 function cellVal(r, key) {
@@ -191,13 +230,15 @@ async function exportExcel() {
 }
 
 function openForm(r) {
+  if (!r && !canWrite.value) return
+  if (r && !canRead.value) return
   form.value = r
     ? { id: r.id, name: r.name, statement: r.statement ?? '', rationale: r.rationale ?? '', implications: r.implications ?? '', is_approved: !!r.is_approved, approve_document: r.approve_document ?? '' }
     : { name: '', statement: '', rationale: '', implications: '', is_approved: false, approve_document: '' }
 }
 
 async function save() {
-  if (!form.value?.name) return
+  if (!canWrite.value || !form.value?.name) return
   try {
     if (form.value.id) await api.updatePrinciple(form.value.id, form.value)
     else await api.createPrinciple(form.value)
@@ -209,6 +250,7 @@ async function save() {
 }
 
 async function remove(id) {
+  if (!canDelete.value) return
   if (!confirm('Удалить принцип?')) return
   try {
     await api.deletePrinciple(id)
@@ -286,6 +328,12 @@ async function remove(id) {
   margin: 0 0 1rem;
   font-size: 1.1rem;
   color: var(--ar-text);
+}
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
 }
 .form-row {
   margin-bottom: 0.75rem;
