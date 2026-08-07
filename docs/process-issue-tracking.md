@@ -21,6 +21,7 @@
 | `issue-52-system-functions-dual-listbox.md` | Функции систем в заключении (Dual Listbox) | [#52](https://github.com/dgabadulin/ArchRep/issues/52) |
 | `issue-56-analyzer-module-integration-projections.md` | Проекции интеграций с модулями; граф без дубля из API потоков | [#56](https://github.com/dgabadulin/ArchRep/issues/56) |
 | `data-import-service.md` | Сервисный импорт данных (пилот: веб-ресурсы) | [#64](https://github.com/dgabadulin/ArchRep/issues/64) |
+| `access-control-design.md` | RBAC: локальная авторизация, роли, проверки API/UI | [#66](https://github.com/dgabadulin/ArchRep/issues/66) |
 
 **Закрытые (справочно):** страница **Настройки → Сервисные операции** и перенос пересборки потоков — [#39](https://github.com/dgabadulin/ArchRep/issues/39) (закрыт).
 
