@@ -81,6 +81,17 @@ export const authStore = {
     return data
   },
 
+  /** После OIDC callback: сохранить JWT и подтянуть /me. */
+  async acceptAccessToken(token) {
+    if (!token) throw new Error('empty token')
+    setToken(token)
+    state.authEnabled = true
+    const me = await api.getAuthMe()
+    applyMe(me)
+    state.ready = true
+    return me
+  },
+
   logout() {
     clearToken()
     state.user = null

@@ -23,6 +23,9 @@ const DEFAULTS = {
   DRAWIO_EMBED_BASE: '',
   /** URL iframe «Тех.радар» (из /api/config); до загрузки конфига — пусто. */
   TECH_RADAR_EMBED_URL: '',
+  /** Keycloak SSO flags from GET /api/config (фаза B). */
+  keycloak_enabled: false,
+  keycloak_login_mode: 'button',
 }
 
 let config = null

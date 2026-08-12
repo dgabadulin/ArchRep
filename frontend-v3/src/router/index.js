@@ -11,6 +11,12 @@ const routes = [
     meta: { title: 'Вход', public: true },
   },
   {
+    path: '/login/oidc-callback',
+    name: 'oidc-callback',
+    component: () => import('../views/OidcCallbackView.vue'),
+    meta: { title: 'SSO', public: true },
+  },
+  {
     path: '/',
     component: LayoutV3,
     children: [
@@ -90,11 +96,14 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (!authStore.state.ready) return true
   const authOn = authStore.state.authEnabled
+  const isKeycloakOnly = authStore.state.user?.auth_provider === 'keycloak'
 
-  if (to.name === 'login') {
+  if (to.name === 'login' || to.name === 'oidc-callback') {
     if (!authOn) return { path: '/' }
-    if (getToken() && authStore.state.user) {
-      if (authStore.state.user.must_change_password) return { name: 'change-password' }
+    if (to.name === 'login' && getToken() && authStore.state.user) {
+      if (!isKeycloakOnly && authStore.state.user.must_change_password) {
+        return { name: 'change-password' }
+      }
       return { path: '/' }
     }
     return true
@@ -104,8 +113,13 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
+  if (to.name === 'change-password' && isKeycloakOnly) {
+    return { name: 'home' }
+  }
+
   if (
     authOn &&
+    !isKeycloakOnly &&
     authStore.state.user?.must_change_password &&
     to.name !== 'change-password' &&
     to.name !== 'login'

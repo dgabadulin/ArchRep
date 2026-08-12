@@ -22,7 +22,13 @@ function authHeaders() {
 }
 
 function handleUnauthorized(path) {
-  if (path === '/api/auth/login' || path === '/api/config') return
+  if (
+    path === '/api/auth/login' ||
+    path === '/api/config' ||
+    path.startsWith('/api/auth/oidc/')
+  ) {
+    return
+  }
   clearToken()
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
     const redirect = encodeURIComponent(window.location.pathname + window.location.search)

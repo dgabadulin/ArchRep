@@ -23,6 +23,7 @@ const {
   DEFAULT_DRAWIO_LAYOUT_STYLE,
 } = require('./drawioStyles');
 const { isAuthEnabled, assertAuthConfig } = require('./auth/authConfig');
+const { publicKeycloakFlags } = require('./auth/keycloakConfig');
 const { createAuthMiddleware } = require('./auth/middleware');
 const { createAuthRouter } = require('./auth/authRoutes');
 const { createAdminRouter } = require('./auth/adminRoutes');
@@ -305,6 +306,7 @@ app.get('/api/config', (req, res) => {
     out.TECH_RADAR_EMBED_URL = String(techRadarEnv).trim();
   }
   out.auth_enabled = isAuthEnabled();
+  Object.assign(out, publicKeycloakFlags());
   res.json(out);
 });
 

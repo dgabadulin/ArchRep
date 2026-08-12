@@ -8,20 +8,40 @@
           <h1>Вход</h1>
         </div>
       </div>
-      <p class="lead">Локальная учётная запись (login / пароль).</p>
+      <p class="lead">
+        {{
+          keycloakEnabled
+            ? 'Локальная учётная запись или корпоративный SSO.'
+            : 'Локальная учётная запись (login / пароль).'
+        }}
+      </p>
 
-      <div class="form-row">
-        <label>Логин <span class="req">*</span></label>
-        <input v-model="login" type="text" autocomplete="username" required autofocus />
-      </div>
-      <div class="form-row">
-        <label>Пароль <span class="req">*</span></label>
-        <input v-model="password" type="password" autocomplete="current-password" required />
-      </div>
-      <p v-if="error" class="form-error">{{ error }}</p>
-      <div class="actions">
-        <button type="submit" class="btn btn-primary" :disabled="busy">
-          {{ busy ? 'Вход…' : 'Войти' }}
+      <template v-if="showLocalForm">
+        <div class="form-row">
+          <label>Логин <span class="req">*</span></label>
+          <input v-model="login" type="text" autocomplete="username" required autofocus />
+        </div>
+        <div class="form-row">
+          <label>Пароль <span class="req">*</span></label>
+          <input v-model="password" type="password" autocomplete="current-password" required />
+        </div>
+        <p v-if="error" class="form-error">{{ error }}</p>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" :disabled="busy">
+            {{ busy ? 'Вход…' : 'Войти' }}
+          </button>
+        </div>
+      </template>
+
+      <div v-if="keycloakEnabled" class="sso-block" :class="{ 'sso-only': !showLocalForm }">
+        <p v-if="ssoHint" class="sso-hint">{{ ssoHint }}</p>
+        <button
+          type="button"
+          class="btn btn-secondary sso-btn"
+          :disabled="busy || ssoBusy"
+          @click="startSso"
+        >
+          {{ ssoBusy ? 'Переход в SSO…' : 'Войти через SSO' }}
         </button>
       </div>
     </form>
@@ -29,9 +49,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authStore } from '../auth/authStore'
+import { getConfig } from '../config/params'
+import { startOidcLogin } from '../auth/oidc'
+import { getToken } from '../auth/session'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +62,59 @@ const login = ref('')
 const password = ref('')
 const error = ref('')
 const busy = ref(false)
+const ssoBusy = ref(false)
+const silentTried = ref(false)
+
+const cfg = computed(() => getConfig())
+const keycloakEnabled = computed(
+  () => Boolean(cfg.value.keycloak_enabled) && authStore.state.authEnabled
+)
+const loginMode = computed(() => String(cfg.value.keycloak_login_mode || 'button').toLowerCase())
+const forceLocal = computed(
+  () => route.query.local === '1' || route.query.local === 'true'
+)
+const showLocalForm = computed(() => {
+  if (!keycloakEnabled.value) return true
+  if (forceLocal.value) return true
+  if (loginMode.value === 'auto') return false
+  return true
+})
+
+const ssoHint = computed(() => {
+  if (route.query.sso_silent === 'failed') {
+    return 'Корпоративная сессия SSO не найдена. Войдите локально или через SSO.'
+  }
+  return ''
+})
+
+function redirectTarget() {
+  return typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+}
+
+function startSso(prompt) {
+  ssoBusy.value = true
+  startOidcLogin({
+    redirect: redirectTarget(),
+    prompt: prompt === 'none' ? 'none' : undefined,
+  })
+}
+
+onMounted(() => {
+  if (typeof route.query.sso_error === 'string' && route.query.sso_error) {
+    error.value = route.query.sso_error
+  }
+  if (!keycloakEnabled.value || getToken() || authStore.state.user) return
+  if (forceLocal.value) return
+
+  if (loginMode.value === 'auto') {
+    startSso()
+    return
+  }
+  if (loginMode.value === 'silent' && !silentTried.value && route.query.sso_silent !== 'failed') {
+    silentTried.value = true
+    startSso('none')
+  }
+})
 
 async function submit() {
   error.value = ''
@@ -49,8 +125,7 @@ async function submit() {
       await router.replace({ name: 'change-password' })
       return
     }
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-    await router.replace(redirect || '/')
+    await router.replace(redirectTarget() || '/')
   } catch (e) {
     error.value = e?.message || 'Ошибка входа'
   } finally {
@@ -125,5 +200,23 @@ h1 {
 }
 .actions {
   margin-top: 1rem;
+}
+.sso-block {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ar-border);
+}
+.sso-block.sso-only {
+  margin-top: 0.25rem;
+  padding-top: 0;
+  border-top: none;
+}
+.sso-btn {
+  width: 100%;
+}
+.sso-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--ar-muted);
 }
 </style>

@@ -1,11 +1,11 @@
 # Разграничение прав доступа в ИСАР
 
 **Статус:** **реализация в коде (#66)** — локальный login/JWT, таблицы RBAC, middleware, UI login + администрирование; default `AUTH_ENABLED=false` (open mode).  
-**Версия:** 0.3.13  
+**Версия:** 0.3.15  
 **GitHub:** https://github.com/dgabadulin/ArchRep/issues/66  
-**Связанные материалы:** `docs/settings-parameters-design.md` (Keycloak — фаза позже), `docs/data-import-service.md`, `docs/web-resource-registry-schema.md`, `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`, `.env.example` (`AUTH_ENABLED`, bootstrap)
+**Связанные материалы:** `docs/settings-parameters-design.md` (параметры; префикс SSO — `SEC_`), `docs/data-import-service.md`, `docs/web-resource-registry-schema.md`, `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`, `.env.example` (`AUTH_ENABLED`, bootstrap)
 
-**Изменения 0.3:** локальная авторизация как первый этап; 4 роли (без DOMAIN_LEAD); упрощение permissions ADRA; веб-ресурсы и сервисный импорт; модель данных без audit log и без кода группы у permission. Выключатель авторизации — **env `AUTH_ENABLED`**, не `ar_parameters`. Обязательные пользователи `demo` и `aradmin` — bootstrap из env.
+**Изменения 0.3:** локальная авторизация как первый этап; 4 роли (без DOMAIN_LEAD); упрощение permissions ADRA; веб-ресурсы и сервисный импорт; модель данных без audit log и без кода группы у permission. Выключатель авторизации — **env `AUTH_ENABLED`**, не `ar_parameters`. Обязательные пользователи `demo` и `aradmin` — bootstrap из env. **Фаза B (Keycloak)** — договорена, в коде **не реализована** (см. §3.1).
 
 ---
 
@@ -18,7 +18,9 @@
 | **Целостность** | Запрет административных и массовых операций без роли. |
 | **Согласованность с TOGAF** | Права по доменам: Governance, Business, Application, Technology, Analytics, Settings. |
 
-**Вне первой очереди:** построчный ABAC по OU/владельцу ИС, роль DOMAIN_LEAD / scope OU, workflow согласования ADR, делегирование прав, Keycloak/OIDC, audit log в БД.
+**Вне первой очереди:** построчный ABAC по OU/владельцу ИС, роль DOMAIN_LEAD / scope OU, workflow согласования ADR, делегирование прав, роли из **групп** Keycloak (этап 2 §3.1), audit log в БД.  
+**Фаза B SSO (этап 1):** BFF OIDC + JIT VIEWER — в коде; см. §3.1.
+**Второй этап после внедрения SSO (явно не в первой поставке KC):** назначение / синхронизация ролей ИСАР из **групп Keycloak** (сейчас роли только в БД).
 
 ---
 
@@ -28,7 +30,7 @@
 |--------|-----------|
 | API | Все `GET/POST/PUT/DELETE /api/*` без проверки пользователя. |
 | Учётные записи | Нет `ar_app_users`; `ar_employees` — каталог, не логин. |
-| SSO | В спеке параметров описан Keycloak (`AR_Keycloak_*`), не внедрён. |
+| SSO | Договорённости фазы B (§3.1) зафиксированы; **в коде не реализовано**. Параметры SSO — префикс `SEC_`. |
 | Админ-действия | Только `ADMIN_API_RESTART_SECRET` / `ALLOW_INSECURE_RESTART_WITHOUT_SECRET` для restart Node. |
 | RBAC в коде | Не реализован. |
 
@@ -103,7 +105,7 @@ Plaintext паролей в SQL-миграциях и в git **не допуск
 | Prod-скрипт (`deploy_local` → `infra/prod/deploy.bat`) | **`.env.production`** в корне репозитория |
 | Шаблон без секретов | **`.env.example`**, **`infra/demo/env.demo.example`** |
 
-**Фаза A (первая реализация) — локальная авторизация в БД ИСАР** (при `AUTH_ENABLED=true`)
+**Фаза A (сейчас, #66) — локальная авторизация в БД ИСАР** (при `AUTH_ENABLED=true`)
 
 | Элемент | Решение |
 |---------|---------|
@@ -113,17 +115,61 @@ Plaintext паролей в SQL-миграциях и в git **не допуск
 | Bootstrap | Обязательные `demo` и `aradmin` (SYSTEM_ADMIN) из env — см. выше |
 | Keycloak | Не требуется |
 
-**Фаза B (позже) — Keycloak (OIDC)**
+**Фаза B — Keycloak (OIDC) — согласовано; BFF + JIT VIEWER в коде (этап 2 групп — нет)**
+
+Корпоративный SSO: realm `common`, IdP `https://sso.stt.ru/`. Клиент **confidential** `isar.st.tech` (secret **только на backend** / env / secret store; не в git и не на фронт).  
+Discovery: `https://sso.stt.ru/realms/common/.well-known/openid-configuration` (issuer, authorize, token, userinfo, jwks, logout).
 
 | Элемент | Решение |
 |---------|---------|
-| Условие | `AR_Keycloak_Enabled=true` |
-| Фронт | Authorization Code + PKCE |
-| API | JWT Bearer от Keycloak **или** обмен на локальный JWT |
-| Связь | `ar_app_users.keycloak_sub` / email → существующая учётка |
-| Роли | **Источник истины остаётся БД** (`ar_user_roles`); KC даёт identity, не дублирует матрицу прав |
+| Включение SSO | Системный параметр **`SEC_KEYCLOAK_ENABLED`**; client id/secret, redirect — **env** (см. таблицу констант ниже) |
+| Режим UI входа | Параметр **`SEC_KEYCLOAK_LOGIN_MODE`**: `button` \| `auto` \| `silent` (см. ниже) |
+| OIDC flow | Authorization Code на **backend** (BFF): redirect → KC → callback API с `code` → обмен code+`client_secret` на tokens |
+| PKCE | Поддерживается IdP (S256); при confidential-клиенте секрет всё равно только на сервере |
+| Чужие access token | **Не принимаем** (токен другого client realm). «Уже залогинен в других сервисах» = живая **SSO-сессия KC**; для ИСАР — короткий code flow своего клиента (без повторного пароля) |
+| После успеха | Backend выдаёт **локальный JWT ИСАР** (как фаза A); дальше `/api/*` и RBAC без изменения модели |
+| Профиль | Сначала **ID Token** (`sub`, `email`, `preferred_username`, `name`…); **UserInfo** — если в токене не хватает полей |
+| Связка учётки | 1) `keycloak_sub`; 2) иначе уникальный `email` → привязать `sub`; 3) иначе JIT |
+| Провижининг | **JIT:** при первом успешном SSO создать `ar_app_users` с ролью **`VIEWER`**, `auth_provider=keycloak`, без локального пароля. Повторный вход роли **не сбрасывает** |
+| Роли (этап 1 SSO) | **Источник истины — БД** (`ar_user_roles`). Админ повышает права вручную. KC даёт только identity |
+| Break-glass | Локальный login `demo`/`aradmin` сохраняется. При `SEC_KEYCLOAK_LOGIN_MODE=auto` обязателен обход, напр. `/login?local=1` без auto-redirect |
+| Redirect URI | Valid Redirect URI в KC → **backend** callback, напр. `https://<хост-ИСАР>/api/auth/oidc/callback` (отдельно demo/test/prod) |
 
-Связь с каталогом сотрудников (опционально, не блокер фазы A): `ar_app_users.employee_id` → `ar_employees`.
+##### `SEC_KEYCLOAK_LOGIN_MODE`
+
+| Значение | Поведение |
+|----------|-----------|
+| `button` | На `/login` кнопка «Войти через SSO» (явный старт OIDC) |
+| `auto` | Нет локального JWT → сразу redirect на OIDC login (удобно при корпоративной SSO-сессии) |
+| `silent` | Сначала тихий SSO (`prompt=none`); нет сессии KC → страница логина (локальный + кнопка SSO) |
+
+Публично (без секрета) отдавать во фронт через `GET /api/config`: `keycloak_enabled`, `keycloak_login_mode`.
+
+##### Где фиксируются константы для работы с KC
+
+Имена параметров — **КАПС** (`SEC_KEYCLOAK_*`). Секреты в БД/UI не хранятся.
+
+| Константа | Где задаётся | Пример / как получается |
+|-----------|--------------|-------------------------|
+| Вкл. SSO | параметр БД **`SEC_KEYCLOAK_ENABLED`** (UI «Параметры») | `true` / `false` |
+| Режим UI входа | параметр БД **`SEC_KEYCLOAK_LOGIN_MODE`** | `button` \| `auto` \| `silent` |
+| Issuer (realm URL) | параметр БД **`SEC_KEYCLOAK_ISSUER`** и/или env `KEYCLOAK_ISSUER` (env имеет приоритет) | `https://sso.stt.ru/realms/common` |
+| URL discovery (openid-configuration) | **не хранить отдельно** — собирается: `{issuer}/.well-known/openid-configuration` | …/realms/common/.well-known/openid-configuration |
+| authorize / token / userinfo / jwks / logout | **не хардкодить** — читать из discovery при старте API (кэш) | из JSON discovery |
+| Client ID | **env** `KEYCLOAK_CLIENT_ID` (секретный контур стенда) | `isar.st.tech` |
+| Client secret | **только env** `KEYCLOAK_CLIENT_SECRET` | не в git, не в `ar_settings_parameters` |
+| Redirect URI (наш callback) | **env** `KEYCLOAK_REDIRECT_URI` (должен совпасть с Valid Redirect URI в KC) | `https://<хост>/api/auth/oidc/callback` |
+| Public base URL приложения (для сборки redirect, если нужно) | env / уже существующие настройки стенда | — |
+
+Приоритет чтения при реализации (как у прочих параметров): **env > значение в БД (`SEC_*`) > default в коде**.  
+В коде допустимы только **имена ключей** (константы строк `SEC_KEYCLOAK_ENABLED`, `KEYCLOAK_CLIENT_ID`, …), не URL/secret стенда.
+
+##### Этап 2 после внедрения SSO (**не реализовано**, отдельная задача)
+
+Переделать **назначение ролей** в зависимости от **групп Keycloak** (маппинг group → роль(и) ИСАР, синхронизация при логине и/или по расписанию).  
+До реализации этапа 2: JIT только `VIEWER`; изменение ролей — только UI/API администрирования ИСАР. Группы KC на права **не влияют**.
+
+Связь с каталогом сотрудников (опционально): `ar_app_users.employee_id` → `ar_employees`.
 
 ### 3.2. Авторизация (RBAC)
 
@@ -679,7 +725,8 @@ Content-Type: application/json
 | 3 | UI пользователей и назначения ролей | REPOSITORY_ADMIN управляет доступом |
 | 4 | RBAC на write/delete и admin-операции | Нет анонимных изменений |
 | 5 | UI: меню, кнопки, guards | Нет «ложных» кнопок |
-| 6 | (позже) Keycloak как identity | Локальные роли сохраняются |
+| 6 | Keycloak как identity — фаза B §3.1 этап 1 | OIDC BFF + JIT VIEWER + `SEC_KEYCLOAK_*` + login modes |
+| 6b | (позже) роли из **групп Keycloak** | **Не реализовано** — отдельный этап после базового SSO |
 | 7 | (позже) audit log / DOMAIN_LEAD+OU | Вне текущего объёма |
 
 ---
@@ -695,6 +742,9 @@ Content-Type: application/json
 | 5 | Право на импорт | Отдельный **`import:execute`** (+ на apply ещё `<resource>:write`) |
 | 6 | Где хранить JWT на фронте | **`sessionStorage`** (сессия вкладки; F5 не разлогинивает) |
 | 7 | `must_change_password` для bootstrap | Задаётся **из env** `AUTH_BOOTSTRAP_MUST_CHANGE_PASSWORD` |
+| 8 | Keycloak (фаза B) | Confidential client + OIDC на **backend**; локальный JWT ИСАР; JIT → **`VIEWER`**; параметры **`SEC_KEYCLOAK_*`** |
+| 9 | Режим UI SSO | **`SEC_KEYCLOAK_LOGIN_MODE`**: `button` \| `auto` \| `silent` |
+| 10 | Роли из групп KC | **Этап 2, не реализовано** — после базового SSO |
 
 Также зафиксировано ранее: `AUTH_ENABLED` только env; пользователи `demo` / `aradmin`; пароли через `AUTH_BOOTSTRAP_*_PASSWORD`.
 
@@ -719,7 +769,7 @@ Content-Type: application/json
 | **[#66](https://github.com/dgabadulin/ArchRep/issues/66)** — эта спека | Основная реализация: local auth, роли, middleware, UI login/users |
 | `data-import-service.md` / [#64](https://github.com/dgabadulin/ArchRep/issues/64) | После RBAC: `import:execute`; apply + `<resource>:write` |
 | `web-resource-registry-schema.md` | Permissions `web_resource:*` уже в каталоге §4 |
-| `settings-parameters-design.md` | Keycloak — фаза B; локальный auth и `AUTH_ENABLED` не зависят от KC |
+| `settings-parameters-design.md` | Параметры; SSO — префикс **`SEC_`** (§3.1 фаза B); локальный auth и `AUTH_ENABLED` не зависят от KC |
 | `docs/github-issue-drafts/metamodel-rebuild-rbac-ux.md` / [#36](https://github.com/dgabadulin/ArchRep/issues/36) | Endpoint rebuild → `metamodel:rebuild` (+ `service_operations:execute` для UI) |
 | Demo / `.env` | `AUTH_ENABLED`; bootstrap `demo`/`aradmin`; после SYSTEM_ADMIN — убрать `ALLOW_INSECURE_RESTART_WITHOUT_SECRET` на защищённых стендах |
 | `process-issue-tracking.md` | Строка `access-control-design.md` ↔ #66 |
@@ -790,3 +840,5 @@ Content-Type: application/json
 | 0.3.11 | 2026-08-07 | §10.6 UI-конвенции RBAC; реестр≠lookup / срезы карточки; API anyOf для пилота ИС |
 | 0.3.12 | 2026-08-07 | Раскатка §10.6 на все доменные реестры + References/Settings; расширен anyOf lookup в API |
 | 0.3.13 | 2026-08-07 | SYSTEM_ADMIN = полный каталог + resync при bootstrap; схемы ADRA: Open/Download в readonly, JWT во вкладке редактора |
+| 0.3.14 | 2026-08-11 | §3.1 фаза B Keycloak: `SEC_KEYCLOAK_*` (КАПС), BFF OIDC, JIT VIEWER, login_mode; таблица «где константы»; этап 2 — роли из групп KC (не реализовано) |
+| 0.3.15 | 2026-08-11 | Реализация фазы B этап 1: OIDC BFF (`/api/auth/oidc/*`), JIT VIEWER, сиды `SEC_KEYCLOAK_*`, UI button/auto/silent + `/login?local=1` |

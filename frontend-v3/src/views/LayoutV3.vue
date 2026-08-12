@@ -62,8 +62,10 @@
       </nav>
       <div v-if="authEnabled && currentUser" class="sidebar-user">
         <div class="sidebar-user-name">{{ currentUser.display_name || currentUser.login }}</div>
-        <router-link to="/change-password" class="btn-logout btn-logout-link">Сменить пароль</router-link>
-        <button type="button" class="btn-logout" @click="logout">Выйти</button>
+        <template v-if="showLocalSessionControls">
+          <router-link to="/change-password" class="btn-logout btn-logout-link">Сменить пароль</router-link>
+          <button type="button" class="btn-logout" @click="logout">Выйти</button>
+        </template>
       </div>
     </aside>
     <main class="main" :class="{ 'main--minimal': minimalLayout }">
@@ -88,6 +90,11 @@ const minimalLayout = computed(() => Boolean(route.meta.minimalLayout))
 const expandedGroups = ref([])
 const authEnabled = computed(() => authStore.state.authEnabled)
 const currentUser = computed(() => authStore.state.user)
+/** Локальная сессия: смена пароля / выход. У чистого SSO (keycloak) — скрыто. */
+const showLocalSessionControls = computed(() => {
+  const p = currentUser.value?.auth_provider
+  return p !== 'keycloak'
+})
 const canSeeHome = computed(() => authStore.hasPermission('dashboard:read'))
 const visibleMenu = computed(() =>
   filterMenuItems(menuItems, (code) => authStore.hasPermission(code))

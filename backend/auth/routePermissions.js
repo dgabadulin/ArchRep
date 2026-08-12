@@ -18,6 +18,8 @@ const PUBLIC_PATHS = new Set([
   '/api/health/db',
   '/api/config',
   '/api/auth/login',
+  '/api/auth/oidc/login',
+  '/api/auth/oidc/callback',
 ]);
 
 function re(prefix) {
