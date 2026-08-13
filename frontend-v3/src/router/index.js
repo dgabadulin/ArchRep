@@ -20,12 +20,18 @@ const routes = [
     path: '/',
     component: LayoutV3,
     children: [
-      { path: '', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: 'Архитектурный репозиторий', requiredPermissions: ['dashboard:read'] } },
+      { path: '', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: 'Главная', requiredPermissions: ['dashboard:read'] } },
       {
         path: 'change-password',
         name: 'change-password',
         component: () => import('../views/ChangePasswordView.vue'),
         meta: { title: 'Смена пароля' },
+      },
+      {
+        path: 'profile',
+        name: 'profile',
+        component: () => import('../views/ProfileView.vue'),
+        meta: { title: 'Профиль' },
       },
       { path: 'principles', name: 'principles', component: () => import('../views/Principles.vue'), meta: { title: 'Архитектурные принципы', requiredPermissions: ['principle:read'] } },
       { path: 'decisions/principle', name: 'decisions-principle', component: () => import('../views/DecisionsPrincipleList.vue'), meta: { title: 'Архитектурные решения (ADR)', requiredPermissions: ['adr_principle:read'] } },

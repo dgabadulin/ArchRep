@@ -2,9 +2,8 @@
   <div class="layout" :class="{ 'layout--minimal': minimalLayout }">
     <aside v-if="!minimalLayout" class="sidebar">
       <div class="sidebar-header">
-        <router-link to="/" class="logo">
-          <img src="/logo.png" alt="" class="logo-img" />
-          <span class="logo-text">Архитектурный репозиторий v3</span>
+        <router-link to="/" class="logo" title="ИСАР">
+          <img src="/logo.png" alt="ИСАР" class="logo-img" />
         </router-link>
       </div>
       <nav class="sidebar-nav">
@@ -60,50 +59,34 @@
           </router-link>
         </template>
       </nav>
-      <div v-if="authEnabled && currentUser" class="sidebar-user">
-        <div class="sidebar-user-name">{{ currentUser.display_name || currentUser.login }}</div>
-        <template v-if="showLocalSessionControls">
-          <router-link to="/change-password" class="btn-logout btn-logout-link">Сменить пароль</router-link>
-          <button type="button" class="btn-logout" @click="logout">Выйти</button>
-        </template>
-      </div>
     </aside>
-    <main class="main" :class="{ 'main--minimal': minimalLayout }">
-      <Breadcrumbs v-if="!minimalLayout" />
-      <router-view />
-    </main>
+    <div class="layout-body" :class="{ 'layout-body--minimal': minimalLayout }">
+      <AppTopBar v-if="!minimalLayout" />
+      <main class="main" :class="{ 'main--minimal': minimalLayout }">
+        <Breadcrumbs v-if="!minimalLayout" />
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { menuItems, filterMenuItems } from '../config/menu'
 import { getMenuIconComponent } from '../config/icons'
 import Breadcrumbs from '../components/Breadcrumbs.vue'
+import AppTopBar from '../components/AppTopBar.vue'
 import { getConfig } from '@/config/params'
 import { authStore } from '../auth/authStore'
 
 const route = useRoute()
-const router = useRouter()
 const minimalLayout = computed(() => Boolean(route.meta.minimalLayout))
 const expandedGroups = ref([])
-const authEnabled = computed(() => authStore.state.authEnabled)
-const currentUser = computed(() => authStore.state.user)
-/** Локальная сессия: смена пароля / выход. У чистого SSO (keycloak) — скрыто. */
-const showLocalSessionControls = computed(() => {
-  const p = currentUser.value?.auth_provider
-  return p !== 'keycloak'
-})
 const canSeeHome = computed(() => authStore.hasPermission('dashboard:read'))
 const visibleMenu = computed(() =>
   filterMenuItems(menuItems, (code) => authStore.hasPermission(code))
 )
-
-function logout() {
-  authStore.logout()
-  router.replace({ name: 'login' })
-}
 
 function getCookie() {
   const COOKIE_NAME = getConfig().ARR_MENU_COOKIE || 'ar-v3-menu-expanded'
@@ -175,36 +158,43 @@ function toggleGroup(label) {
 }
 .sidebar-header {
   flex-shrink: 0;
-  padding: 1rem 1.1rem;
+  padding: 0.85rem 1.1rem;
   border-bottom: 1px solid var(--ar-border);
-  background: linear-gradient(135deg, var(--ar-header) 0%, #252842 100%);
+  display: flex;
+  justify-content: center;
 }
 .logo {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: #fff;
+  justify-content: center;
   text-decoration: none;
-  letter-spacing: 0.02em;
 }
-.logo:hover {
-  color: var(--ar-accent);
+.logo:hover .logo-img {
+  border-color: var(--ar-accent);
 }
 .logo-img {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 2px solid var(--ar-header-border);
+  border: 2px solid var(--ar-border);
   background: #2a2d3e;
   padding: 2px;
+  transition: border-color 0.12s;
 }
-.logo-text {
+.layout-body {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.layout-body--minimal {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 .sidebar-nav {
   flex: 1;
@@ -310,39 +300,6 @@ function toggleGroup(label) {
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
-}
-.sidebar-user {
-  flex-shrink: 0;
-  border-top: 1px solid var(--ar-border);
-  padding: 0.75rem 1rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-.sidebar-user-name {
-  font-size: 0.8rem;
-  color: var(--ar-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.btn-logout {
-  align-self: flex-start;
-  border: 1px solid var(--ar-border);
-  background: transparent;
-  border-radius: var(--ar-radius-sm);
-  padding: 0.3rem 0.55rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-  color: var(--ar-text);
-  text-decoration: none;
-}
-.btn-logout:hover {
-  border-color: var(--ar-accent);
-  color: var(--ar-link);
-}
-.btn-logout-link {
-  display: inline-block;
 }
 .nav-subgroup {
   margin: 0.15rem 0 0.35rem;

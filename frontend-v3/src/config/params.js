@@ -26,6 +26,7 @@ const DEFAULTS = {
   /** Keycloak SSO flags from GET /api/config (фаза B). */
   keycloak_enabled: false,
   keycloak_login_mode: 'button',
+  keycloak_account_url: '',
 }
 
 let config = null

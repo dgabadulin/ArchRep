@@ -4,7 +4,7 @@
       <div class="login-brand">
         <img src="/logo.png" alt="" class="logo" />
         <div>
-          <div class="brand-name">Архитектурный репозиторий</div>
+          <div class="brand-name">ИСАР</div>
           <h1>Вход</h1>
         </div>
       </div>

@@ -1,12 +1,5 @@
 <template>
   <div class="page home-page">
-    <div class="page-head">
-      <h1>Архитектурный репозиторий</h1>
-    </div>
-    <p class="home-desc">
-      Принципы и решения, каталог ИС и технологий, бизнес-архитектура и связи метамодели TOGAF.
-    </p>
-
     <div class="home-layout">
       <div class="home-main">
         <template v-for="section in sections" :key="section.title">
@@ -162,16 +155,6 @@ const sections = computed(() => {
 <style scoped>
 .home-page {
   max-width: 1200px;
-}
-.page-head h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.5rem;
-  color: var(--ar-text);
-}
-.home-desc {
-  color: var(--ar-muted);
-  margin-bottom: 1.5rem;
-  font-size: 0.95rem;
 }
 
 .home-layout {

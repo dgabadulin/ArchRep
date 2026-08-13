@@ -95,9 +95,12 @@ function assertKeycloakRuntimeConfig() {
 }
 
 function publicKeycloakFlags() {
+  const issuer = getKeycloakIssuer();
+  const accountUrl = envTrim('KEYCLOAK_ACCOUNT_URL') || (issuer ? `${issuer}/account` : '');
   return {
     keycloak_enabled: isKeycloakEnabled(),
     keycloak_login_mode: getKeycloakLoginMode(),
+    keycloak_account_url: isKeycloakEnabled() && accountUrl ? accountUrl : '',
   };
 }
 
