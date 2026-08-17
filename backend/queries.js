@@ -979,7 +979,7 @@ module.exports = {
         updated_at = now()
     WHERE id = $1`,
   job_runs_insert: `
-    INSERT INTO archrep.ar_job_runs (job_id, status, trigger, triggered_by_user_id)
+    INSERT INTO archrep.ar_job_runs (job_id, status, run_trigger, triggered_by_user_id)
     VALUES ($1, 'running', $2, $3)
     RETURNING *`,
   job_runs_finish: `
@@ -992,7 +992,7 @@ module.exports = {
     WHERE id = $1
     RETURNING *`,
   job_runs_select_by_job: `
-    SELECT r.id, r.job_id, r.started_at, r.finished_at, r.status, r.trigger,
+    SELECT r.id, r.job_id, r.started_at, r.finished_at, r.status, r.run_trigger AS trigger,
            r.message, r.error_message, r.result_json, r.triggered_by_user_id,
            u.login AS triggered_by_login
     FROM archrep.ar_job_runs r

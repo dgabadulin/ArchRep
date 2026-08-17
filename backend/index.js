@@ -3018,7 +3018,11 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
     process.exit(1);
   }
   await bootstrapAuth(pool);
-  jobRunner.start();
+  try {
+    jobRunner.start();
+  } catch (err) {
+    console.warn('[job runner] start failed:', err.message);
+  }
   console.log('AUTH_ENABLED:', isAuthEnabled());
   mountFrontendStatic();
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;

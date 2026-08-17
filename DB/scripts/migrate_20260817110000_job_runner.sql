@@ -23,13 +23,13 @@ CREATE TABLE IF NOT EXISTS archrep.ar_job_runs (
   started_at           timestamptz NOT NULL DEFAULT now(),
   finished_at          timestamptz NULL,
   status               varchar(32) NOT NULL,
-  trigger              varchar(32) NOT NULL,
+  run_trigger          varchar(32) NOT NULL,
   message              text NULL,
   error_message        text NULL,
   result_json          jsonb NULL,
   triggered_by_user_id bigint NULL REFERENCES archrep.ar_app_users(id) ON DELETE SET NULL,
   CONSTRAINT ar_job_runs_status_chk CHECK (status IN ('running', 'success', 'failed')),
-  CONSTRAINT ar_job_runs_trigger_chk CHECK (trigger IN ('schedule', 'manual'))
+  CONSTRAINT ar_job_runs_run_trigger_chk CHECK (run_trigger IN ('schedule', 'manual'))
 );
 
 CREATE INDEX IF NOT EXISTS ar_job_runs_job_id_started_idx

@@ -1,6 +1,18 @@
 'use strict';
 
-const nodemailer = require('nodemailer');
+function loadNodemailer() {
+  try {
+    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    return require('nodemailer');
+  } catch (err) {
+    const e = new Error(
+      'Пакет nodemailer не установлен. Выполните npm install в корне проекта и пересоберите образ.'
+    );
+    e.code = 'NODEMAILER_MISSING';
+    e.cause = err;
+    throw e;
+  }
+}
 
 function envTrim(name) {
   const v = process.env[name];
@@ -44,6 +56,7 @@ let transporter = null;
 
 function getTransporter() {
   const cfg = assertSmtpConfigured();
+  const nodemailer = loadNodemailer();
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host: cfg.host,

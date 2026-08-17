@@ -13,7 +13,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev 2>/dev/null || npm install
+RUN npm install --omit=dev
 
 # Миграции и конфиг node-pg-migrate (npm run db:migrate в demo/prod deploy)
 COPY pgmrc.json ./
