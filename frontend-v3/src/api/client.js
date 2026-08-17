@@ -254,6 +254,16 @@ export const api = {
   updateWebResourceStageType: (id, body) => request(`/api/togaf/web-resource-stage-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteWebResourceStageType: (id) => request(`/api/togaf/web-resource-stage-types/${id}`, { method: 'DELETE' }),
 
+  getDomains: (params) => request('/api/togaf/domains' + buildQuery(params)),
+  getDomain: (id) => request(`/api/togaf/domains/${id}`),
+  createDomain: (body) => request('/api/togaf/domains', { method: 'POST', body: JSON.stringify(body) }),
+  updateDomain: (id, body) => request(`/api/togaf/domains/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteDomain: (id) => request(`/api/togaf/domains/${id}`, { method: 'DELETE' }),
+  getDomainStatuses: () => request('/api/togaf/domain-statuses'),
+  createDomainStatus: (body) => request('/api/togaf/domain-statuses', { method: 'POST', body: JSON.stringify(body) }),
+  updateDomainStatus: (id, body) => request(`/api/togaf/domain-statuses/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteDomainStatus: (id) => request(`/api/togaf/domain-statuses/${id}`, { method: 'DELETE' }),
+
   getGapStates: () => request('/api/ar-gap-states'),
   createGapState: (body) => request('/api/ar-gap-states', { method: 'POST', body: JSON.stringify(body) }),
   updateGapState: (id, body) => request(`/api/ar-gap-states/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -264,6 +274,11 @@ export const api = {
   createSettingsParameter: (body) => request('/api/settings-parameters', { method: 'POST', body: JSON.stringify(body) }),
   updateSettingsParameter: (id, body) => request(`/api/settings-parameters/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteSettingsParameter: (id) => request(`/api/settings-parameters/${id}`, { method: 'DELETE' }),
+
+  getJobs: () => request('/api/jobs'),
+  getJobRuns: (jobId, params) => request(`/api/jobs/${jobId}/runs` + buildQuery(params)),
+  runJob: (jobId) => request(`/api/jobs/${jobId}/run`, { method: 'POST' }),
+  patchJob: (jobId, body) => request(`/api/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   getConfig: () => request('/api/config'),
   getHomeStats: () => request('/api/dashboard/home-stats'),

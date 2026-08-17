@@ -86,11 +86,12 @@ const OU_FK_READS = [
   'actor:read',
   'business_service:read',
   'business_function:read',
+  'domain:write',
 ];
 
-const PARTNER_FK_READS = ['partner:read', 'system:read', 'technology:read'];
+const PARTNER_FK_READS = ['partner:read', 'system:read', 'technology:read', 'domain:write'];
 
-const EMPLOYEE_FK_READS = ['employee:read', 'system:read'];
+const EMPLOYEE_FK_READS = ['employee:read', 'system:read', 'domain:write'];
 
 const TECHNOLOGY_FK_READS = ['technology:read', 'system:read'];
 
@@ -120,6 +121,11 @@ const RULES = [
   { methods: ['POST', 'PUT', 'PATCH', 'DELETE'], pattern: re('/api/settings-parameters'), permissions: ['settings_parameters:write'] },
 
   { methods: ['POST'], pattern: /^\/api\/togaf\/metamodel\/rebuild/, permissions: ['metamodel:rebuild'] },
+
+  { methods: ['GET'], pattern: re('/api/jobs'), permissions: ['jobs:read'] },
+  { methods: ['GET'], pattern: /^\/api\/jobs\/\d+\/runs$/, permissions: ['jobs:read'] },
+  { methods: ['POST'], pattern: /^\/api\/jobs\/\d+\/run$/, permissions: ['jobs:execute'] },
+  { methods: ['PATCH'], pattern: /^\/api\/jobs\/\d+$/, permissions: ['jobs:execute'] },
 
   // Domain
   ...crud('/api/principles', 'principle'),
@@ -157,6 +163,8 @@ const RULES = [
   },
   ...crud('/api/integration-flows', 'integration_flow'),
   ...crud('/api/togaf/web-resources', 'web_resource'),
+  listLookup('/api/togaf/domains', 'domain:export', ['domain:read', 'web_resource:write']),
+  ...crud('/api/togaf/domains', 'domain'),
 
   listLookup('/api/partners', 'partner:export', PARTNER_FK_READS),
   ...crud('/api/partners', 'partner'),
@@ -229,6 +237,7 @@ const RULES = [
   refLookup('/api/togaf/web-resource-statuses', 'web_resource:read'),
   refLookup('/api/togaf/web-resource-categories', 'web_resource:read'),
   refLookup('/api/togaf/web-resource-stage-types', 'web_resource:read'),
+  refLookup('/api/togaf/domain-statuses', 'domain:read'),
 
   // References (справочники) — полный CRUD
   ...refCrud('/api/owners'),
@@ -252,6 +261,7 @@ const RULES = [
   ...refCrud('/api/togaf/web-resource-statuses'),
   ...refCrud('/api/togaf/web-resource-categories'),
   ...refCrud('/api/togaf/web-resource-stage-types'),
+  ...refCrud('/api/togaf/domain-statuses'),
   {
     methods: ['GET'],
     pattern: re('/api/togaf/refs'),

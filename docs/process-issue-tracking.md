@@ -22,6 +22,8 @@
 | `issue-56-analyzer-module-integration-projections.md` | Проекции интеграций с модулями; граф без дубля из API потоков | [#56](https://github.com/dgabadulin/ArchRep/issues/56) |
 | `data-import-service.md` | Сервисный импорт данных (пилот: веб-ресурсы) | [#64](https://github.com/dgabadulin/ArchRep/issues/64) |
 | `access-control-design.md` | RBAC: локальная авторизация, роли, проверки API/UI | [#66](https://github.com/dgabadulin/ArchRep/issues/66) |
+| `domain-registry-schema.md` | Реестр доменов + FK/проекция на веб-ресурсах | [#67](https://github.com/dgabadulin/ArchRep/issues/67) |
+| `job-runner-design.md` | Планировщик заданий, проверка сроков доменов, CHK_* | [#68](https://github.com/dgabadulin/ArchRep/issues/68) |
 
 **Закрытые (справочно):** страница **Настройки → Сервисные операции** и перенос пересборки потоков — [#39](https://github.com/dgabadulin/ArchRep/issues/39) (закрыт).
 

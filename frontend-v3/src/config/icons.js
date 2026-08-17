@@ -28,6 +28,7 @@ export const menuIconNames = {
   radar: 'Radar',
   chart: 'BarChart3',
   settings: 'Settings',
+  clock: 'Clock',
   wrench: 'Wrench',
   book: 'BookOpen',
   target: 'Target',

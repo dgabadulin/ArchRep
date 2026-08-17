@@ -103,6 +103,7 @@ const webResourceColumns = [
   { key: 'short_name', label: 'Краткое наименование', defaultVisible: true },
   { key: 'purpose', label: 'Назначение', defaultVisible: true },
   { key: 'publication_url', label: 'Адрес публикации (URL)', defaultVisible: true },
+  { key: 'domain_name', label: 'Домен', defaultVisible: true },
   { key: 'category_name', label: 'Категория', defaultVisible: true },
   { key: 'stage_type_name', label: 'Тип стенда', defaultVisible: true },
   { key: 'system_display_name', label: 'Информационная система или модуль', defaultVisible: true },

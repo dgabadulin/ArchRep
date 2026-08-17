@@ -213,6 +213,7 @@ SettingsServiceOperationsView (секция «Данные»)
 | `actor` | Заинтересованные лица | да (ключ `name`) |
 | `business_service` | Бизнес-сервисы | да (ключ `name`) |
 | `business_function` | Бизнес-функции | да (ключ `name`) |
+| `domain` | Домены | да (ключ `name`) |
 | `applied` | Прикладные ADR | нет (вложенная модель) |
 | … | справочники / integration_flow | нет |
 

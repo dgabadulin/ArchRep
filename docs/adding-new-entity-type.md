@@ -87,7 +87,38 @@
 
 **Итог:** п. 2.5 фиксирует, что шаблоны **`DISP_*`** в базе не расходятся с контрактом в коде: допустимый синтаксис и только разрешённые имена полей в фигурных скобках.
 
-### 2.6. Сиды параметров
+### 2.7. RBAC (права доступа)
+
+Для **полноценного реестра** с собственным CRUD (не только справочник в `ReferencesV2`):
+
+| Слой | Файл / место | Что добавить |
+|------|----------------|--------------|
+| Каталог прав | `backend/auth/permissionsCatalog.js` | В **`ALL_PERMISSIONS`**: `<resource>:read`, `:write`, `:delete`, `:export` (по принятому префиксу, напр. `domain:*`). |
+| Матрица ролей | там же, **`VIEWER` / `ARCHITECT` / …** | `VIEWER`: как минимум `:read` (+ `:export` через `reExport`); `ARCHITECT`: `fullCrud('<resource>')`. |
+| Маршруты API | `backend/auth/routePermissions.js` | `...crud('/api/togaf/<path>', '<resource>')`; для списков FK — `listLookup` с `anyOf` (кто может читать реестр для выпадающих списков на чужих формах). |
+| Справочники host-типа | `refLookup` / `refCrud` | Если CRUD статусов и т.п. живёт отдельно от реестра — `domain:read` в `anyOf` для GET справочника. |
+| Сервисные операции | `routePermissions.js` | Массовые POST (`/api/togaf/metamodel/rebuild-*`) — `metamodel:rebuild` или `service_operations:execute` (как принято в проекте). |
+| Импорт данных | `routePermissions.js` | `GET/POST /api/import/*` — `import:execute` (уже есть); сущность должна быть в `importEntities/` и `import_allowed = true`. |
+| Bootstrap | `bootstrapAuth` при старте API | Синхронизирует `ar_permissions` и роли из каталога — после добавления прав **перезапустить API**. |
+| Frontend — меню | `frontend-v3/src/config/menu.js` | `requiredPermission: '<resource>:read'`. |
+| Frontend — роуты | `frontend-v3/src/router/index.js` | `meta.requiredPermissions` на list (`:read`), create (`:write`), edit (`:read` или `:write`). |
+| Frontend — экраны | список / форма | `usePermissions('<resource>')` для кнопок экспорта, удаления, readonly-баннера. |
+
+Подробнее: [access-control-design.md](./access-control-design.md).
+
+### 2.8. Сервисный импорт / экспорт Excel
+
+Если сущность должна участвовать в **«Настройки → Сервисные операции → Импорт данных»**:
+
+1. Адаптер **`backend/importEntities/<code>.js`** (каталог полей, `loadRefs`, `create`/`update`, `template_version`).
+2. Регистрация в **`backend/importEntities/index.js`**.
+3. **`import_allowed = true`** для `code` в `ar_metamodel_entity_types` (SQL-миграция + dual `DB/migrations/`).
+4. При изменении набора полей — bump **`template_version`** в каталоге.
+5. Если сущность — FK на других формах / в импорте других сущностей — справочный лист в шаблоне.
+
+См. [data-import-service.md](./data-import-service.md) §9.
+
+### 2.9. Сиды параметров
 
 - Внести строку в **`DB/scripts/seed_settings_parameters_from_candidates.sql`** (новые установки).
 - При необходимости — отдельный **`DB/scripts/migrate_issue…_….sql`** для уже развёрнутых БД (как для issue #32).
@@ -153,6 +184,21 @@
 
 По необходимости дублировать отображение **`display_name`** в формах v2 для единообразия.
 
+### 4.6. Главная страница: KPI и аккордеон объёма каталога
+
+См. **[home-dashboard-catalog-metrics.md](./home-dashboard-catalog-metrics.md)** (`GET /api/dashboard/home-stats`, `backend/homeDashboard.js`, `HomeView.vue`).
+
+После добавления типа в **`ar_metamodel_entity_types`** он **не попадёт** на главную автоматически. Нужно явно подключить подсчёт.
+
+| Вариант | Когда | Что сделать |
+|---------|--------|-------------|
+| **Аккордеон** (типично) | Новый реестр с таблицей экземпляров; объём «сколько записей» достаточен в блоке «Другие сущности метамодели» | Добавить запись в **`ACCORDION_COUNT_SQL`** в **`backend/homeDashboard.js`**: ключ = **`code`** типа из метамодели, значение = безопасный `SELECT COUNT(*)::bigint AS c FROM archrep.<таблица>`. |
+| **KPI-плитка** (редко) | Тип должен быть в верхних четырёх плитках рядом с ИС / потоками / технологиями / долгом | 1) SQL-функции `archrep.dashboard_home_*` в миграции; 2) имена в **`ALLOWED_COUNT_FUNCTIONS`**; 3) элемент в **`ARR_HOME_KPI_TILES`** (параметр БД + **`DEFAULT_KPI_TILES`**); 4) при необходимости **`code`** в **`ACCORDION_EXCLUDED_ENTITY_CODES`**, чтобы не дублировать цифру в аккордеоне. |
+
+**Проверка:** после деплоя открыть главную → в аккордеоне (или в KPI) должна появиться строка с ненулевым/нулевым count для нового типа. Если записи в `ACCORDION_COUNT_SQL` нет — тип в метамодели есть, на главной **не отображается** (пример: `domain` до добавления строки в whitelist).
+
+Фронт **`HomeView.vue`** менять не нужно — данные приходят с API; достаточно бэкенда (и для KPI — БД + параметр).
+
 ---
 
 ## 5. Поведение в анализаторе зависимостей
@@ -185,21 +231,24 @@
 - [ ] `ar_metamodel_entity_types`: новый `code`, название, описание.
 - [ ] `ar_metamodel_relation_types`: пары (from, to) и коды типов связей.
 - [ ] DDL + `queries.js` + маршруты в `index.js`.
+- [ ] **RBAC:** `permissionsCatalog.js` (`*:read/write/delete/export`), `routePermissions.js` (CRUD + listLookup для FK), роли VIEWER/ARCHITECT; меню и роуты с `requiredPermission(s)`; перезапуск API для bootstrap.
 - [ ] `displayName.js`: `TEMPLATE_DEFS`, `ENTITY_TO_TEMPLATE`.
 - [ ] `DISPLAY_NAME_PATHS` (+ ручной `applyDisplayName`, если нужны разные шаблоны для одного URL).
 - [ ] Параметры: `DISP_*`, при участии в графе — `GRAPH_ENTITY_ORDER`, `GRAPH_ENTITY_ICONS`; сиды/миграции SQL.
 - [ ] `/api/config` дефолты и `frontend-v3/src/config/params.js`.
 - [ ] `entityTypeConfig.js`, `graphApi.js` (`listFetchers`, `entityFetchers`), при необходимости логика в `Quick pick` анализатора.
 - [ ] Роутер, меню, список + форма; селекты через `display_name`.
+- [ ] **Главная:** `ACCORDION_COUNT_SQL[<code>]` в `backend/homeDashboard.js` (или KPI: функции БД + `ALLOWED_COUNT_FUNCTIONS` + `ARR_HOME_KPI_TILES`; см. §4.6).
 - [ ] При использовании v2 — синхронизировать отображение в формах.
-- [ ] **Импорт/экспорт Excel** (если сущность в сервисном импорте или имеет выгрузку по общему контракту — см. [data-import-service.md](./data-import-service.md) §7, §9.3–9.4): обновить **каталог полей** на backend, шаблон, экспорт (заголовки как форма/грид, id справа), при смене контракта — **`template_version`**. То же при **добавлении поля** к уже существующей сущности с импортом/экспортом.
-- [ ] Проверка: справочник типов связей, создание связи из UI, построение графа с узлом нового типа, редактирование `DISP_*` в настройках.
+- [ ] **Импорт/экспорт Excel** (если сущность в сервисном импорте — см. §2.8 и [data-import-service.md](./data-import-service.md)): адаптер `importEntities/<code>.js`, регистрация в `index.js`, **`import_allowed = true`** в метамодели, каталог полей, bump **`template_version`** при смене контракта.
+- [ ] Проверка: справочник типов связей, создание связи из UI, построение графа с узлом нового типа, редактирование `DISP_*` в настройках, **строка объёма на главной (аккордеон/KPI)**, импорт (dry-run + apply) при подключённом адаптере.
 
 ---
 
 ## 8. Связанные документы
 
 - `docs/display-name-templates-spec.md` — язык шаблонов и таблица параметров `DISP_*`.
+- `docs/home-dashboard-catalog-metrics.md` — KPI и аккордеон на главной; whitelist `ACCORDION_COUNT_SQL`.
 - `docs/settings-parameters-candidates.md` — перечень прочих параметров (в т.ч. графы).
 - `docs/data-import-service.md` — сервисный импорт/экспорт Excel, каталог полей, синхронизация при смене полей.
 - `DB/README.md` — примеры запуска миграций данных параметров.

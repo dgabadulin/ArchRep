@@ -8,6 +8,7 @@ const organization_unit = require('./organization_unit');
 const actor = require('./actor');
 const business_service = require('./business_service');
 const business_function = require('./business_function');
+const domain = require('./domain');
 
 const byCode = {
   web_resource,
@@ -20,6 +21,7 @@ const byCode = {
   actor,
   business_service,
   business_function,
+  domain,
 };
 
 function getImportEntity(code) {

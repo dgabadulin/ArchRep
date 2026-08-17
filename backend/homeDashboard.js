@@ -30,6 +30,7 @@ const ACCORDION_COUNT_SQL = {
   business_function: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_business_functions',
   principle: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_principles',
   web_resource: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_web_resources',
+  domain: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_domains',
 };
 
 const DEFAULT_KPI_TILES = [

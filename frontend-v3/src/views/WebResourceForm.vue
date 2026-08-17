@@ -27,6 +27,13 @@
           <input v-model="form.publication_url" type="url" placeholder="https://..." />
         </div>
         <div class="field">
+          <label>Домен</label>
+          <select v-model="form.ar_domains_id">
+            <option :value="null">—</option>
+            <option v-for="d in domains" :key="d.id" :value="d.id">{{ d.display_name || d.name }}</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Информационная система или модуль <span class="req">*</span></label>
           <select v-model="form.ar_systems_id" required>
             <option :value="null" disabled>— выберите —</option>
@@ -101,6 +108,7 @@ const systems = ref([])
 const statuses = ref([])
 const categories = ref([])
 const stageTypes = ref([])
+const domains = ref([])
 
 function formatDateForInput(value) {
   if (!value) return ''
@@ -118,16 +126,18 @@ function systemOptionLabel(s) {
 }
 
 async function loadRefs() {
-  const [sys, sts, cats, stages] = await Promise.all([
+  const [sys, sts, cats, stages, doms] = await Promise.all([
     api.getSystems(),
     api.getWebResourceStatuses(),
     api.getWebResourceCategories(),
     api.getWebResourceStageTypes(),
+    api.getDomains(),
   ])
   systems.value = sys || []
   statuses.value = sts || []
   categories.value = cats || []
   stageTypes.value = stages || []
+  domains.value = doms || []
 }
 
 async function load() {
@@ -144,6 +154,7 @@ async function load() {
         purpose: row.purpose || '',
         publication_url: row.publication_url || '',
         ar_systems_id: row.ar_systems_id,
+        ar_domains_id: row.ar_domains_id ?? null,
         publication_request_number: row.publication_request_number || '',
         publication_date: formatDateForInput(row.publication_date),
         ar_web_resource_statuses_id: row.ar_web_resource_statuses_id,
@@ -159,6 +170,7 @@ async function load() {
         purpose: '',
         publication_url: '',
         ar_systems_id: null,
+        ar_domains_id: null,
         publication_request_number: '',
         publication_date: '',
         ar_web_resource_statuses_id: draft?.id ?? statuses.value[0]?.id ?? null,
@@ -183,6 +195,7 @@ async function submit() {
     purpose: form.value.purpose || undefined,
     publication_url: form.value.publication_url || undefined,
     ar_systems_id: form.value.ar_systems_id,
+    ar_domains_id: form.value.ar_domains_id || null,
     publication_request_number: form.value.publication_request_number || undefined,
     publication_date: form.value.publication_date || undefined,
     ar_web_resource_statuses_id: form.value.ar_web_resource_statuses_id,

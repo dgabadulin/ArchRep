@@ -146,6 +146,20 @@ KPI-плитки **не дублировать** в аккордеоне тем�
 - Для каждой строки: подпись **`name`**, **`code`**, одно число объёма.  
 - Подсчёт: whitelist **`ACCORDION_COUNT_SQL`** в `backend/homeDashboard.js` (безопасные `SELECT COUNT(*) …` по таблице типа). Типы без записи в whitelist в аккордеон **не** попадают (до явного расширения списка).
 
+### 6.1. Новый тип сущности (чеклист для разработчика)
+
+При добавлении полноценного реестра (см. [adding-new-entity-type.md](./adding-new-entity-type.md) §4.6):
+
+1. Убедиться, что в **`ar_metamodel_entity_types`** есть строка с **`code`**, совпадающим с ключом в коде.
+2. В **`backend/homeDashboard.js`** → **`ACCORDION_COUNT_SQL`**:  
+   `'<code>': 'SELECT COUNT(*)::bigint AS c FROM archrep.<table>'`  
+   (только статический SQL, без подстановки из параметров).
+3. Перезапустить API; обновить главную — в аккордеоне должна появиться строка с **`label`** из метамодели.
+
+KPI-плитка для нового типа — отдельный, более тяжёлый путь (§4–5); для большинства реестров достаточно аккордеона.
+
+**Текущие ключи `ACCORDION_COUNT_SQL`:** `organization_unit`, `actor`, `business_service`, `business_function`, `principle`, `web_resource`, `domain`.
+
 ---
 
 ## 7. API
@@ -184,6 +198,7 @@ KPI-плитки **не дублировать** в аккордеоне тем�
 - [x] BFF: `backend/homeDashboard.js`, `GET /api/dashboard/home-stats`, whitelist функций.  
 - [x] `frontend-v3/src/views/HomeView.vue` — KPI (B) + аккордеон; из аккордеона исключены `system`, `technology`, `gap`.  
 - [x] Аккордеон: whitelist `ACCORDION_COUNT_SQL` в `homeDashboard.js` по коду типа сущности.
+- [ ] При каждом **новом** типе реестра — расширять `ACCORDION_COUNT_SQL` (см. §6.1, [adding-new-entity-type.md](./adding-new-entity-type.md) §4.6).
 
 ---
 

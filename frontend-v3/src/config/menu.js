@@ -29,6 +29,7 @@ export const menuItems = [
       { label: 'Каталог ИС', path: '/systems', icon: 'list', requiredPermission: 'system:read' },
       { label: 'Реестр интеграций', path: '/integrations', icon: 'share', requiredPermission: 'integration_flow:read' },
       { label: 'Реестр веб-ресурсов', path: '/web-resources', icon: 'globe', requiredPermission: 'web_resource:read' },
+      { label: 'Реестр доменов', path: '/domains', icon: 'globe', requiredPermission: 'domain:read' },
     ],
   },
   {
@@ -55,6 +56,7 @@ export const menuItems = [
       { label: 'Справочники', path: '/references', icon: 'book', requiredPermission: 'references:read' },
       { label: 'Справочник дашбордов', path: '/dashboards/catalog', icon: 'book', requiredPermission: 'dashboard:read' },
       { label: 'Параметры', path: '/settings/parameters', icon: 'settings', requiredPermission: 'settings_parameters:read' },
+      { label: 'Управление заданиями', path: '/settings/jobs', icon: 'clock', requiredPermission: 'jobs:read' },
       { label: 'Сервисные операции', path: '/settings/service-operations', icon: 'wrench', requiredPermission: 'service_operations:execute' },
     ],
   },

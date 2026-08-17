@@ -13,5 +13,6 @@ WHERE code IN (
   'organization_unit',
   'actor',
   'business_service',
-  'business_function'
+  'business_function',
+  'domain'
 );

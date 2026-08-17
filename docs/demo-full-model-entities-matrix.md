@@ -25,6 +25,8 @@
 | 13  | `adr_principle`     | `ar_adrs_principle`     | Реестр ADRP                | Уже есть                                                  | Зафиксированный **прикладной принцип** («далее поступаем так, потому что …»: контекст, решение, последствия); связь с ADRA и прочими — см. §5                                                                                      |
 | 14  | `adr_applied`       | `ar_adrs_applied`       | Реестр ADRA                | Уже есть                                                  | **Архитектурное заключение** по конкретной задаче (`task_name`, ссылка на задачу, текст заключения); инкременты, связь с ИС/`system_function`, gap — см. §5 и §3.1 `applied_gap`                                                   |
 | 15  | `partner`           | `ar_partners`           | Справочник                 | Уже есть                                                  | Единый справочник контрагентов; на ИС — три nullable FK в `ar_systems` (вендор / поставщик·внедрение / поддержка); проекция в метамодель — §5                                                                                      |
+| 16  | `web_resource`      | `ar_web_resources`      | Реестр                     | Уже есть                                                  | FK на ИС/модуль; проекции `system_web_resource` / `subsystem_web_resource`; FK на домен (#67) — `web_resource_domain`                                                                                                              |
+| 17  | `domain`            | `ar_domains`            | Реестр                     | Целевой (#67)                                             | Регистратор/статус/компания(org)/владелец; связь от веб-ресурса «Размещен» (`web_resource_domain`); спека `domain-registry-schema.md`                                                                                              |
 
 ## 2) Рекомендуемый целевой минимум для "полной" demo
 
@@ -106,6 +108,7 @@
 | 16  | `subsystem_partner_implementer`       | Интегратор               | Модуль — интегратор / поставщик внедрения                               | `subsystem → partner`                   |
 | 17  | `subsystem_partner_supporter`         | Поддерживает             | Модуль — партнёр по поддержке                                           | `subsystem → partner`                   |
 | 18  | `technology_partner_vendor`           | Вендор                   | Технология — вендор (поставщик технологии)                              | `technology → partner`                  |
+| 19  | `web_resource_domain`                 | Размещен                 | Веб-ресурс размещён на домене; FK `ar_web_resources.ar_domains_id` (#67) | `web_resource → domain`                 |
 
 #### Проекции связей из внешних ключей (план реализации)
 
@@ -125,6 +128,7 @@
 | `subsystem_partner_supporter`   | `ar_systems`                 | `supporter_ar_partners_id` | `subsystem` → `partner`            |
 | `technology_partner_vendor`     | `ar_technologies`            | `vendor_ar_partners_id`    | `technology` → `partner`           |
 | `system_system_function`        | `ar_system_functions`        | `ar_systems_id`            | `system` → `system_function`       |
+| `web_resource_domain`           | `ar_web_resources`           | `ar_domains_id`            | `web_resource` → `domain` (#67)    |
 
 Для **корневой ИС** и **модуля** используется **одна** таблица `ar_systems`: тип сущности «от» (`system` vs `subsystem`) определяется по правилам каталога (наличие/отсутствие родителя и т.п., как в приложении). На одной строке три nullable FK — значит, независимо до **трёх** рёбер в метамодели (по одному на каждый непустой FK).
 

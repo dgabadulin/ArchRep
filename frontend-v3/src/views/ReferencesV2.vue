@@ -406,6 +406,27 @@
         </table>
         <p v-if="webResourceStageTypes.length === 0" class="empty">Нет записей</p>
       </template>
+      <template v-else-if="activeTab === 'domainStatuses'">
+        <div class="table-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openDomainStatusForm()">Добавить</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in domainStatuses" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openDomainStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteDomainStatus(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="domainStatuses.length === 0" class="empty">Нет записей</p>
+      </template>
       <template v-else-if="activeTab === 'businessServiceStatuses'">
         <div class="table-actions">
           <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openBusinessServiceStatusForm()">Добавить</button>
@@ -665,6 +686,20 @@
         </div>
       </div>
     </div>
+    <div v-if="domainStatusForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ domainStatusForm.id ? 'Изменить статус домена' : 'Новый статус домена' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
+        <div class="form-row"><label>Код</label><input v-model="domainStatusForm.code" required /></div>
+        <div class="form-row"><label>Наименование</label><input v-model="domainStatusForm.name" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="domainStatusForm.description" /></div>
+        </fieldset>
+        <div class="modal-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveDomainStatus">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="domainStatusForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="businessServiceStatusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ businessServiceStatusForm.id ? 'Изменить статус' : 'Новый статус бизнес-сервиса' }}</h3>
@@ -807,6 +842,7 @@ const tabs = [
   { id: 'webResourceStatuses', label: 'Статусы веб-ресурсов' },
   { id: 'webResourceCategories', label: 'Категории веб-ресурсов' },
   { id: 'webResourceStageTypes', label: 'Типы стенда веб-ресурсов' },
+  { id: 'domainStatuses', label: 'Статусы доменов' },
   { id: 'businessServiceStatuses', label: 'Статусы бизнес-сервисов' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
@@ -832,6 +868,7 @@ const actorTypes = ref([])
 const webResourceStatuses = ref([])
 const webResourceCategories = ref([])
 const webResourceStageTypes = ref([])
+const domainStatuses = ref([])
 const businessServiceStatuses = ref([])
 const statusForm = ref(null)
 const hostingForm = ref(null)
@@ -847,6 +884,7 @@ const actorTypeForm = ref(null)
 const webResourceStatusForm = ref(null)
 const webResourceCategoryForm = ref(null)
 const webResourceStageTypeForm = ref(null)
+const domainStatusForm = ref(null)
 const businessServiceStatusForm = ref(null)
 const entityTypeForm = ref(null)
 const relationTypeForm = ref(null)
@@ -878,6 +916,7 @@ async function loadTab() {
     else if (activeTab.value === 'webResourceStatuses') webResourceStatuses.value = await api.getWebResourceStatuses()
     else if (activeTab.value === 'webResourceCategories') webResourceCategories.value = await api.getWebResourceCategories()
     else if (activeTab.value === 'webResourceStageTypes') webResourceStageTypes.value = await api.getWebResourceStageTypes()
+    else if (activeTab.value === 'domainStatuses') domainStatuses.value = await api.getDomainStatuses()
     else if (activeTab.value === 'businessServiceStatuses') businessServiceStatuses.value = await togafApi.refs.businessServiceStatuses()
     else if (activeTab.value === 'metamodelEntityTypes') metamodelEntityTypes.value = await togafApi.entityTypes()
     else if (activeTab.value === 'metamodelRelationTypes') {
@@ -907,7 +946,7 @@ async function exportExcel() {
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
     else if (activeTab.value === 'integrationFlowStatuses') blob = await api.getIntegrationFlowStatuses(q)
-    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
+    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'domainStatuses', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
     if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
   } finally {
     excelLoading.value = false
@@ -1004,6 +1043,32 @@ async function deleteWebResourceStageType(id) {
   if (!confirm('Удалить тип стенда?')) return
   try {
     await api.deleteWebResourceStageType(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+function openDomainStatusForm(r) {
+  domainStatusForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
+async function saveDomainStatus() {
+  if (!domainStatusForm.value?.code?.trim() || !domainStatusForm.value?.name) return
+  try {
+    const payload = {
+      code: domainStatusForm.value.code.trim(),
+      name: domainStatusForm.value.name,
+      description: domainStatusForm.value.description,
+    }
+    if (domainStatusForm.value.id) await api.updateDomainStatus(domainStatusForm.value.id, payload)
+    else await api.createDomainStatus(payload)
+    domainStatusForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function deleteDomainStatus(id) {
+  if (!confirm('Удалить статус домена?')) return
+  try {
+    await api.deleteDomainStatus(id)
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }
 }

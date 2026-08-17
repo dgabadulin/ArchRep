@@ -61,6 +61,26 @@
             </button>
           </div>
         </li>
+        <li class="op-card">
+          <div class="op-card-body">
+            <h3 class="op-title">Наполнение доменов из веб-ресурсов</h3>
+            <p class="op-desc">
+              Разовая операция: извлекает домен из URL веб-ресурсов, создаёт отсутствующие записи со статусом
+              «Делегирован» и проставляет пустой FK «Домен». Уже заполненный FK не перезаписывается; конфликты
+              возвращаются в отчёте.
+            </p>
+          </div>
+          <div class="op-card-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="rebuildDomainsBusy || waitingHealth"
+              @click="runRebuildDomains"
+            >
+              {{ rebuildDomainsBusy ? 'Выполняется…' : 'Запустить' }}
+            </button>
+          </div>
+        </li>
       </ul>
     </section>
 
@@ -153,6 +173,7 @@ function openImportHelp() {
 }
 
 const rebuildBusy = ref(false)
+const rebuildDomainsBusy = ref(false)
 const message = ref('')
 const messageOk = ref(true)
 
@@ -209,6 +230,34 @@ async function runRebuildIntegrationFlows() {
     message.value = e.message || 'Ошибка пересборки'
   } finally {
     rebuildBusy.value = false
+  }
+}
+
+async function runRebuildDomains() {
+  if (
+    !confirm(
+      'Извлечь домены из URL веб-ресурсов, создать недостающие и проставить пустые FK? Уже заданные FK не перезаписываются.'
+    )
+  ) {
+    return
+  }
+  rebuildDomainsBusy.value = true
+  message.value = ''
+  try {
+    const summary = await togafApi.rebuildDomainsFromWebResources()
+    messageOk.value = true
+    const conflicts = Array.isArray(summary?.conflicts) ? summary.conflicts.length : 0
+    message.value =
+      `Готово: просмотрено ${summary?.scanned ?? 0}, создано доменов ${summary?.domains_created ?? 0}, ` +
+      `уже существовало ${summary?.domains_existing ?? 0}, FK проставлено ${summary?.fk_set ?? 0}, ` +
+      `пропущено ${summary?.fk_skipped_already_set ?? 0}, без домена ${summary?.skipped_no_domain ?? 0}` +
+      (conflicts ? `, конфликтов ${conflicts}` : '') +
+      '.'
+  } catch (e) {
+    messageOk.value = false
+    message.value = e.message || 'Ошибка наполнения доменов'
+  } finally {
+    rebuildDomainsBusy.value = false
   }
 }
 

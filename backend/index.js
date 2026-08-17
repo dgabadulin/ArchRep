@@ -27,7 +27,10 @@ const { publicKeycloakFlags } = require('./auth/keycloakConfig');
 const { createAuthMiddleware } = require('./auth/middleware');
 const { createAuthRouter } = require('./auth/authRoutes');
 const { createAdminRouter } = require('./auth/adminRoutes');
+const { createJobsRouter } = require('./jobsRoutes');
+const { createJobRunner } = require('./jobs/runner');
 const { bootstrapAuth } = require('./auth/bootstrapAuth');
+const { normalizeDomainName } = require('./domainFromUrl');
 
 // Параметры ADR: только коды справочников (issue #31).
 const DEFAULT_FLOW_STATUS_MAP_BY_CODE = {
@@ -96,6 +99,9 @@ app.use(createAuthMiddleware(pool));
 app.use('/api/auth', createAuthRouter(pool));
 app.use('/api/admin', createAdminRouter(pool));
 
+const jobRunner = createJobRunner(pool, queries);
+app.use('/api/jobs', createJobsRouter(pool, queries, jobRunner));
+
 const DISPLAY_NAME_PATHS = [
   [/^\/api\/ar-systems(?:\/\d+)?$/, 'system'],
   [/^\/api\/parent-systems$/, 'system'],
@@ -130,6 +136,8 @@ const DISPLAY_NAME_PATHS = [
   [/^\/api\/togaf\/web-resource-statuses(?:\/\d+)?$/, 'web_resource_status'],
   [/^\/api\/togaf\/web-resource-categories(?:\/\d+)?$/, 'web_resource_category'],
   [/^\/api\/togaf\/web-resource-stage-types(?:\/\d+)?$/, 'web_resource_stage_type'],
+  [/^\/api\/togaf\/domains(?:\/\d+)?$/, 'domain'],
+  [/^\/api\/togaf\/domain-statuses(?:\/\d+)?$/, 'domain_status'],
   [/^\/api\/togaf\/refs\/business-service-statuses(?:\/\d+)?$/, 'business_service_status'],
   [/^\/api\/togaf\/business-functions(?:\/\d+)?$/, 'business_function'],
   [/^\/api\/togaf\/entity-types(?:\/\d+)?$/, 'meta_entity_type'],
@@ -258,7 +266,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
   GRAPH_COLLAPSED_SYSTEM_ICON: null,
@@ -292,6 +300,7 @@ app.get('/api/config', (req, res) => {
       business_function: { label: 'Бизнес-функция', icon: 'GitBranch', listLabel: 'Бизнес-способности' },
       principle: { label: 'Принцип', icon: 'Scale', listLabel: 'Принципы' },
       web_resource: { label: 'Веб-ресурс', icon: 'Globe', listLabel: 'Веб-ресурсы' },
+      domain: { label: 'Домен', icon: 'AppWindow', listLabel: 'Домены' },
     };
   }
   if (out.GRAPH_COLLAPSED_SYSTEM_ICON == null || String(out.GRAPH_COLLAPSED_SYSTEM_ICON).trim() === '') {
@@ -2239,6 +2248,149 @@ app.delete('/api/togaf/web-resources/:id', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 
+// --- Domains registry (#67) ---
+function enrichDomainRow(row) {
+  return applyDisplayName(row, 'domain');
+}
+
+async function assertDomainCompanyIsOrg(companyId) {
+  if (companyId == null || companyId === '') return;
+  const r = await pool.query(queries.domains_org_unit_is_org, [companyId]);
+  if (r.rowCount === 0) {
+    const err = new Error('Компания должна быть организационной единицей с категорией «Организация» (code=org).');
+    err.status = 400;
+    throw err;
+  }
+}
+
+app.get('/api/togaf/domains', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.domains_select_search : queries.domains_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichDomainRow);
+    if (excel) {
+      const exportRows = rows.map((row) => ({
+        ID: row.id,
+        Домен: row.name,
+        Статус: row.status_name,
+        Регистратор: row.registrar_name,
+        'Дата регистрации': row.registered_at,
+        'Дата окончания': row.expires_at,
+        Назначение: row.purpose,
+        Компания: row.company_name,
+        'Владелец от бизнеса': row.business_owner_name,
+      }));
+      const buf = buildExcelBuffer(exportRows, 'Домены');
+      res.setHeader('Content-Disposition', 'attachment; filename=domains.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.domains_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichDomainRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/domains', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    if (!b.ar_domain_statuses_id) return res.status(400).json({ error: 'ar_domain_statuses_id required' });
+    const domainName = normalizeDomainName(b.name);
+    if (!domainName) return res.status(400).json({ error: 'Некорректное имя домена' });
+    await assertDomainCompanyIsOrg(b.company_ar_organization_units_id);
+    const r = await pool.query(queries.domains_insert, [
+      domainName,
+      b.registrar_ar_partners_id || '',
+      b.registered_at || '',
+      b.expires_at || '',
+      b.ar_domain_statuses_id,
+      b.purpose || '',
+      b.company_ar_organization_units_id || '',
+      b.business_owner_ar_employees_id || '',
+    ]);
+    const full = await pool.query(queries.domains_get, [r.rows[0].id]);
+    res.status(201).json(enrichDomainRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Домен с таким именем уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    if (!b.ar_domain_statuses_id) return res.status(400).json({ error: 'ar_domain_statuses_id required' });
+    const domainName = normalizeDomainName(b.name);
+    if (!domainName) return res.status(400).json({ error: 'Некорректное имя домена' });
+    await assertDomainCompanyIsOrg(b.company_ar_organization_units_id);
+    const r = await pool.query(queries.domains_update, [
+      domainName,
+      b.registrar_ar_partners_id || '',
+      b.registered_at || '',
+      b.expires_at || '',
+      b.ar_domain_statuses_id,
+      b.purpose || '',
+      b.company_ar_organization_units_id || '',
+      b.business_owner_ar_employees_id || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const full = await pool.query(queries.domains_get, [req.params.id]);
+    res.json(enrichDomainRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Домен с таким именем уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const cnt = await pool.query(queries.domains_count_web_resources, [req.params.id]);
+    if ((cnt.rows[0] && cnt.rows[0].c) > 0) {
+      return res.status(409).json({ error: 'Нельзя удалить домен: есть связанные веб-ресурсы. Сначала очистите поле «Домен» на карточках WR.' });
+    }
+    const r = await pool.query(queries.domains_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/domain-statuses', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_select); res.json(applyDisplayName(r.rows, 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/domain-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.domain_statuses_insert, [code, name, description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'domain_status'));
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.domain_statuses_update, [code, name, description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'domain_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
 app.get('/api/togaf/web-resource-statuses', async (req, res) => {
   try { const r = await pool.query(queries.web_resource_statuses_select); res.json(applyDisplayName(r.rows, 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -2483,15 +2635,23 @@ const INTEGRATION_FLOW_METAMODEL_RELATION_TYPES = new Set([
   'integration_flow_module_system',
   'integration_flow_module_module',
 ])
-/** Проекция из реестра веб-ресурсов (FK ar_systems_id). */
-const WEB_RESOURCE_PROJECTION_RELATION_TYPES = new Set(['system_web_resource', 'subsystem_web_resource'])
+/** Проекции из реестра веб-ресурсов (FK ИС/модуль и FK домена). */
+const WEB_RESOURCE_PROJECTION_RELATION_TYPES = new Set([
+  'system_web_resource',
+  'subsystem_web_resource',
+  'web_resource_domain',
+])
 function isMetamodelIntegrationFlowProjection(row) {
   return row && row.reference_to_baserow != null && INTEGRATION_FLOW_METAMODEL_RELATION_TYPES.has(row.relation_type)
 }
 function isWebResourceMetamodelProjection(row) {
   if (!row || !WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(row.relation_type)) return false
   const payload = row.payload
-  if (payload && typeof payload === 'object' && payload.projection === 'fk') return true
+  const isFkPayload = payload && typeof payload === 'object' && payload.projection === 'fk'
+  if (row.relation_type === 'web_resource_domain') {
+    return isFkPayload || (row.from_entity_type === 'web_resource' && row.to_entity_type === 'domain')
+  }
+  if (isFkPayload) return true
   return row.to_entity_type === 'web_resource'
 }
 function isManagedMetamodelProjection(row) {
@@ -2522,6 +2682,18 @@ app.post('/api/togaf/metamodel/rebuild-integration-flow-projections', async (req
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'rebuild failed' });
+  }
+});
+
+/** Разовое наполнение доменов из URL веб-ресурсов (#67). */
+app.post('/api/togaf/metamodel/rebuild-domains-from-web-resources', async (req, res) => {
+  try {
+    const { rebuildDomainsFromWebResources } = require('./domainRebuild');
+    const summary = await rebuildDomainsFromWebResources(pool, { queries });
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'rebuild failed' });
   }
 });
 
@@ -2623,7 +2795,7 @@ app.post('/api/togaf/relations', async (req, res) => {
     }
     if (WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(rt)) {
       return res.status(400).json({
-        error: 'Связи «Опубликован» (system_web_resource / subsystem_web_resource) создаются только из реестра веб-ресурсов (поле ИС/модуль на карточке).',
+        error: 'Связи веб-ресурса с ИС/модулем («Опубликован») или доменом («Размещен») создаются только из реестра веб-ресурсов (поля на карточке).',
       });
     }
     const r = await pool.query(queries.metamodel_relations_insert, [b.from_entity_type, b.from_entity_id, b.to_entity_type, b.to_entity_id, b.relation_type, b.name, b.description, b.payload ? JSON.stringify(b.payload) : null, b.displayed_name != null ? b.displayed_name : null, b.reference_to_baserow != null ? b.reference_to_baserow : null]);
@@ -2640,7 +2812,7 @@ app.put('/api/togaf/relations/:id', async (req, res) => {
     if (isManagedMetamodelProjection(row)) {
       return res.status(400).json({
         error: isWebResourceMetamodelProjection(row)
-          ? 'Проекция веб-ресурса управляется из реестра веб-ресурсов (поле ИС/модуль на карточке).'
+          ? 'Проекция веб-ресурса управляется из реестра веб-ресурсов (поля ИС/модуль или Домен на карточке).'
           : 'Проекция интеграционного потока управляется из реестра потоков. Пересборка: POST /api/togaf/metamodel/rebuild-integration-flow-projections',
       });
     }
@@ -2722,10 +2894,19 @@ app.delete('/api/togaf/refs/business-service-statuses/:id', async (req, res) => 
 app.get('/api/togaf/organization-units', async (req, res) => {
   try {
     const search = (req.query.search || '').trim();
+    const category = (req.query.category || '').trim();
+    if (category === 'org' && !search) {
+      const r = await pool.query(queries.organization_units_select_org_only);
+      return res.json(applyDisplayName(r.rows, 'org_unit'));
+    }
     const q = search ? queries.togaf_organization_units_select_search : queries.togaf_organization_units_select;
     const params = search ? ['%' + search + '%'] : [];
     const r = await pool.query(q, params);
-    res.json(r.rows);
+    let rows = r.rows;
+    if (category === 'org') {
+      rows = rows.filter((row) => row.category_code === 'org');
+    }
+    res.json(applyDisplayName(rows, 'org_unit'));
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/organization-units/:id', async (req, res) => {
@@ -2837,6 +3018,7 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
     process.exit(1);
   }
   await bootstrapAuth(pool);
+  jobRunner.start();
   console.log('AUTH_ENABLED:', isAuthEnabled());
   mountFrontendStatic();
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;

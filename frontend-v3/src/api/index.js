@@ -66,6 +66,8 @@ export const togafApi = {
   deleteRelation: (id) => api.delete(`/togaf/relations/${id}`),
   /** Пересборка проекций integration_flow из ar_integration_flows (issue #33). */
   rebuildIntegrationFlowProjections: () => api.post('/togaf/metamodel/rebuild-integration-flow-projections', {}),
+  /** Разовое наполнение доменов из URL веб-ресурсов (#67). */
+  rebuildDomainsFromWebResources: () => api.post('/togaf/metamodel/rebuild-domains-from-web-resources', {}),
 
   organizationUnits: (params) => api.get('/togaf/organization-units', params),
   organizationUnit: (id) => api.get(`/togaf/organization-units/${id}`),
@@ -87,6 +89,8 @@ export const togafApi = {
 
   webResources: (params) => api.get('/togaf/web-resources', params),
   webResource: (id) => api.get(`/togaf/web-resources/${id}`),
+  domains: (params) => api.get('/togaf/domains', params),
+  domain: (id) => api.get(`/togaf/domains/${id}`),
 
   businessFunctions: (params) => api.get('/togaf/business-functions', params),
   businessFunction: (id) => api.get(`/togaf/business-functions/${id}`),

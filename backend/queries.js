@@ -575,8 +575,8 @@ module.exports = {
   togaf_business_service_statuses_update: `UPDATE archrep.ar_business_service_statuses SET name=$1, description=NULLIF($2,'') WHERE id=$3 RETURNING *`,
   togaf_business_service_statuses_delete: `DELETE FROM archrep.ar_business_service_statuses WHERE id = $1`,
 
-  togaf_organization_units_select: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id ORDER BY o.name`,
-  togaf_organization_units_select_search: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE (o.name ILIKE $1 OR COALESCE(o.fullname,'') ILIKE $1 OR COALESCE(o.description,'') ILIKE $1 OR COALESCE(o.leader,'') ILIKE $1 OR COALESCE(c.name,'') ILIKE $1) ORDER BY o.name`,
+  togaf_organization_units_select: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, c.code as category_code, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id ORDER BY o.name`,
+  togaf_organization_units_select_search: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, c.code as category_code, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE (o.name ILIKE $1 OR COALESCE(o.fullname,'') ILIKE $1 OR COALESCE(o.description,'') ILIKE $1 OR COALESCE(o.leader,'') ILIKE $1 OR COALESCE(c.name,'') ILIKE $1) ORDER BY o.name`,
   togaf_organization_units_get: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE o.id = $1`,
   togaf_organization_units_get_by_name: `SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id, o.created_at, o.updated_at, c.name as category_name, p.name as parent_name FROM archrep.ar_organization_units o LEFT JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id LEFT JOIN archrep.ar_organization_units p ON o.parent_id = p.id WHERE lower(trim(o.name)) = lower(trim($1)) LIMIT 1`,
   togaf_organization_units_insert: `INSERT INTO archrep.ar_organization_units (name, fullname, parent_id, description, leader, organization_unit_categories_id) VALUES ($1, NULLIF($2,''), NULLIF($3,'')::BIGINT, NULLIF($4,''), NULLIF($5,''), NULLIF($6,'')::BIGINT) RETURNING id, name, fullname, parent_id, description, leader, organization_unit_categories_id, created_at, updated_at`,
@@ -696,37 +696,41 @@ module.exports = {
     SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url,
            w.ar_systems_id, w.publication_request_number, w.publication_date,
            w.ar_web_resource_statuses_id, w.ar_web_resource_categories_id, w.ar_web_resource_stage_types_id,
-           w.created_at, w.updated_at,
+           w.ar_domains_id, w.created_at, w.updated_at,
            s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
            s.parent_ar_systems_id AS system_parent_id,
            ps.name AS parent_system_name,
            st.name AS status_name, st.code AS status_code,
            cat.name AS category_name, cat.code AS category_code,
-           sg.name AS stage_type_name, sg.code AS stage_type_code
+           sg.name AS stage_type_name, sg.code AS stage_type_code,
+           d.name AS domain_name
     FROM archrep.ar_web_resources w
     JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
     LEFT JOIN archrep.ar_systems ps ON ps.id = s.parent_ar_systems_id
     JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
     JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
     JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
+    LEFT JOIN archrep.ar_domains d ON w.ar_domains_id = d.id
     ORDER BY w.code`,
   web_resources_select_search: `
     SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url,
            w.ar_systems_id, w.publication_request_number, w.publication_date,
            w.ar_web_resource_statuses_id, w.ar_web_resource_categories_id, w.ar_web_resource_stage_types_id,
-           w.created_at, w.updated_at,
+           w.ar_domains_id, w.created_at, w.updated_at,
            s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
            s.parent_ar_systems_id AS system_parent_id,
            ps.name AS parent_system_name,
            st.name AS status_name, st.code AS status_code,
            cat.name AS category_name, cat.code AS category_code,
-           sg.name AS stage_type_name, sg.code AS stage_type_code
+           sg.name AS stage_type_name, sg.code AS stage_type_code,
+           d.name AS domain_name
     FROM archrep.ar_web_resources w
     JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
     LEFT JOIN archrep.ar_systems ps ON ps.id = s.parent_ar_systems_id
     JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
     JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
     JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
+    LEFT JOIN archrep.ar_domains d ON w.ar_domains_id = d.id
     WHERE (
       w.code ILIKE $1 OR w.short_name ILIKE $1 OR COALESCE(w.purpose,'') ILIKE $1
       OR COALESCE(w.publication_url,'') ILIKE $1
@@ -736,43 +740,48 @@ module.exports = {
       OR st.name ILIKE $1 OR COALESCE(st.code,'') ILIKE $1
       OR cat.name ILIKE $1 OR COALESCE(cat.code,'') ILIKE $1
       OR sg.name ILIKE $1 OR COALESCE(sg.code,'') ILIKE $1
+      OR COALESCE(d.name,'') ILIKE $1
     )
     ORDER BY w.code`,
   web_resources_get: `
     SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url,
            w.ar_systems_id, w.publication_request_number, w.publication_date,
            w.ar_web_resource_statuses_id, w.ar_web_resource_categories_id, w.ar_web_resource_stage_types_id,
-           w.created_at, w.updated_at,
+           w.ar_domains_id, w.created_at, w.updated_at,
            s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
            s.parent_ar_systems_id AS system_parent_id,
            ps.name AS parent_system_name,
            st.name AS status_name, st.code AS status_code,
            cat.name AS category_name, cat.code AS category_code,
-           sg.name AS stage_type_name, sg.code AS stage_type_code
+           sg.name AS stage_type_name, sg.code AS stage_type_code,
+           d.name AS domain_name
     FROM archrep.ar_web_resources w
     JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
     LEFT JOIN archrep.ar_systems ps ON ps.id = s.parent_ar_systems_id
     JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
     JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
     JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
+    LEFT JOIN archrep.ar_domains d ON w.ar_domains_id = d.id
     WHERE w.id = $1`,
   web_resources_get_by_code: `
     SELECT w.id, w.code, w.short_name, w.purpose, w.publication_url,
            w.ar_systems_id, w.publication_request_number, w.publication_date,
            w.ar_web_resource_statuses_id, w.ar_web_resource_categories_id, w.ar_web_resource_stage_types_id,
-           w.created_at, w.updated_at,
+           w.ar_domains_id, w.created_at, w.updated_at,
            s.name AS system_name, s.code AS system_code, s.fullname AS system_fullname,
            s.parent_ar_systems_id AS system_parent_id,
            ps.name AS parent_system_name,
            st.name AS status_name, st.code AS status_code,
            cat.name AS category_name, cat.code AS category_code,
-           sg.name AS stage_type_name, sg.code AS stage_type_code
+           sg.name AS stage_type_name, sg.code AS stage_type_code,
+           d.name AS domain_name
     FROM archrep.ar_web_resources w
     JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
     LEFT JOIN archrep.ar_systems ps ON ps.id = s.parent_ar_systems_id
     JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
     JOIN archrep.ar_web_resource_categories cat ON w.ar_web_resource_categories_id = cat.id
     JOIN archrep.ar_web_resource_stage_types sg ON w.ar_web_resource_stage_types_id = sg.id
+    LEFT JOIN archrep.ar_domains d ON w.ar_domains_id = d.id
     WHERE w.code = $1`,
   systems_select_for_import_labels: `
     SELECT s.id, s.code, s.name,
@@ -782,21 +791,128 @@ module.exports = {
   web_resources_insert: `INSERT INTO archrep.ar_web_resources (
       code, short_name, purpose, publication_url,
       ar_systems_id, publication_request_number, publication_date,
-      ar_web_resource_statuses_id, ar_web_resource_categories_id, ar_web_resource_stage_types_id
+      ar_web_resource_statuses_id, ar_web_resource_categories_id, ar_web_resource_stage_types_id,
+      ar_domains_id
     ) VALUES (
       $1 || nextval('archrep.ar_web_resources_code_seq')::text,
       $2, NULLIF($3,''), NULLIF($4,''),
       $5::BIGINT, NULLIF($6,''), NULLIF($7,'')::date,
-      $8::BIGINT, $9::BIGINT, $10::BIGINT
+      $8::BIGINT, $9::BIGINT, $10::BIGINT,
+      NULLIF($11,'')::BIGINT
     ) RETURNING *`,
   web_resources_update: `UPDATE archrep.ar_web_resources SET
       short_name = $1, purpose = NULLIF($2,''), publication_url = NULLIF($3,''),
       ar_systems_id = $4::BIGINT, publication_request_number = NULLIF($5,''),
       publication_date = NULLIF($6,'')::date, ar_web_resource_statuses_id = $7::BIGINT,
       ar_web_resource_categories_id = $8::BIGINT, ar_web_resource_stage_types_id = $9::BIGINT,
+      ar_domains_id = NULLIF($10,'')::BIGINT,
       updated_at = current_timestamp
-    WHERE id = $10 RETURNING *`,
+    WHERE id = $11 RETURNING *`,
   web_resources_delete: `DELETE FROM archrep.ar_web_resources WHERE id = $1`,
+
+  domain_statuses_select: `SELECT id, code, name, description FROM archrep.ar_domain_statuses ORDER BY id`,
+  domain_statuses_get: `SELECT id, code, name, description FROM archrep.ar_domain_statuses WHERE id = $1`,
+  domain_statuses_insert: `INSERT INTO archrep.ar_domain_statuses (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
+  domain_statuses_update: `UPDATE archrep.ar_domain_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
+  domain_statuses_delete: `DELETE FROM archrep.ar_domain_statuses WHERE id = $1`,
+  domain_statuses_get_by_code: `SELECT id, code, name, description FROM archrep.ar_domain_statuses WHERE code = $1`,
+
+  domains_select: `
+    SELECT d.id, d.name, d.registrar_ar_partners_id, d.registered_at, d.expires_at,
+           d.ar_domain_statuses_id, d.purpose, d.company_ar_organization_units_id,
+           d.business_owner_ar_employees_id, d.created_at, d.updated_at,
+           st.name AS status_name, st.code AS status_code,
+           p.name AS registrar_name,
+           o.name AS company_name,
+           e.full_name AS business_owner_name
+    FROM archrep.ar_domains d
+    JOIN archrep.ar_domain_statuses st ON d.ar_domain_statuses_id = st.id
+    LEFT JOIN archrep.ar_partners p ON d.registrar_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_organization_units o ON d.company_ar_organization_units_id = o.id
+    LEFT JOIN archrep.ar_employees e ON d.business_owner_ar_employees_id = e.id
+    ORDER BY d.name`,
+  domains_select_search: `
+    SELECT d.id, d.name, d.registrar_ar_partners_id, d.registered_at, d.expires_at,
+           d.ar_domain_statuses_id, d.purpose, d.company_ar_organization_units_id,
+           d.business_owner_ar_employees_id, d.created_at, d.updated_at,
+           st.name AS status_name, st.code AS status_code,
+           p.name AS registrar_name,
+           o.name AS company_name,
+           e.full_name AS business_owner_name
+    FROM archrep.ar_domains d
+    JOIN archrep.ar_domain_statuses st ON d.ar_domain_statuses_id = st.id
+    LEFT JOIN archrep.ar_partners p ON d.registrar_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_organization_units o ON d.company_ar_organization_units_id = o.id
+    LEFT JOIN archrep.ar_employees e ON d.business_owner_ar_employees_id = e.id
+    WHERE (
+      d.name ILIKE $1 OR COALESCE(d.purpose,'') ILIKE $1
+      OR st.name ILIKE $1 OR COALESCE(st.code,'') ILIKE $1
+      OR COALESCE(p.name,'') ILIKE $1
+      OR COALESCE(o.name,'') ILIKE $1
+      OR COALESCE(e.full_name,'') ILIKE $1
+    )
+    ORDER BY d.name`,
+  domains_get: `
+    SELECT d.id, d.name, d.registrar_ar_partners_id, d.registered_at, d.expires_at,
+           d.ar_domain_statuses_id, d.purpose, d.company_ar_organization_units_id,
+           d.business_owner_ar_employees_id, d.created_at, d.updated_at,
+           st.name AS status_name, st.code AS status_code,
+           p.name AS registrar_name,
+           o.name AS company_name,
+           e.full_name AS business_owner_name
+    FROM archrep.ar_domains d
+    JOIN archrep.ar_domain_statuses st ON d.ar_domain_statuses_id = st.id
+    LEFT JOIN archrep.ar_partners p ON d.registrar_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_organization_units o ON d.company_ar_organization_units_id = o.id
+    LEFT JOIN archrep.ar_employees e ON d.business_owner_ar_employees_id = e.id
+    WHERE d.id = $1`,
+  domains_get_by_name: `
+    SELECT d.id, d.name, d.ar_domain_statuses_id
+    FROM archrep.ar_domains d
+    WHERE lower(trim(d.name)) = lower(trim($1))
+    LIMIT 1`,
+  domains_insert: `
+    INSERT INTO archrep.ar_domains (
+      name, registrar_ar_partners_id, registered_at, expires_at, ar_domain_statuses_id,
+      purpose, company_ar_organization_units_id, business_owner_ar_employees_id
+    ) VALUES (
+      lower(trim($1)), NULLIF($2,'')::BIGINT, NULLIF($3,'')::date, NULLIF($4,'')::date, $5::BIGINT,
+      NULLIF($6,''), NULLIF($7,'')::BIGINT, NULLIF($8,'')::BIGINT
+    ) RETURNING *`,
+  domains_update: `
+    UPDATE archrep.ar_domains SET
+      name = lower(trim($1)),
+      registrar_ar_partners_id = NULLIF($2,'')::BIGINT,
+      registered_at = NULLIF($3,'')::date,
+      expires_at = NULLIF($4,'')::date,
+      ar_domain_statuses_id = $5::BIGINT,
+      purpose = NULLIF($6,''),
+      company_ar_organization_units_id = NULLIF($7,'')::BIGINT,
+      business_owner_ar_employees_id = NULLIF($8,'')::BIGINT,
+      updated_at = current_timestamp
+    WHERE id = $9 RETURNING *`,
+  domains_delete: `DELETE FROM archrep.ar_domains WHERE id = $1`,
+  domains_count_web_resources: `SELECT COUNT(*)::int AS c FROM archrep.ar_web_resources WHERE ar_domains_id = $1`,
+  domains_org_unit_is_org: `
+    SELECT o.id
+    FROM archrep.ar_organization_units o
+    JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id
+    WHERE o.id = $1 AND c.code = 'org'`,
+  organization_units_select_org_only: `
+    SELECT o.id, o.name, o.fullname, o.parent_id, o.description, o.leader, o.organization_unit_categories_id,
+           o.created_at, o.updated_at, c.name as category_name, c.code as category_code
+    FROM archrep.ar_organization_units o
+    JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id
+    WHERE c.code = 'org'
+    ORDER BY o.name`,
+  web_resources_select_urls_for_domain_rebuild: `
+    SELECT id, publication_url, ar_domains_id
+    FROM archrep.ar_web_resources
+    WHERE COALESCE(TRIM(publication_url), '') <> ''`,
+  web_resources_set_domain_id: `
+    UPDATE archrep.ar_web_resources
+    SET ar_domains_id = $2::BIGINT, updated_at = current_timestamp
+    WHERE id = $1`,
 
   metamodel_relations_by_from: `
     SELECT r.id, r.from_entity_type, r.from_entity_id, r.to_entity_type, r.to_entity_id, r.relation_type, r.name, r.displayed_name, r.reference_to_baserow, r.description, r.payload, r.created_at, r.updated_at,
@@ -818,4 +934,84 @@ module.exports = {
   settings_parameters_insert: `INSERT INTO archrep.ar_settings_parameters (code, description, value, value_type, "group", is_secret, read_only) VALUES ($1, NULLIF($2,''), NULLIF($3,''), COALESCE(NULLIF($4,''), 'string'), NULLIF($5,''), COALESCE($6, false), COALESCE($7, false)) RETURNING *`,
   settings_parameters_update: `UPDATE archrep.ar_settings_parameters SET description = NULLIF($2,''), value = $3, value_type = COALESCE(NULLIF($4,''), 'string'), "group" = NULLIF($5,''), is_secret = COALESCE($6, false), read_only = COALESCE($7, false), updated_at = now() WHERE id = $1 RETURNING *`,
   settings_parameters_delete: `DELETE FROM archrep.ar_settings_parameters WHERE id = $1`,
+
+  jobs_select: `
+    SELECT j.id, j.code, j.name, j.description, j.handler, j.interval_seconds, j.enabled,
+           j.last_started_at, j.last_finished_at, j.last_success_at, j.last_status,
+           j.created_at, j.updated_at
+    FROM archrep.ar_jobs j
+    ORDER BY j.name`,
+  jobs_get: `
+    SELECT j.id, j.code, j.name, j.description, j.handler, j.interval_seconds, j.enabled,
+           j.last_started_at, j.last_finished_at, j.last_success_at, j.last_status,
+           j.created_at, j.updated_at
+    FROM archrep.ar_jobs j
+    WHERE j.id = $1`,
+  jobs_get_by_code: `
+    SELECT j.id, j.code, j.name, j.description, j.handler, j.interval_seconds, j.enabled,
+           j.last_started_at, j.last_finished_at, j.last_success_at, j.last_status
+    FROM archrep.ar_jobs j
+    WHERE j.code = $1`,
+  jobs_select_due: `
+    SELECT j.id, j.code, j.name, j.description, j.handler, j.interval_seconds, j.enabled,
+           j.last_started_at, j.last_finished_at, j.last_success_at, j.last_status
+    FROM archrep.ar_jobs j
+    WHERE j.enabled = true
+      AND (
+        j.last_success_at IS NULL
+        OR j.last_success_at <= now() - (j.interval_seconds || ' seconds')::interval
+      )
+    ORDER BY j.id`,
+  jobs_update_enabled: `
+    UPDATE archrep.ar_jobs
+    SET enabled = $2, updated_at = now()
+    WHERE id = $1
+    RETURNING *`,
+  jobs_touch_start: `
+    UPDATE archrep.ar_jobs
+    SET last_started_at = now(), last_status = 'running', updated_at = now()
+    WHERE id = $1`,
+  jobs_touch_finish: `
+    UPDATE archrep.ar_jobs
+    SET last_finished_at = now(),
+        last_status = $2,
+        last_success_at = CASE WHEN $2 = 'success' THEN now() ELSE last_success_at END,
+        updated_at = now()
+    WHERE id = $1`,
+  job_runs_insert: `
+    INSERT INTO archrep.ar_job_runs (job_id, status, trigger, triggered_by_user_id)
+    VALUES ($1, 'running', $2, $3)
+    RETURNING *`,
+  job_runs_finish: `
+    UPDATE archrep.ar_job_runs
+    SET finished_at = now(),
+        status = $2,
+        message = $3,
+        error_message = $4,
+        result_json = $5
+    WHERE id = $1
+    RETURNING *`,
+  job_runs_select_by_job: `
+    SELECT r.id, r.job_id, r.started_at, r.finished_at, r.status, r.trigger,
+           r.message, r.error_message, r.result_json, r.triggered_by_user_id,
+           u.login AS triggered_by_login
+    FROM archrep.ar_job_runs r
+    LEFT JOIN archrep.ar_app_users u ON u.id = r.triggered_by_user_id
+    WHERE r.job_id = $1
+    ORDER BY r.started_at DESC
+    LIMIT $2 OFFSET $3`,
+  domains_select_expiring: `
+    SELECT d.id, d.name, d.expires_at,
+           st.name AS status_name, st.code AS status_code,
+           p.name AS registrar_name,
+           e.full_name AS business_owner_name
+    FROM archrep.ar_domains d
+    JOIN archrep.ar_domain_statuses st ON d.ar_domain_statuses_id = st.id
+    LEFT JOIN archrep.ar_partners p ON d.registrar_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON d.business_owner_ar_employees_id = e.id
+    WHERE d.expires_at IS NOT NULL
+      AND d.expires_at >= CURRENT_DATE
+      AND d.expires_at <= CURRENT_DATE + $1::int
+      AND st.code <> 'rejected'
+    ORDER BY d.expires_at, d.name`,
 };

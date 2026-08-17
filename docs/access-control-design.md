@@ -1,9 +1,9 @@
 # Разграничение прав доступа в ИСАР
 
 **Статус:** **реализация в коде (#66)** — локальный login/JWT, таблицы RBAC, middleware, UI login + администрирование; default `AUTH_ENABLED=false` (open mode).  
-**Версия:** 0.3.15  
+**Версия:** 0.3.16  
 **GitHub:** https://github.com/dgabadulin/ArchRep/issues/66  
-**Связанные материалы:** `docs/settings-parameters-design.md` (параметры; префикс SSO — `SEC_`), `docs/data-import-service.md`, `docs/web-resource-registry-schema.md`, `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`, `.env.example` (`AUTH_ENABLED`, bootstrap)
+**Связанные материалы:** `docs/settings-parameters-design.md` (параметры; префикс SSO — `SEC_`), `docs/data-import-service.md`, `docs/web-resource-registry-schema.md`, `docs/domain-registry-schema.md` (#67, `domain:*`), `frontend-v3/src/config/menu.js`, `frontend-v3/src/router/index.js`, `.env.example` (`AUTH_ENABLED`, bootstrap)
 
 **Изменения 0.3:** локальная авторизация как первый этап; 4 роли (без DOMAIN_LEAD); упрощение permissions ADRA; веб-ресурсы и сервисный импорт; модель данных без audit log и без кода группы у permission. Выключатель авторизации — **env `AUTH_ENABLED`**, не `ar_parameters`. Обязательные пользователи `demo` и `aradmin` — bootstrap из env. **Фаза B (Keycloak)** — договорена, в коде **не реализована** (см. §3.1).
 
@@ -241,6 +241,7 @@ Effective permissions = объединение permissions всех назнач
 | `system_function:read` / `write` / `delete` | Функции ИС |
 | `integration_flow:read` / `write` / `delete` / `export` | Реестр интеграций |
 | `web_resource:read` / `write` / `delete` / `export` | Реестр веб-ресурсов |
+| `domain:read` / `write` / `delete` / `export` | Реестр доменов (#67) |
 | `partner:read` / `write` / `delete` / `export` | Контрагенты |
 | `employee:read` / `write` / `delete` / `export` | Сотрудники (каталог) |
 
@@ -317,6 +318,7 @@ Effective permissions = объединение permissions всех назнач
 | `system_function:*` | R | R,W,D | R,W,D | R,W,D |
 | `integration_flow:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `web_resource:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
+| `domain:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `partner:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `employee:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | **Technology** |
@@ -368,6 +370,7 @@ Effective permissions = объединение permissions всех назнач
 | 15 | Каталог ИС | `/systems` | `system:read` | `system:write` | `system:delete` | |
 | 16 | Реестр интеграций | `/integrations` | `integration_flow:read` | `integration_flow:write` | `integration_flow:delete` | |
 | 17 | Реестр веб-ресурсов | `/web-resources` (+ new/edit) | `web_resource:read` | `web_resource:write` | `web_resource:delete` | export → `web_resource:export` |
+| 17a | Реестр доменов | `/domains` (+ new/edit) | `domain:read` | `domain:write` | `domain:delete` | export → `domain:export`; [#67](https://github.com/dgabadulin/ArchRep/issues/67) |
 | | **Технологии** |
 | 18 | Каталог технологий | `/technologies` | `technology:read` | `technology:write` | `technology:delete` | |
 | 19 | Тех.радар | `/tech-radar` | `tech_radar:read` | — | — | |
@@ -422,9 +425,11 @@ Effective permissions = объединение permissions всех назнач
 | `GET /api/integration-flows?system_id=` | **anyOf** `integration_flow:read` \| `system:read` (срез карточки ИС) |
 | `/api/integration-flows` (реестр / карточка потока) | `integration_flow:*` |
 | `/api/web-resources` | `web_resource:*` |
-| `GET /api/partners` (список) | **anyOf** `partner:read` \| `system:read` (lookup); Excel → `partner:export` |
+| `GET /api/togaf/domains` (список, lookup на форме WR) | **anyOf** `domain:read` \| `web_resource:write`; Excel → `domain:export` |
+| `/api/togaf/domains` (карточка / мутации) | `domain:*` |
+| `GET /api/partners` (список) | **anyOf** `partner:read` \| `system:read` \| `domain:write` (lookup); Excel → `partner:export` |
 | `/api/partners` (карточка / мутации) | `partner:*` |
-| `GET /api/ar-employees` (список) | **anyOf** `employee:read` \| `system:read` |
+| `GET /api/ar-employees` (список) | **anyOf** `employee:read` \| `system:read` \| `domain:write` |
 | `/api/ar-employees` (карточка / мутации) | `employee:*` |
 | `GET /api/technologies` (список) | **anyOf** `technology:read` \| `system:read` |
 | `GET/POST/DELETE /api/systems-technologies` | `system:read` / `system:write` (связь на карточке ИС) |
@@ -708,7 +713,8 @@ Content-Type: application/json
 | `GET /api/integration-flows?system_id=` | `system:read` / `integration_flow:read` / `adr_applied:read` |
 | `GET /api/ar-systems` (список, FK) | `system:read` или host с FK на ИС (`integration_flow`, `web_resource`, `adr_applied`, `gap`) |
 | `GET /api/partners`, technologies, employees (список) | свой `*:read` или host-форма (`system` / `technology` …) |
-| `GET /api/togaf/organization-units` (список) | `organization_unit:read` или `actor` / `business_service` / `business_function` |
+| `GET /api/togaf/organization-units` (список) | `organization_unit:read` или `actor` / `business_service` / `business_function` / `domain:write` |
+| `GET /api/togaf/domains` (список, FK на WR) | `domain:read` или `web_resource:write` |
 | Справочники `GET /api/…` (типы/статусы) | `references:read` **или** read хост-формы |
 | `DELETE /api/systems-technologies`, `DELETE` инкрементов ADRA | write хоста (`system:write` / `adr_applied:write`) |
 | `DELETE /api/togaf/relations` с карточки gap | `gap:write` **или** `metamodel_relation:delete` |
@@ -768,7 +774,8 @@ Content-Type: application/json
 |---------------|--------------|
 | **[#66](https://github.com/dgabadulin/ArchRep/issues/66)** — эта спека | Основная реализация: local auth, роли, middleware, UI login/users |
 | `data-import-service.md` / [#64](https://github.com/dgabadulin/ArchRep/issues/64) | После RBAC: `import:execute`; apply + `<resource>:write` |
-| `web-resource-registry-schema.md` | Permissions `web_resource:*` уже в каталоге §4 |
+| `web-resource-registry-schema.md` | Permissions `web_resource:*` уже в каталоге §4; FK домена — [#67](https://github.com/dgabadulin/ArchRep/issues/67) |
+| `domain-registry-schema.md` | Реестр доменов (#67): `domain:*`, меню `/domains`, проекция `web_resource_domain` |
 | `settings-parameters-design.md` | Параметры; SSO — префикс **`SEC_`** (§3.1 фаза B); локальный auth и `AUTH_ENABLED` не зависят от KC |
 | `docs/github-issue-drafts/metamodel-rebuild-rbac-ux.md` / [#36](https://github.com/dgabadulin/ArchRep/issues/36) | Endpoint rebuild → `metamodel:rebuild` (+ `service_operations:execute` для UI) |
 | Demo / `.env` | `AUTH_ENABLED`; bootstrap `demo`/`aradmin`; после SYSTEM_ADMIN — убрать `ALLOW_INSECURE_RESTART_WITHOUT_SECRET` на защищённых стендах |
@@ -787,6 +794,7 @@ Content-Type: application/json
 | `technology` | `ar_technologies` |
 | `integration_flow` | `ar_integration_flows` |
 | `web_resource` | `ar_web_resources` |
+| `domain` | `ar_domains` |
 | `principle` | `ar_principles` |
 | `adr_principle` | `ar_adrs_principle` |
 | `adr_applied` | `ar_adrs_applied` (+ increments/diagrams) |
@@ -842,3 +850,4 @@ Content-Type: application/json
 | 0.3.13 | 2026-08-07 | SYSTEM_ADMIN = полный каталог + resync при bootstrap; схемы ADRA: Open/Download в readonly, JWT во вкладке редактора |
 | 0.3.14 | 2026-08-11 | §3.1 фаза B Keycloak: `SEC_KEYCLOAK_*` (КАПС), BFF OIDC, JIT VIEWER, login_mode; таблица «где константы»; этап 2 — роли из групп KC (не реализовано) |
 | 0.3.15 | 2026-08-11 | Реализация фазы B этап 1: OIDC BFF (`/api/auth/oidc/*`), JIT VIEWER, сиды `SEC_KEYCLOAK_*`, UI button/auto/silent + `/login?local=1` |
+| 0.3.16 | 2026-08-13 | #67 реестр доменов: `domain:*` в каталоге/матрицах/меню/API; anyOf lookup; ссылка на `domain-registry-schema.md` |

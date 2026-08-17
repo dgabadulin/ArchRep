@@ -21,6 +21,10 @@ const entityFetchers = {
     const d = await togafApi.webResource(id)
     return { ...d, name: d.display_name || d.short_name || d.code || '—' }
   },
+  domain: async (id) => {
+    const d = await togafApi.domain(id)
+    return { ...d, name: d.display_name || d.name || '—' }
+  },
   employee: (id) => api.getEmployee(String(id)),
   partner: (id) => api.getPartner(String(id)),
   system_function: (id) => api.getSystemFunction(String(id)),
@@ -45,6 +49,7 @@ const listFetchers = {
   principle: (params) => api.getPrinciples(params),
   gap: (params) => api.getGaps(params),
   web_resource: (params) => togafApi.webResources(params),
+  domain: (params) => togafApi.domains(params),
   employee: (params) => api.getEmployees(params),
   partner: (params) => api.getPartners(params),
   system_function: (params) => api.getSystemFunctionsGlobal(params),

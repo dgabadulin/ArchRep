@@ -241,7 +241,7 @@ function onExpandModules(nid) {
 }
 
 const defaultEntityTypeOrder = [
-  'system', 'web_resource', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee',
+  'system', 'web_resource', 'domain', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee',
   'business_service', 'business_function', 'principle',
 ]
 function getEntityTypeOrder() {

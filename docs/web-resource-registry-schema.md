@@ -2,7 +2,7 @@
 
 Документ фиксирует согласованную модель данных, метамодель, проекции связей, UI и порядок внедрения реестра **веб-ресурсов** в ИСАР.
 
-**Связанные материалы:** [adding-new-entity-type.md](./adding-new-entity-type.md), [demo-full-model-entities-matrix.md](./demo-full-model-entities-matrix.md) (§3.2 — словарь типов связей), [db-migrations-dual.mdc](../.cursor/rules/db-migrations-dual.mdc) (prod `DB/scripts/*.sql` + demo `DB/migrations/*.js`).
+**Связанные материалы:** [adding-new-entity-type.md](./adding-new-entity-type.md), [demo-full-model-entities-matrix.md](./demo-full-model-entities-matrix.md) (§3.2 — словарь типов связей), [domain-registry-schema.md](./domain-registry-schema.md) (#67 — реестр доменов и FK «Домен»), [access-control-design.md](./access-control-design.md) (`web_resource:*`), [db-migrations-dual.mdc](../.cursor/rules/db-migrations-dual.mdc) (prod `DB/scripts/*.sql` + demo `DB/migrations/*.js`).
 
 ---
 
@@ -32,6 +32,7 @@
 | 5 | Код записи | **Автогенерация** с префиксом `WR-` (аналог `GAP-` для арх.долга) |
 | 6 | Статус | **Обязателен**; отдельный **справочник статусов** |
 | 7 | Анализатор зависимостей | Тип **`web_resource`** включается **сразу** (picker, граф, `GRAPH_ENTITY_ORDER` / иконки) |
+| 8 | Привязка к домену (#67) | Nullable FK **`ar_domains_id`** → реестр доменов; проекция **«Размещен»** (`web_resource_domain`); валидация URL↔домен — **400** при несовпадении (см. [domain-registry-schema.md](./domain-registry-schema.md)) |
 
 ---
 
@@ -102,6 +103,7 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 | publication_request_number | varchar NULL | Основание (номер заявки) | Номер заявки на публикацию |
 | publication_date | date NULL | Дата публикации | Фактическая или плановая дата публикации |
 | ar_web_resource_statuses_id | int8 NOT NULL FK | Статус | → `archrep.ar_web_resource_statuses(id)` |
+| ar_domains_id | int8 NULL FK | Домен (#67) | → `archrep.ar_domains(id)`; проекция «Размещен» |
 | created_at | timestamptz | — | Аудит |
 | updated_at | timestamptz | — | Аудит |
 
@@ -109,8 +111,9 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 
 - `ar_systems_id` → `archrep.ar_systems(id)` — рекомендуется `ON DELETE RESTRICT` (нельзя удалить ИС, пока есть веб-ресурсы) или `SET NULL` + запрет NULL на уровне приложения; **предпочтение: RESTRICT**.
 - `ar_web_resource_statuses_id` → `archrep.ar_web_resource_statuses(id)` — `ON DELETE RESTRICT`.
+- `ar_domains_id` → `archrep.ar_domains(id)` — `ON DELETE SET NULL` (см. [domain-registry-schema.md](./domain-registry-schema.md)).
 
-**Индексы:** `code` (unique), `ar_systems_id`, `ar_web_resource_statuses_id`, `publication_date`, при необходимости GIN/trgm по `short_name` для поиска в реестре.
+**Индексы:** `code` (unique), `ar_systems_id`, `ar_web_resource_statuses_id`, `ar_domains_id`, `publication_date`, при необходимости GIN/trgm по `short_name` для поиска в реестре.
 
 **Наименование ИС в таблице реестра:** не дублируется текстом; в списке и карточке — `display_name` связанной системы через JOIN / обогащение API.
 
@@ -154,9 +157,17 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 
 Связь **не создаётся вручную** в обход карточки веб-ресурса (см. §7).
 
+### 6.3. Тип связи «Размещен» (домен, #67)
+
+| code | name | description | From → To |
+|------|------|-------------|-----------|
+| `web_resource_domain` | Размещен | Веб-ресурс размещён на домене | `web_resource → domain` |
+
+Источник правды — `ar_web_resources.ar_domains_id`. Детали проекции, парсинга URL и разового наполнения — [domain-registry-schema.md](./domain-registry-schema.md) (§6–9).
+
 ---
 
-## 7. Проекция связи по FK
+## 7. Проекция связи по FK (ИС / модуль)
 
 **Источник правды:** колонка `ar_web_resources.ar_systems_id`.
 
@@ -206,8 +217,9 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 **Валидация:**
 
 - `publication_url` — непустой URL при статусе `published` (опционально ужесточить на этапе реализации);
-- `ar_systems_id` — существующая **корневая** система;
-- запрет прямого POST/PUT в `ar_metamodel_relations` с `relation_type = system_web_resource` без изменения FK (ответ 400 с пояснением).
+- `ar_systems_id` — существующая ИС или модуль (`ar_systems`);
+- если заданы и `publication_url`, и `ar_domains_id` — извлечённый из URL домен должен совпадать с `ar_domains.name`, иначе **400** ([domain-registry-schema.md](./domain-registry-schema.md) §6.2);
+- запрет прямого POST/PUT в `ar_metamodel_relations` с `relation_type` проекций WR (`system_web_resource` / `subsystem_web_resource` / `web_resource_domain`) без изменения соответствующего FK (ответ 400 с пояснением).
 
 ### 8.2. Файлы
 
@@ -215,7 +227,7 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 - `backend/index.js` — маршруты, `DISPLAY_NAME_PATHS`, вызов синхронизации проекции;
 - `backend/displayName.js` — `DISP_WEB_RESOURCE_TEMPLATE`, `ENTITY_TO_TEMPLATE`.
 
-**Права доступа (RBAC):** в первой версии **не реализуются** (общий доступ как у остальных реестров). Пункт меню: **«Веб-ресурсы»** (`/web-resources`).
+**Права доступа (RBAC, #66):** `web_resource:read|write|delete|export` — см. [access-control-design.md](./access-control-design.md). Пункт меню: **«Веб-ресурсы»** (`/web-resources`).
 
 ---
 
@@ -236,6 +248,7 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 | Категория | `category_name` |
 | Стенд | `stage_type_name` |
 | ИС / модуль | `system_display_name` (из API) |
+| Домен | `domain_name` (из `ar_domains`, #67) |
 | Номер заявки | `publication_request_number` |
 | Дата публикации | `publication_date` |
 | Статус | имя из справочника |
@@ -246,7 +259,7 @@ CRUD: `/api/togaf/web-resource-stage-types`, вкладка «Типы стен�
 
 **Экран:** `WebResourceForm.vue`.
 
-**Одна форма (без вкладки «Связи»):** все атрибуты §4; выбор **ИС или модуля** (`getSystems()` без `exclude_modules`); категория и стенд — select из справочников; статус — select из `ar_web_resource_statuses`.
+**Одна форма (без вкладки «Связи»):** все атрибуты §4; выбор **ИС или модуля** (`getSystems()` без `exclude_modules`); категория и стенд — select из справочников; статус — select из `ar_web_resource_statuses`; **Домен** — select из реестра доменов (`ar_domains_id`, #67).
 
 **Маршруты:** `/web-resources`, `/web-resources/new`, `/web-resources/:id/edit` в `router/index.js`; пункт в `LayoutV3.vue`.
 
@@ -326,7 +339,7 @@ flowchart TB
 - Отдельный реестр **заявок на публикацию** (остаётся строка `publication_request_number`).
 - Атрибут «Техническая информация для публикации».
 - Вкладка «Связи» на карточке веб-ресурса.
-- RBAC (`web_resource:*`).
+- Контроль срока доменов / email — [job-runner-design.md](./job-runner-design.md) (не #67).
 
 ---
 
@@ -340,8 +353,10 @@ flowchart TB
 | Категория | `ar_web_resource_categories_id` + справочник |
 | Стенд | `ar_web_resource_stage_types_id` + справочник |
 | ИС / модуль | `ar_systems_id` → проекция «Опубликован» |
+| Домен (#67) | `ar_domains_id` → проекция «Размещен» (`web_resource_domain`) |
 | Номер заявки | `publication_request_number` |
 | Дата публикации | `publication_date` |
 | Статус | `ar_web_resource_statuses_id` + справочник |
 | Код записи | `WR-*` автогенерация |
 | Связь system/subsystem–web_resource | `system_web_resource` / `subsystem_web_resource`, автопроекция |
+| Связь web_resource–domain | `web_resource_domain`, автопроекция по FK |
