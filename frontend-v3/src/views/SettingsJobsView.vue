@@ -2,8 +2,7 @@
   <div class="page">
     <h1>Управление заданиями</h1>
     <p class="lead">
-      Периодические задания Job Runner. Расписание — интервал после последнего успешного запуска.
-      Спека: <code>docs/job-runner-design.md</code> (#68).
+      Периодические системные задания. Расписание — интервал после последнего успешного запуска.
     </p>
 
     <div v-if="message" class="banner" :class="messageOk ? 'banner-ok' : 'banner-err'">{{ message }}</div>
@@ -15,7 +14,7 @@
           <thead>
             <tr>
               <th>Задание</th>
-              <th>Код</th>
+              <th>Идентификатор</th>
               <th>Интервал</th>
               <th>Вкл.</th>
               <th>Последний запуск</th>
@@ -50,7 +49,7 @@
               <td>{{ formatDateTime(job.last_finished_at || job.last_started_at) }}</td>
               <td>
                 <span class="status-pill" :class="statusClass(job.last_status)">
-                  {{ job.last_status || '—' }}
+                  {{ formatStatus(job.last_status) }}
                 </span>
               </td>
               <td>
@@ -78,35 +77,23 @@
               <tr>
                 <th>Начало</th>
                 <th>Окончание</th>
-                <th>Trigger</th>
+                <th>Источник</th>
                 <th>Статус</th>
                 <th>Сообщение</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="run in runs" :key="run.id">
                 <td>{{ formatDateTime(run.started_at) }}</td>
                 <td>{{ formatDateTime(run.finished_at) }}</td>
-                <td>{{ run.trigger }}{{ run.triggered_by_login ? ` (${run.triggered_by_login})` : '' }}</td>
+                <td>{{ formatTrigger(run.trigger) }}{{ run.triggered_by_login ? ` (${run.triggered_by_login})` : '' }}</td>
                 <td>
-                  <span class="status-pill" :class="statusClass(run.status)">{{ run.status }}</span>
+                  <span class="status-pill" :class="statusClass(run.status)">{{ formatStatus(run.status) }}</span>
                 </td>
                 <td class="msg-cell">{{ run.message || run.error_message || '—' }}</td>
-                <td>
-                  <button
-                    v-if="run.result_json"
-                    type="button"
-                    class="btn-link"
-                    @click="toggleResult(run.id)"
-                  >
-                    {{ expandedRunId === run.id ? 'Скрыть JSON' : 'JSON' }}
-                  </button>
-                </td>
               </tr>
             </tbody>
           </table>
-          <pre v-if="expandedRunId && expandedRun" class="result-json">{{ expandedRun }}</pre>
         </div>
       </section>
     </template>
@@ -127,21 +114,9 @@ const runningId = ref(null)
 const togglingId = ref(null)
 const message = ref('')
 const messageOk = ref(true)
-const expandedRunId = ref(null)
-
 const canExecute = computed(() => authStore.hasPermission('jobs:execute'))
 
 const selectedJob = computed(() => jobs.value.find((j) => j.id === selectedJobId.value) || null)
-
-const expandedRun = computed(() => {
-  const run = runs.value.find((r) => r.id === expandedRunId.value)
-  if (!run || !run.result_json) return ''
-  try {
-    return JSON.stringify(run.result_json, null, 2)
-  } catch {
-    return String(run.result_json)
-  }
-})
 
 function formatInterval(seconds) {
   const s = Number(seconds) || 0
@@ -158,6 +133,19 @@ function formatDateTime(v) {
   const d = new Date(v)
   if (Number.isNaN(d.getTime())) return String(v)
   return d.toLocaleString('ru-RU')
+}
+
+function formatTrigger(trigger) {
+  if (trigger === 'manual') return 'Вручную'
+  if (trigger === 'schedule') return 'По расписанию'
+  return trigger || '—'
+}
+
+function formatStatus(status) {
+  if (status === 'success') return 'Успешно'
+  if (status === 'failed') return 'Ошибка'
+  if (status === 'running') return 'Выполняется'
+  return status || '—'
 }
 
 function statusClass(status) {
@@ -194,7 +182,6 @@ async function loadRuns() {
     return
   }
   runsLoading.value = true
-  expandedRunId.value = null
   try {
     runs.value = await api.getJobRuns(selectedJobId.value)
   } catch (e) {
@@ -207,10 +194,6 @@ async function loadRuns() {
 function selectJob(job) {
   selectedJobId.value = job.id
   loadRuns()
-}
-
-function toggleResult(runId) {
-  expandedRunId.value = expandedRunId.value === runId ? null : runId
 }
 
 async function runJob(job) {
@@ -282,15 +265,6 @@ onMounted(loadJobs)
 .status-ok { background: #e8f5e9; color: #2e7d32; }
 .status-err { background: #ffebee; color: #c62828; }
 .status-run { background: #e3f2fd; color: #1565c0; }
-.result-json {
-  margin: 0;
-  padding: 0.75rem 1rem;
-  background: #f4f5f7;
-  border-top: 1px solid var(--ar-border);
-  font-size: 0.78rem;
-  overflow: auto;
-  max-height: 16rem;
-}
 .banner {
   padding: 0.65rem 0.85rem;
   border-radius: var(--ar-radius-sm);
