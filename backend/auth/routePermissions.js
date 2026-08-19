@@ -87,11 +87,12 @@ const OU_FK_READS = [
   'business_service:read',
   'business_function:read',
   'domain:write',
+  'certificate:write',
 ];
 
-const PARTNER_FK_READS = ['partner:read', 'system:read', 'technology:read', 'domain:write'];
+const PARTNER_FK_READS = ['partner:read', 'system:read', 'technology:read', 'domain:write', 'certificate:write'];
 
-const EMPLOYEE_FK_READS = ['employee:read', 'system:read', 'domain:write'];
+const EMPLOYEE_FK_READS = ['employee:read', 'system:read', 'domain:write', 'certificate:write'];
 
 const TECHNOLOGY_FK_READS = ['technology:read', 'system:read'];
 
@@ -163,8 +164,10 @@ const RULES = [
   },
   ...crud('/api/integration-flows', 'integration_flow'),
   ...crud('/api/togaf/web-resources', 'web_resource'),
-  listLookup('/api/togaf/domains', 'domain:export', ['domain:read', 'web_resource:write']),
+  listLookup('/api/togaf/domains', 'domain:export', ['domain:read', 'web_resource:write', 'certificate:write']),
   ...crud('/api/togaf/domains', 'domain'),
+  listLookup('/api/togaf/certificates', 'certificate:export', ['certificate:read', 'domain:read', 'partner:read', 'employee:read']),
+  ...crud('/api/togaf/certificates', 'certificate'),
 
   listLookup('/api/partners', 'partner:export', PARTNER_FK_READS),
   ...crud('/api/partners', 'partner'),

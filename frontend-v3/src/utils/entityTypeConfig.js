@@ -72,6 +72,11 @@ export const entityTypeConfig = {
     icon: 'AppWindow',
     listLabel: 'Домены',
   },
+  certificate: {
+    label: 'Сертификат',
+    icon: 'Shield',
+    listLabel: 'Сертификаты',
+  },
   partner: {
     label: 'Партнёр',
     icon: 'Handshake',

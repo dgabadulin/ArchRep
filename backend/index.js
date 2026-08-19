@@ -267,7 +267,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'certificate', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
   GRAPH_COLLAPSED_SYSTEM_ICON: null,
@@ -302,6 +302,7 @@ app.get('/api/config', (req, res) => {
       principle: { label: 'Принцип', icon: 'Scale', listLabel: 'Принципы' },
       web_resource: { label: 'Веб-ресурс', icon: 'Globe', listLabel: 'Веб-ресурсы' },
       domain: { label: 'Домен', icon: 'AppWindow', listLabel: 'Домены' },
+      certificate: { label: 'Сертификат', icon: 'Shield', listLabel: 'Сертификаты' },
     };
   }
   if (out.GRAPH_COLLAPSED_SYSTEM_ICON == null || String(out.GRAPH_COLLAPSED_SYSTEM_ICON).trim() === '') {
@@ -2254,6 +2255,10 @@ function enrichDomainRow(row) {
   return applyDisplayName(row, 'domain');
 }
 
+function enrichCertificateRow(row) {
+  return applyDisplayName(row, 'certificate');
+}
+
 async function assertDomainCompanyIsOrg(companyId) {
   if (companyId == null || companyId === '') return;
   const r = await pool.query(queries.domains_org_unit_is_org, [companyId]);
@@ -2360,6 +2365,98 @@ app.delete('/api/togaf/domains/:id', async (req, res) => {
       return res.status(409).json({ error: 'Нельзя удалить домен: есть связанные веб-ресурсы. Сначала очистите поле «Домен» на карточках WR.' });
     }
     const r = await pool.query(queries.domains_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Certificates registry (#69) ---
+app.get('/api/togaf/certificates', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.certificates_select_search : queries.certificates_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichCertificateRow);
+    if (excel) {
+      const exportRows = rows.map((row) => ({
+        ID: row.id,
+        Код: row.code,
+        Домен: row.domain_name,
+        'Сертификационный центр': row.ca_name,
+        'Дата выпуска': row.issued_at,
+        'Дата окончания': row.expires_at,
+        Wildcard: row.wildcard_flag ? 'Да' : 'Нет',
+        'Ссылка на размещение': row.placement_url,
+        Ответственный: row.responsible_name,
+      }));
+      const buf = buildExcelBuffer(exportRows, 'Сертификаты');
+      res.setHeader('Content-Disposition', 'attachment; filename=certificates.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.certificates_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichCertificateRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/certificates', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.ar_domains_id) return res.status(400).json({ error: 'ar_domains_id required' });
+    if (!b.issued_at) return res.status(400).json({ error: 'issued_at required' });
+    if (!b.expires_at) return res.status(400).json({ error: 'expires_at required' });
+    const r = await pool.query(queries.certificates_insert, [
+      b.ar_domains_id,
+      b.ca_ar_partners_id || '',
+      b.issued_at,
+      b.expires_at,
+      !!b.wildcard_flag,
+      b.placement_url || '',
+      b.responsible_ar_employees_id || '',
+    ]);
+    const full = await pool.query(queries.certificates_get, [r.rows[0].id]);
+    res.status(201).json(enrichCertificateRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Сертификат с таким кодом уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.ar_domains_id) return res.status(400).json({ error: 'ar_domains_id required' });
+    if (!b.issued_at) return res.status(400).json({ error: 'issued_at required' });
+    if (!b.expires_at) return res.status(400).json({ error: 'expires_at required' });
+    const r = await pool.query(queries.certificates_update, [
+      b.ar_domains_id,
+      b.ca_ar_partners_id || '',
+      b.issued_at,
+      b.expires_at,
+      !!b.wildcard_flag,
+      b.placement_url || '',
+      b.responsible_ar_employees_id || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const full = await pool.query(queries.certificates_get, [req.params.id]);
+    res.json(enrichCertificateRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Сертификат с таким кодом уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.certificates_delete, [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.status(204).send();
   } catch (err) { console.error(err); res.status(500).send('Server error'); }

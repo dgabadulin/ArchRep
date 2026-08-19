@@ -905,6 +905,73 @@ module.exports = {
     JOIN archrep.ar_organization_unit_categories c ON o.organization_unit_categories_id = c.id
     WHERE c.code = 'org'
     ORDER BY o.name`,
+  certificates_select: `
+    SELECT c.id, c.code, c.ar_domains_id, c.ca_ar_partners_id, c.issued_at, c.expires_at,
+           c.wildcard_flag, c.placement_url, c.responsible_ar_employees_id, c.created_at, c.updated_at,
+           d.name AS domain_name, p.name AS ca_name, e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_partners p ON c.ca_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    ORDER BY c.expires_at NULLS LAST, c.code`,
+  certificates_select_search: `
+    SELECT c.id, c.code, c.ar_domains_id, c.ca_ar_partners_id, c.issued_at, c.expires_at,
+           c.wildcard_flag, c.placement_url, c.responsible_ar_employees_id, c.created_at, c.updated_at,
+           d.name AS domain_name, p.name AS ca_name, e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_partners p ON c.ca_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    WHERE (
+      c.code ILIKE $1
+      OR d.name ILIKE $1
+      OR COALESCE(p.name, '') ILIKE $1
+      OR COALESCE(e.full_name, '') ILIKE $1
+      OR COALESCE(c.placement_url, '') ILIKE $1
+    )
+    ORDER BY c.expires_at NULLS LAST, c.code`,
+  certificates_get: `
+    SELECT c.id, c.code, c.ar_domains_id, c.ca_ar_partners_id, c.issued_at, c.expires_at,
+           c.wildcard_flag, c.placement_url, c.responsible_ar_employees_id, c.created_at, c.updated_at,
+           d.name AS domain_name, p.name AS ca_name, e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_partners p ON c.ca_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    WHERE c.id = $1`,
+  certificates_get_by_code: `
+    SELECT c.id, c.code, c.ar_domains_id, c.ca_ar_partners_id, c.issued_at, c.expires_at,
+           c.wildcard_flag, c.placement_url, c.responsible_ar_employees_id, c.created_at, c.updated_at,
+           d.name AS domain_name, p.name AS ca_name, e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_partners p ON c.ca_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    WHERE lower(trim(c.code)) = lower(trim($1))
+    LIMIT 1`,
+  certificates_insert: `
+    INSERT INTO archrep.ar_certificates (
+      ar_domains_id, ca_ar_partners_id, issued_at, expires_at, wildcard_flag, placement_url, responsible_ar_employees_id
+    ) VALUES (
+      $1::BIGINT, NULLIF($2,'')::BIGINT, $3::date, $4::date, COALESCE($5, false), NULLIF($6,''), NULLIF($7,'')::BIGINT
+    ) RETURNING *`,
+  certificates_update: `
+    UPDATE archrep.ar_certificates SET
+      ar_domains_id = $1::BIGINT,
+      ca_ar_partners_id = NULLIF($2,'')::BIGINT,
+      issued_at = $3::date,
+      expires_at = $4::date,
+      wildcard_flag = COALESCE($5, false),
+      placement_url = NULLIF($6,''),
+      responsible_ar_employees_id = NULLIF($7,'')::BIGINT,
+      updated_at = current_timestamp
+    WHERE id = $8
+    RETURNING *`,
+  certificates_delete: `DELETE FROM archrep.ar_certificates WHERE id = $1`,
+  certificates_count_relations: `
+    SELECT COUNT(*)::int AS c
+    FROM archrep.ar_metamodel_relations
+    WHERE from_entity_type = 'certificate' AND from_entity_id = $1`,
   web_resources_select_urls_for_domain_rebuild: `
     SELECT id, publication_url, ar_domains_id
     FROM archrep.ar_web_resources
@@ -1028,4 +1095,15 @@ module.exports = {
       AND d.expires_at <= CURRENT_DATE + $1::int
       AND st.code <> 'rejected'
     ORDER BY d.expires_at, d.name`,
+  certificates_select_expiring: `
+    SELECT c.id, c.code, c.expires_at,
+           d.name AS domain_name,
+           e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    WHERE c.expires_at IS NOT NULL
+      AND c.expires_at >= CURRENT_DATE
+      AND c.expires_at <= CURRENT_DATE + $1::int
+    ORDER BY c.expires_at, c.code`,
 };

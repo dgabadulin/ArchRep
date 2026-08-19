@@ -48,6 +48,7 @@ function formatTitle(segment, index, parts, _fullPath) {
     applied: 'Архитектурные заключения',
     systems: 'Каталог ИС',
     integrations: 'Интеграционные потоки',
+    certificates: 'Реестр сертификатов',
     technologies: 'Каталог технологий',
     'tech-radar': 'Тех.радар',
     analytics: 'Аналитика',

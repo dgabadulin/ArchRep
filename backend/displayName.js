@@ -51,6 +51,13 @@ const TEMPLATE_DEFS = {
     ],
     fallback: '{name}',
   },
+  DISP_CERTIFICATE_TEMPLATE: {
+    fields: [
+      'code', 'domain_name', 'ca_name', 'issued_at', 'expires_at',
+      'wildcard_flag', 'placement_url', 'responsible_name', 'id',
+    ],
+    fallback: '{code}',
+  },
   DISP_DOMAIN_STATUS_TEMPLATE: { fields: ['code', 'name'], fallback: '{name}' },
   DISP_GAP_TYPE_TEMPLATE: { fields: ['name'], fallback: '{name}' },
   DISP_IMPACT_LEVEL_TEMPLATE: { fields: ['name'], fallback: '{name}' },
@@ -109,6 +116,7 @@ const ENTITY_TO_TEMPLATE = {
   web_resource_category: 'DISP_WEB_RESOURCE_CATEGORY_TEMPLATE',
   web_resource_stage_type: 'DISP_WEB_RESOURCE_STAGE_TYPE_TEMPLATE',
   domain: 'DISP_DOMAIN_TEMPLATE',
+  certificate: 'DISP_CERTIFICATE_TEMPLATE',
   domain_status: 'DISP_DOMAIN_STATUS_TEMPLATE',
   gap_type: 'DISP_GAP_TYPE_TEMPLATE',
   impact_level: 'DISP_IMPACT_LEVEL_TEMPLATE',

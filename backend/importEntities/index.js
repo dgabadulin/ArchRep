@@ -9,6 +9,7 @@ const actor = require('./actor');
 const business_service = require('./business_service');
 const business_function = require('./business_function');
 const domain = require('./domain');
+const certificate = require('./certificate');
 
 const byCode = {
   web_resource,
@@ -22,6 +23,7 @@ const byCode = {
   business_service,
   business_function,
   domain,
+  certificate,
 };
 
 function getImportEntity(code) {

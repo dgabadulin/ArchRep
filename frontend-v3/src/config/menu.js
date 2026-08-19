@@ -30,6 +30,7 @@ export const menuItems = [
       { label: 'Реестр интеграций', path: '/integrations', icon: 'share', requiredPermission: 'integration_flow:read' },
       { label: 'Реестр веб-ресурсов', path: '/web-resources', icon: 'globe', requiredPermission: 'web_resource:read' },
       { label: 'Реестр доменов', path: '/domains', icon: 'globe', requiredPermission: 'domain:read' },
+      { label: 'Реестр сертификатов', path: '/certificates', icon: 'shield', requiredPermission: 'certificate:read' },
     ],
   },
   {

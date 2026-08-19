@@ -31,6 +31,7 @@ const ACCORDION_COUNT_SQL = {
   principle: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_principles',
   web_resource: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_web_resources',
   domain: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_domains',
+  certificate: 'SELECT COUNT(*)::bigint AS c FROM archrep.ar_certificates',
 };
 
 const DEFAULT_KPI_TILES = [
