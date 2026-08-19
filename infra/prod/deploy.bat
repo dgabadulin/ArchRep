@@ -71,8 +71,18 @@ echo [2/3] Подготовка скрипта сборки и запуска...
     echo ENV_EXTRA=""
     echo [ -f .env.production ] ^&^& ENV_EXTRA="--env-file .env.production"
     echo docker run -d --restart=always -e NODE_ENV=production $ENV_EXTRA -e SERVER_PORT=3000 -p 3000:3000 --name ar-api-container --network ar-network ar-api-image
-    echo echo "Готово. Приложение: http://%REMOTE_HOST_ECHO%:3000"
-    echo echo "Проверка API: http://%REMOTE_HOST_ECHO%:3000/api/health  (БД: /api/health/db)"
+    echo echo "Ожидание /api/health..."
+    echo for i in 1 2 3 4 5 6 7 8 9 10; do
+    echo   if curl -sf http://127.0.0.1:3000/api/health ^>^/dev/null; then
+    echo     echo "OK: API отвечает на :3000"
+    echo     exit 0
+    echo   fi
+    echo   sleep 2
+    echo done
+    echo echo "[ERROR] API не ответил за 20 с. Статус контейнера и логи:"
+    echo docker ps -a --filter name=ar-api-container
+    echo docker logs ar-api-container --tail 80 2^>^&1 ^|^| true
+    echo exit 1
 ) > "%LOCAL_DIR%\remote_script.sh"
 
 scp !SSH_OPTS! "%LOCAL_DIR%\remote_script.sh" "%REMOTE%:~/tmp/remote_script.sh"

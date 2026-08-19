@@ -1,6 +1,6 @@
 'use strict';
 
-const { notifyExpiringDomains } = require('../domainExpiration');
+const { notifyExpiringDomains } = require('../../domainExpiration');
 
 /**
  * @param {import('./context').JobContext} ctx

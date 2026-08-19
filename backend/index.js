@@ -62,6 +62,7 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
+  connectionTimeoutMillis: 10_000,
 });
 
 /** node-postgres не принимает undefined в параметрах запроса — подставляем SQL NULL */
@@ -3005,28 +3006,36 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
 });
 
 (async () => {
-  await loadParams(pool);
-  try {
-    await loadRefCodes(pool);
-  } catch (e) {
-    console.warn('refCodes load failed (run migration archrep_issue31_adr_ref_codes.sql?):', e.message);
-  }
-  try {
-    assertAuthConfig();
-  } catch (e) {
-    console.error(e.message);
-    process.exit(1);
-  }
-  await bootstrapAuth(pool);
-  try {
-    jobRunner.start();
-  } catch (err) {
-    console.warn('[job runner] start failed:', err.message);
-  }
-  console.log('AUTH_ENABLED:', isAuthEnabled());
-  mountFrontendStatic();
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;
+  mountFrontendStatic();
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
-})();
+
+  try {
+    await loadParams(pool);
+    try {
+      await loadRefCodes(pool);
+    } catch (e) {
+      console.warn('refCodes load failed (run migration archrep_issue31_adr_ref_codes.sql?):', e.message);
+    }
+    try {
+      assertAuthConfig();
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+    await bootstrapAuth(pool);
+    try {
+      jobRunner.start();
+    } catch (err) {
+      console.warn('[job runner] start failed:', err.message);
+    }
+    console.log('AUTH_ENABLED:', isAuthEnabled());
+  } catch (err) {
+    console.error('Startup init failed:', err);
+  }
+})().catch((err) => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
+});

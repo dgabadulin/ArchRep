@@ -18,6 +18,38 @@ function createJobRunner(pool, queries) {
     await client.query('SELECT pg_advisory_unlock(hashtext($1::text))', [code]);
   }
 
+  async function touchJobFinish(client, jobId, outcome) {
+    const id = Number(jobId);
+    const query =
+      outcome === 'success' ? queries.jobs_touch_finish_success : queries.jobs_touch_finish_failed;
+    const r = await client.query(query, [id]);
+    if (!r.rowCount) {
+      console.warn(`[job runner] ar_jobs touch ${outcome}: row not updated (id=${id})`);
+    } else if (outcome === 'success') {
+      console.log(
+        `[job runner] ${outcome} id=${id} last_success_at=${r.rows[0]?.last_success_at}`
+      );
+    }
+  }
+
+  async function finishRun(client, { runId, jobId, outcome, message, errorMessage, resultJson }) {
+    await client.query('BEGIN');
+    try {
+      await client.query(queries.job_runs_finish, [
+        runId,
+        outcome,
+        message,
+        errorMessage,
+        resultJson,
+      ]);
+      await touchJobFinish(client, jobId, outcome);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    }
+  }
+
   async function executeJob(job, { trigger = 'schedule', triggeredByUserId = null } = {}) {
     const handler = getHandler(job.code);
     if (!handler) {
@@ -40,7 +72,7 @@ function createJobRunner(pool, queries) {
         throw err;
       }
 
-      await client.query(queries.jobs_touch_start, [job.id]);
+      await client.query(queries.jobs_touch_start, [Number(job.id)]);
       const runIns = await client.query(queries.job_runs_insert, [
         job.id,
         trigger,
@@ -63,8 +95,14 @@ function createJobRunner(pool, queries) {
         result = await handler(ctx);
       } catch (handlerErr) {
         const msg = handlerErr.message || String(handlerErr);
-        await client.query(queries.job_runs_finish, [runId, 'failed', null, msg, null]);
-        await client.query(queries.jobs_touch_finish, [job.id, 'failed']);
+        await finishRun(client, {
+          runId,
+          jobId: job.id,
+          outcome: 'failed',
+          message: null,
+          errorMessage: msg,
+          resultJson: null,
+        });
         throw handlerErr;
       }
 
@@ -73,14 +111,14 @@ function createJobRunner(pool, queries) {
         (logLines.length ? logLines.join('; ') : 'OK');
       const resultJson = result && typeof result === 'object' ? result : { value: result };
 
-      await client.query(queries.job_runs_finish, [
+      await finishRun(client, {
         runId,
-        'success',
+        jobId: job.id,
+        outcome: 'success',
         message,
-        null,
+        errorMessage: null,
         resultJson,
-      ]);
-      await client.query(queries.jobs_touch_finish, [job.id, 'success']);
+      });
 
       return { runId, status: 'success', message, result: resultJson };
     } finally {

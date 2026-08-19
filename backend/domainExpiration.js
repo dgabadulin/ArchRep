@@ -1,6 +1,6 @@
 'use strict';
 
-const { sendEmail } = require('../mail/mailer');
+const { sendEmail } = require('./mail/mailer');
 
 function parseRecipients(raw) {
   if (!raw) return [];

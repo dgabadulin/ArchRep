@@ -957,10 +957,17 @@ module.exports = {
            j.last_started_at, j.last_finished_at, j.last_success_at, j.last_status
     FROM archrep.ar_jobs j
     WHERE j.enabled = true
-      AND (
-        j.last_success_at IS NULL
-        OR j.last_success_at <= now() - (j.interval_seconds || ' seconds')::interval
+      AND NOT (
+        j.last_status = 'running'
+        AND j.last_started_at IS NOT NULL
+        AND j.last_started_at > now() - interval '15 minutes'
       )
+      AND COALESCE(
+        j.last_success_at,
+        j.last_finished_at,
+        j.last_started_at,
+        to_timestamp(0)
+      ) <= now() - (j.interval_seconds * interval '1 second')
     ORDER BY j.id`,
   jobs_update_enabled: `
     UPDATE archrep.ar_jobs
@@ -971,11 +978,18 @@ module.exports = {
     UPDATE archrep.ar_jobs
     SET last_started_at = now(), last_status = 'running', updated_at = now()
     WHERE id = $1`,
-  jobs_touch_finish: `
+  jobs_touch_finish_success: `
     UPDATE archrep.ar_jobs
     SET last_finished_at = now(),
-        last_status = $2,
-        last_success_at = CASE WHEN $2 = 'success' THEN now() ELSE last_success_at END,
+        last_status = 'success',
+        last_success_at = now(),
+        updated_at = now()
+    WHERE id = $1
+    RETURNING id, last_success_at, last_status`,
+  jobs_touch_finish_failed: `
+    UPDATE archrep.ar_jobs
+    SET last_finished_at = now(),
+        last_status = 'failed',
         updated_at = now()
     WHERE id = $1`,
   job_runs_insert: `
