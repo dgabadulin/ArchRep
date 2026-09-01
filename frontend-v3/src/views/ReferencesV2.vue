@@ -114,12 +114,14 @@
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
-          <thead><tr><th>ID</th><th>Сотрудник</th><th>Статус</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Табельный №</th><th>Полное имя</th><th>Email</th><th>Статус</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in employees" :key="r.id">
               <td>{{ r.id }}</td>
-              <td>{{ r.display_name || r.full_name }}</td>
-              <td>{{ r.status === 'active' ? 'active' : 'inactive' }}</td>
+              <td>{{ r.employee_number || '—' }}</td>
+              <td>{{ r.full_name }}</td>
+              <td>{{ r.email || '—' }}</td>
+              <td>{{ r.status === 'active' ? 'активен' : 'неактивен' }}</td>
               <td>
                 <button type="button" class="btn-link" @click="openEmployeeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
                 <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteEmployee(r.id)">Удалить</button>
@@ -552,8 +554,10 @@
       <div class="modal">
         <h3>{{ employeeForm.id ? 'Изменить сотрудника' : 'Новый сотрудник' }}</h3>
         <fieldset class="form-fieldset" :disabled="!canMutateActive">
-        <div class="form-row"><label>ФИО</label><input v-model="employeeForm.full_name" placeholder="Иванов Иван Иванович" /></div>
-        <div class="form-row"><label>Активен</label><select v-model="employeeForm.active"><option :value="true">Да (active)</option><option :value="false">Нет (inactive)</option></select></div>
+        <div class="form-row"><label>Табельный номер</label><input v-model="employeeForm.employee_number" placeholder="12345" /></div>
+        <div class="form-row"><label>Полное имя <span class="req">*</span></label><input v-model="employeeForm.full_name" placeholder="Иванов Иван Иванович" /></div>
+        <div class="form-row"><label>Email</label><input v-model="employeeForm.email" type="email" placeholder="name@example.com" /></div>
+        <div class="form-row"><label>Активен</label><select v-model="employeeForm.active"><option :value="true">Да</option><option :value="false">Нет</option></select></div>
         </fieldset>
         <div class="modal-actions">
           <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveEmployee">Сохранить</button>
@@ -959,8 +963,14 @@ function openOwnerForm(r) { ownerForm.value = r ? { id: r.id, name: r.name, lead
 function openVendorForm(r) { vendorForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
 function openEmployeeForm(r) {
   employeeForm.value = r
-    ? { id: r.id, full_name: r.full_name ?? '', active: !!r.active }
-    : { full_name: '', active: true }
+    ? {
+      id: r.id,
+      employee_number: r.employee_number ?? '',
+      full_name: r.full_name ?? '',
+      email: r.email ?? '',
+      active: !!r.active,
+    }
+    : { employee_number: '', full_name: '', email: '', active: true }
 }
 function openAdrSystemStatusForm(r) { adrSystemStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
 function openAdrRelationStatusForm(r) { adrRelationStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
@@ -1127,7 +1137,12 @@ async function saveVendor() {
 async function saveEmployee() {
   if (!employeeForm.value?.full_name?.trim()) return
   try {
-    const body = { full_name: employeeForm.value.full_name.trim(), active: employeeForm.value.active }
+    const body = {
+      employee_number: employeeForm.value.employee_number?.trim() || null,
+      full_name: employeeForm.value.full_name.trim(),
+      email: employeeForm.value.email?.trim() || null,
+      active: employeeForm.value.active,
+    }
     if (employeeForm.value.id) await api.updateEmployee(employeeForm.value.id, body)
     else await api.createEmployee(body)
     employeeForm.value = null

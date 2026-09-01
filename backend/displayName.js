@@ -87,7 +87,7 @@ const TEMPLATE_DEFS = {
   DISP_BUSINESS_SERVICE_TEMPLATE: { fields: ['name', 'fullname'], fallback: '{name}' },
   DISP_BUSINESS_SERVICE_STATUS_TEMPLATE: { fields: ['name'], fallback: '{name}' },
   DISP_BUSINESS_FUNCTION_TEMPLATE: { fields: ['name'], fallback: '{name}' },
-  DISP_EMPLOYEE_TEMPLATE: { fields: ['full_name', 'status'], fallback: '{full_name} [[({status})]]' },
+  DISP_EMPLOYEE_TEMPLATE: { fields: ['full_name', 'employee_number', 'email', 'status'], fallback: '{full_name} [[({status})]]' },
   DISP_META_ENTITY_TYPE_TEMPLATE: { fields: ['code', 'name'], fallback: '{name}' },
   DISP_META_REL_TYPE_TEMPLATE: { fields: ['code', 'name'], fallback: '{name}' },
 };

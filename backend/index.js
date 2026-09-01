@@ -646,25 +646,36 @@ app.get('/api/ar-employees/:id', async (req, res) => {
 });
 app.post('/api/ar-employees', async (req, res) => {
   try {
-    const { full_name, active } = req.body || {};
+    const { employee_number, full_name, email, active } = req.body || {};
     if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
-    const r = await pool.query(queries.employees_insert, [String(full_name).trim(), active]);
+    const r = await pool.query(queries.employees_insert, [
+      employee_number != null ? String(employee_number) : null,
+      String(full_name).trim(),
+      email != null ? String(email) : null,
+      active,
+    ]);
     res.status(201).json(applyDisplayName(r.rows[0], 'employee'));
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с такой фамилией уже есть' });
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с таким табельным номером, email или фамилией уже есть' });
     console.error(err);
     res.status(500).json({ error: err.message || 'Failed to create' });
   }
 });
 app.put('/api/ar-employees/:id', async (req, res) => {
   try {
-    const { full_name, active } = req.body || {};
+    const { employee_number, full_name, email, active } = req.body || {};
     if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
-    const r = await pool.query(queries.employees_update, [String(full_name).trim(), active, req.params.id]);
+    const r = await pool.query(queries.employees_update, [
+      employee_number != null ? String(employee_number) : null,
+      String(full_name).trim(),
+      email != null ? String(email) : null,
+      active,
+      req.params.id,
+    ]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json(applyDisplayName(r.rows[0], 'employee'));
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с такой фамилией уже есть' });
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с таким табельным номером, email или фамилией уже есть' });
     console.error(err);
     res.status(500).send('Server error');
   }
