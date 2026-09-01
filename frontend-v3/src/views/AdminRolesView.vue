@@ -2,6 +2,9 @@
   <div class="page">
     <div class="page-head">
       <h1>Роли</h1>
+      <router-link v-if="canWrite" to="/settings/administration/roles/new" class="btn btn-primary">
+        Новая роль
+      </router-link>
     </div>
     <p class="lead">
       Системные роли и матрица permissions. Назначение ролей пользователям — на экране «Пользователи».
@@ -21,6 +24,7 @@
             <th>Название</th>
             <th>Описание</th>
             <th>Системная</th>
+            <th>Пользователей</th>
             <th>Permissions</th>
             <th></th>
           </tr>
@@ -31,6 +35,7 @@
             <td>{{ r.name }}</td>
             <td class="desc-cell">{{ r.description || '—' }}</td>
             <td>{{ r.is_system ? 'Да' : '—' }}</td>
+            <td>{{ r.assigned_users_count || 0 }}</td>
             <td>{{ (r.permissions || []).length }}</td>
             <td>
               <router-link
@@ -86,6 +91,13 @@ onMounted(async () => {
   color: var(--ar-muted);
   margin: 0 0 1rem;
   font-size: 0.95rem;
+}
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
 }
 .code-cell {
   font-size: 0.85rem;

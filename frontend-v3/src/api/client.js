@@ -82,7 +82,9 @@ export const api = {
   setAdminUserRoles: (id, roles) => request(`/api/admin/users/${id}/roles`, { method: 'PUT', body: JSON.stringify({ roles }) }),
   getAdminRoles: () => request('/api/admin/roles'),
   getAdminRole: (id) => request(`/api/admin/roles/${id}`),
+  createAdminRole: (body) => request('/api/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
   updateAdminRole: (id, body) => request(`/api/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAdminRole: (id) => request(`/api/admin/roles/${id}`, { method: 'DELETE' }),
   setAdminRolePermissions: (id, permissions) =>
     request(`/api/admin/roles/${id}/permissions`, { method: 'PUT', body: JSON.stringify({ permissions }) }),
   getAdminPermissions: () => request('/api/admin/permissions'),

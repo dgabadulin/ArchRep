@@ -1,12 +1,12 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>{{ canWrite ? 'Редактирование роли' : 'Просмотр роли' }}</h1>
+      <h1>{{ pageTitle }}</h1>
       <router-link :to="listPath" class="btn btn-secondary">← К списку</router-link>
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
-    <template v-else-if="role">
+    <template v-else-if="roleLoaded">
       <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>roles:write</code>.</p>
 
       <form class="card form" @submit.prevent="save">
@@ -14,11 +14,18 @@
           <div class="form-grid">
             <div class="field">
               <label>Код</label>
-              <input :value="role.code" type="text" readonly class="readonly-input" />
+              <input
+                v-if="isNew"
+                v-model="form.code"
+                type="text"
+                required
+                placeholder="Например, DOMAIN_OPERATOR"
+              />
+              <input v-else :value="role.code" type="text" readonly class="readonly-input" />
             </div>
             <div class="field">
               <label>Системная</label>
-              <input :value="role.is_system ? 'Да' : 'Нет'" type="text" readonly class="readonly-input" />
+              <input :value="role?.is_system ? 'Да' : 'Нет'" type="text" readonly class="readonly-input" />
             </div>
             <div class="field field-wide">
               <label>Название <span class="req">*</span></label>
@@ -67,7 +74,16 @@
         <div v-if="submitError" class="error">{{ submitError }}</div>
         <div class="actions">
           <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">
-            {{ saving ? 'Сохранение...' : 'Сохранить' }}
+            {{ saving ? 'Сохранение...' : isNew ? 'Создать' : 'Сохранить' }}
+          </button>
+          <button
+            v-if="canDelete"
+            type="button"
+            class="btn btn-danger"
+            :disabled="deleting"
+            @click="removeRole"
+          >
+            {{ deleting ? 'Удаление...' : 'Удалить' }}
           </button>
           <router-link :to="listPath" class="btn btn-secondary">
             {{ canWrite ? 'Отмена' : 'К списку' }}
@@ -75,29 +91,40 @@
         </div>
       </form>
     </template>
-    <p v-else class="error">Роль не найдена</p>
+    <p v-else class="error">{{ submitError || 'Роль не найдена' }}</p>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { usePermissions } from '../composables/usePermissions'
 
 const route = useRoute()
+const router = useRouter()
 const { canWrite } = usePermissions('roles')
 const listPath = '/settings/administration/roles'
+const isNew = computed(() => route.name === 'admin-role-new')
 
 const loading = ref(true)
 const saving = ref(false)
+const deleting = ref(false)
 const submitError = ref('')
 const role = ref(null)
 const allPermissionCodes = ref([])
 const assigned = ref([])
-const form = ref({ name: '', description: '' })
+const form = ref({ code: '', name: '', description: '' })
 const leftSelectRef = ref(null)
 const rightSelectRef = ref(null)
+const roleLoaded = computed(() => isNew.value || !!role.value)
+const pageTitle = computed(() => {
+  if (isNew.value) return 'Новая роль'
+  return canWrite.value ? 'Редактирование роли' : 'Просмотр роли'
+})
+const canDelete = computed(() =>
+  canWrite.value && !isNew.value && role.value && !role.value.is_system
+)
 
 const leftPool = computed(() => {
   const set = new Set(assigned.value)
@@ -128,13 +155,20 @@ async function load() {
   loading.value = true
   submitError.value = ''
   try {
+    const permsPromise = api.getAdminPermissions()
+    if (isNew.value) {
+      role.value = { id: null, code: '', is_system: false, assigned_users_count: 0, permissions: [] }
+      form.value = { code: '', name: '', description: '' }
+      assigned.value = []
+      const perms = await permsPromise
+      allPermissionCodes.value = (perms || []).map((p) => p.code).filter(Boolean)
+      return
+    }
     const id = route.params.id
-    const [roleRow, perms] = await Promise.all([
-      api.getAdminRole(id),
-      api.getAdminPermissions(),
-    ])
+    const [roleRow, perms] = await Promise.all([api.getAdminRole(id), permsPromise])
     role.value = roleRow
     form.value = {
+      code: roleRow.code || '',
       name: roleRow.name || '',
       description: roleRow.description || '',
     }
@@ -149,20 +183,44 @@ async function load() {
 }
 
 async function save() {
-  if (!canWrite.value || !role.value) return
+  if (!canWrite.value) return
   submitError.value = ''
   saving.value = true
   try {
-    await api.updateAdminRole(role.value.id, {
+    const body = {
+      code: form.value.code.trim(),
       name: form.value.name.trim(),
       description: form.value.description.trim() || null,
       permissions: assigned.value,
-    })
+    }
+    if (isNew.value) {
+      const created = await api.createAdminRole(body)
+      await router.replace(`/settings/administration/roles/${created.id}/edit`)
+      await load()
+      return
+    }
+    await api.updateAdminRole(role.value.id, body)
     await load()
   } catch (e) {
     submitError.value = e?.message || 'Ошибка сохранения'
   } finally {
     saving.value = false
+  }
+}
+
+async function removeRole() {
+  if (!canDelete.value || !role.value) return
+  const ok = window.confirm(`Удалить роль «${role.value.name}»?`)
+  if (!ok) return
+  submitError.value = ''
+  deleting.value = true
+  try {
+    await api.deleteAdminRole(role.value.id)
+    await router.push(listPath)
+  } catch (e) {
+    submitError.value = e?.message || 'Ошибка удаления'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -233,6 +291,11 @@ onMounted(load)
 .error {
   color: var(--ar-danger);
   margin-top: 0.75rem;
+}
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 @media (max-width: 800px) {
   .dual-grid {

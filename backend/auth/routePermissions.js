@@ -108,8 +108,10 @@ const RULES = [
   { methods: ['PUT'], pattern: /^\/api\/admin\/users\/\d+\/roles$/, permissions: ['roles:assign'] },
   { methods: ['GET'], pattern: /^\/api\/admin\/permissions(?:\/|$)/, permissions: ['roles:read'] },
   { methods: ['GET'], pattern: /^\/api\/admin\/roles(?:\/|$)/, permissions: ['roles:read'] },
+  { methods: ['POST'], pattern: /^\/api\/admin\/roles$/, permissions: ['roles:write'] },
   { methods: ['PUT', 'PATCH'], pattern: /^\/api\/admin\/roles\/\d+$/, permissions: ['roles:write'] },
   { methods: ['PUT'], pattern: /^\/api\/admin\/roles\/\d+\/permissions$/, permissions: ['roles:write'] },
+  { methods: ['DELETE'], pattern: /^\/api\/admin\/roles\/\d+$/, permissions: ['roles:write'] },
 
   { methods: ['GET'], pattern: /^\/api\/admin\/restart-node\/status$/, permissions: ['system_admin:restart'] },
   { methods: ['POST'], pattern: /^\/api\/admin\/restart-node$/, permissions: ['system_admin:restart'] },

@@ -96,6 +96,7 @@ const routes = [
       { path: 'settings/service-operations/import', name: 'settings-data-import', component: () => import('../views/DataImportView.vue'), meta: { title: 'Импорт данных', requiredPermissions: ['import:execute'] } },
       { path: 'settings/administration/users', name: 'admin-users', component: () => import('../views/AdminUsersView.vue'), meta: { title: 'Пользователи', requiredPermissions: ['users:read'] } },
       { path: 'settings/administration/roles', name: 'admin-roles', component: () => import('../views/AdminRolesView.vue'), meta: { title: 'Роли', requiredPermissions: ['roles:read'] } },
+      { path: 'settings/administration/roles/new', name: 'admin-role-new', component: () => import('../views/AdminRoleForm.vue'), meta: { title: 'Новая роль', requiredPermissions: ['roles:write'] } },
       { path: 'settings/administration/roles/:id/edit', name: 'admin-role-edit', component: () => import('../views/AdminRoleForm.vue'), meta: { title: 'Редактирование роли', requiredPermissions: ['roles:read'] } },
     ],
   },

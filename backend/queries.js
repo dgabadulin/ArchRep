@@ -5,7 +5,7 @@ module.exports = {
         , s.code
         ,  s.name
         , s.fullname
-        , s.parent_name
+        , parent.name AS parent_name
         , ss.name as status
         , vnd.name vendor
         , supl.name supplier
@@ -16,19 +16,20 @@ module.exports = {
         , s.comment
         , s.technologies
         , s.external_system
-        , parent_ar_systems_id
-        , ar_system_statuses_id
-        , vendor_ar_partners_id
-        , supplier_ar_partners_id
-        , supporter_ar_partners_id
-        , ar_system_owners_id
-        , ar_system_hosting_types_id
+        , s.parent_ar_systems_id
+        , s.ar_system_statuses_id
+        , s.vendor_ar_partners_id
+        , s.supplier_ar_partners_id
+        , s.supporter_ar_partners_id
+        , s.ar_system_owners_id
+        , s.ar_system_hosting_types_id
         , s.it_lead_employee_id
         , s.business_lead_employee_id
         , it_e.full_name AS it_lead_employee_name
         , bl_e.full_name AS business_lead_employee_name
         FROM
         archrep.ar_systems s
+        LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
         LEFT JOIN archrep.ar_partners supl ON s.supplier_ar_partners_id = supl.id
@@ -41,14 +42,15 @@ module.exports = {
     `,
     systems_select_search: `
         SELECT
-          s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
+          s.id, s.code, s.name, s.fullname, parent.name AS parent_name, ss.name as status,
           vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
           so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
-          parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
-          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
+          s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
+        LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
         LEFT JOIN archrep.ar_partners supl ON s.supplier_ar_partners_id = supl.id
@@ -57,7 +59,7 @@ module.exports = {
         LEFT JOIN archrep.ar_system_hosting_types sht ON s.ar_system_hosting_types_id = sht.id
         LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
         LEFT JOIN archrep.ar_employees bl_e ON s.business_lead_employee_id = bl_e.id
-        WHERE (s.code ILIKE $1 OR s.name ILIKE $1 OR COALESCE(s.fullname,'') ILIKE $1 OR COALESCE(s.parent_name,'') ILIKE $1
+        WHERE (s.code ILIKE $1 OR s.name ILIKE $1 OR COALESCE(s.fullname,'') ILIKE $1 OR COALESCE(parent.name,'') ILIKE $1
           OR COALESCE(ss.name,'') ILIKE $1 OR COALESCE(vnd.name,'') ILIKE $1 OR COALESCE(supl.name,'') ILIKE $1
           OR COALESCE(supp.name,'') ILIKE $1 OR COALESCE(s.description,'') ILIKE $1 OR COALESCE(so.name,'') ILIKE $1 OR COALESCE(sht.name,'') ILIKE $1
           OR COALESCE(s.comment,'') ILIKE $1 OR COALESCE(s.technologies,'') ILIKE $1
@@ -65,14 +67,15 @@ module.exports = {
         ORDER BY s.name
     `,
     systems_get: `
-        SELECT s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
+        SELECT s.id, s.code, s.name, s.fullname, parent.name AS parent_name, ss.name as status,
           vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
           so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
-          parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
-          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
+          s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
+        LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
         LEFT JOIN archrep.ar_partners supl ON s.supplier_ar_partners_id = supl.id
@@ -84,14 +87,15 @@ module.exports = {
         WHERE s.id = $1
     `,
     systems_get_by_code: `
-        SELECT s.id, s.code, s.name, s.fullname, s.parent_name, ss.name as status,
+        SELECT s.id, s.code, s.name, s.fullname, parent.name AS parent_name, ss.name as status,
           vnd.name vendor, supl.name supplier, supp.name supporter, s.description,
           so.name owner, sht.name hosting, s.comment, s.technologies, s.external_system,
-          parent_ar_systems_id, ar_system_statuses_id, vendor_ar_partners_id, supplier_ar_partners_id,
-          supporter_ar_partners_id, ar_system_owners_id, ar_system_hosting_types_id,
+          s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
+          s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
+        LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
         LEFT JOIN archrep.ar_partners vnd ON s.vendor_ar_partners_id = vnd.id
         LEFT JOIN archrep.ar_partners supl ON s.supplier_ar_partners_id = supl.id

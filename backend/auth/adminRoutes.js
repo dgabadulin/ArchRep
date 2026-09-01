@@ -116,7 +116,7 @@ function createAdminRouter(pool) {
       );
       const user = publicUser({ ...r.rows[0], roles: [] });
       if (Array.isArray(b.roles) && b.roles.length) {
-        await setUserRoles(pool, user.id, b.roles, createdBy);
+        await replaceUserRoles(pool, user.id, b.roles, createdBy);
         user.roles = b.roles;
       }
       res.status(201).json(user);
@@ -161,7 +161,7 @@ function createAdminRouter(pool) {
         if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       }
       if (Array.isArray(b.roles)) {
-        await setUserRoles(pool, id, b.roles, req.user && req.user.id);
+        await replaceUserRoles(pool, id, b.roles, req.user && req.user.id);
       }
       const get = await pool.query(
         `SELECT u.*, COALESCE(
@@ -203,7 +203,7 @@ function createAdminRouter(pool) {
       const id = Number(req.params.id);
       const roles = (req.body && req.body.roles) || [];
       if (!Array.isArray(roles)) return res.status(400).json({ error: 'roles array required' });
-      await setUserRoles(pool, id, roles, req.user && req.user.id);
+      await replaceUserRoles(pool, id, roles, req.user && req.user.id);
       res.json({ ok: true, roles });
     } catch (err) {
       console.error('PUT /api/admin/users/:id/roles', err);
@@ -231,6 +231,12 @@ function createAdminRouter(pool) {
       const r = await pool.query(
         `SELECT r.id, r.code, r.name, r.description, r.is_system, r.is_active,
                 COALESCE(
+                  (SELECT count(*)::int
+                   FROM archrep.ar_user_roles ur
+                   WHERE ur.role_id = r.id),
+                  0
+                ) AS assigned_users_count,
+                COALESCE(
                   (SELECT array_agg(p.code ORDER BY p.code)
                    FROM archrep.ar_role_permissions rp
                    JOIN archrep.ar_permissions p ON p.id = rp.permission_id
@@ -252,6 +258,12 @@ function createAdminRouter(pool) {
       const r = await pool.query(
         `SELECT r.id, r.code, r.name, r.description, r.is_system, r.is_active,
                 COALESCE(
+                  (SELECT count(*)::int
+                   FROM archrep.ar_user_roles ur
+                   WHERE ur.role_id = r.id),
+                  0
+                ) AS assigned_users_count,
+                COALESCE(
                   (SELECT array_agg(p.code ORDER BY p.code)
                    FROM archrep.ar_role_permissions rp
                    JOIN archrep.ar_permissions p ON p.id = rp.permission_id
@@ -267,6 +279,38 @@ function createAdminRouter(pool) {
     } catch (err) {
       console.error('GET /api/admin/roles/:id', err);
       res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  router.post('/roles', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const code = String(b.code || '').trim();
+      const name = String(b.name || '').trim();
+      const description = b.description != null ? String(b.description).trim() : '';
+      const permissions = Array.isArray(b.permissions) ? b.permissions : [];
+
+      if (!code) return res.status(400).json({ error: 'code required' });
+      if (!name) return res.status(400).json({ error: 'name required' });
+
+      const created = await withTransaction(pool, async (client) => {
+        const ins = await client.query(
+          `INSERT INTO archrep.ar_roles (code, name, description, is_system, is_active)
+           VALUES ($1, $2, $3, false, COALESCE($4, true))
+           RETURNING id`,
+          [code, name, description || null, b.is_active]
+        );
+        const id = ins.rows[0].id;
+        await setRolePermissions(client, id, permissions);
+        const full = await loadRoleById(client, id);
+        return full;
+      });
+
+      res.status(201).json(created);
+    } catch (err) {
+      if (err.code === '23505') return res.status(409).json({ error: 'role code already exists' });
+      console.error('POST /api/admin/roles', err);
+      res.status(500).json({ error: 'Failed to create role' });
     }
   });
 
@@ -288,24 +332,40 @@ function createAdminRouter(pool) {
       );
       if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       if (Array.isArray(b.permissions)) {
-        await setRolePermissions(pool, id, b.permissions);
+        await replaceRolePermissions(pool, id, b.permissions);
       }
-      const full = await pool.query(
-        `SELECT r.id, r.code, r.name, r.description, r.is_system, r.is_active,
-                COALESCE(
-                  (SELECT array_agg(p.code ORDER BY p.code)
-                   FROM archrep.ar_role_permissions rp
-                   JOIN archrep.ar_permissions p ON p.id = rp.permission_id
-                   WHERE rp.role_id = r.id AND p.is_active = true),
-                  ARRAY[]::varchar[]
-                ) AS permissions
-         FROM archrep.ar_roles r WHERE r.id = $1`,
-        [id]
-      );
-      res.json(full.rows[0]);
+      const full = await loadRoleById(pool, id);
+      if (!full) return res.status(404).json({ error: 'Not found' });
+      res.json(full);
     } catch (err) {
       console.error('PUT /api/admin/roles/:id', err);
       res.status(500).json({ error: 'Failed to update role' });
+    }
+  });
+
+  router.delete('/roles/:id', async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const role = await loadRoleById(pool, id);
+      if (!role) return res.status(404).json({ error: 'Not found' });
+      if (role.is_system) {
+        return res.status(409).json({
+          error: 'Нельзя удалить системную роль',
+          code: 'ROLE_IS_SYSTEM',
+        });
+      }
+      if (Number(role.assigned_users_count) > 0) {
+        return res.status(409).json({
+          error: `Роль назначена пользователям (${role.assigned_users_count}). Сначала снимите её у пользователей.`,
+          code: 'ROLE_ASSIGNED',
+          assigned_users_count: Number(role.assigned_users_count),
+        });
+      }
+      await pool.query(`DELETE FROM archrep.ar_roles WHERE id = $1`, [id]);
+      res.status(204).send();
+    } catch (err) {
+      console.error('DELETE /api/admin/roles/:id', err);
+      res.status(500).json({ error: 'Failed to delete role' });
     }
   });
 
@@ -318,7 +378,7 @@ function createAdminRouter(pool) {
       }
       const exists = await pool.query(`SELECT id FROM archrep.ar_roles WHERE id = $1`, [id]);
       if (exists.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-      await setRolePermissions(pool, id, permissions);
+      await replaceRolePermissions(pool, id, permissions);
       res.json({ ok: true, permissions: [...new Set(permissions.map(String))] });
     } catch (err) {
       console.error('PUT /api/admin/roles/:id/permissions', err);
@@ -329,51 +389,83 @@ function createAdminRouter(pool) {
   return router;
 }
 
-async function setUserRoles(pool, userId, roleCodes, assignedBy) {
-  const unique = [...new Set(roleCodes.map((c) => String(c).trim()).filter(Boolean))];
-  await pool.query('BEGIN');
+async function loadRoleById(db, id) {
+  const r = await db.query(
+    `SELECT r.id, r.code, r.name, r.description, r.is_system, r.is_active,
+            COALESCE(
+              (SELECT count(*)::int
+               FROM archrep.ar_user_roles ur
+               WHERE ur.role_id = r.id),
+              0
+            ) AS assigned_users_count,
+            COALESCE(
+              (SELECT array_agg(p.code ORDER BY p.code)
+               FROM archrep.ar_role_permissions rp
+               JOIN archrep.ar_permissions p ON p.id = rp.permission_id
+               WHERE rp.role_id = r.id AND p.is_active = true),
+              ARRAY[]::varchar[]
+            ) AS permissions
+     FROM archrep.ar_roles r
+     WHERE r.id = $1`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+async function withTransaction(pool, fn) {
+  const client = await pool.connect();
   try {
-    await pool.query(`DELETE FROM archrep.ar_user_roles WHERE user_id = $1`, [userId]);
-    for (const code of unique) {
-      const rr = await pool.query(`SELECT id FROM archrep.ar_roles WHERE code = $1`, [code]);
-      if (rr.rows.length === 0) continue;
-      await pool.query(
-        `INSERT INTO archrep.ar_user_roles (user_id, role_id, assigned_by_user_id)
-         VALUES ($1, $2, $3)
-         ON CONFLICT DO NOTHING`,
-        [userId, rr.rows[0].id, assignedBy || null]
-      );
-    }
-    await pool.query('COMMIT');
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
   } catch (e) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw e;
+  } finally {
+    client.release();
   }
 }
 
-async function setRolePermissions(pool, roleId, permissionCodes) {
-  const unique = [...new Set(permissionCodes.map((c) => String(c).trim()).filter(Boolean))];
-  await pool.query('BEGIN');
-  try {
-    await pool.query(`DELETE FROM archrep.ar_role_permissions WHERE role_id = $1`, [roleId]);
-    for (const code of unique) {
-      const pr = await pool.query(
-        `SELECT id FROM archrep.ar_permissions WHERE code = $1 AND is_active = true`,
-        [code]
-      );
-      if (pr.rows.length === 0) continue;
-      await pool.query(
-        `INSERT INTO archrep.ar_role_permissions (role_id, permission_id)
-         VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [roleId, pr.rows[0].id]
-      );
-    }
-    await pool.query('COMMIT');
-  } catch (e) {
-    await pool.query('ROLLBACK');
-    throw e;
+async function setUserRoles(db, userId, roleCodes, assignedBy) {
+  const unique = [...new Set(roleCodes.map((c) => String(c).trim()).filter(Boolean))];
+  await db.query(`DELETE FROM archrep.ar_user_roles WHERE user_id = $1`, [userId]);
+  for (const code of unique) {
+    const rr = await db.query(`SELECT id FROM archrep.ar_roles WHERE code = $1`, [code]);
+    if (rr.rows.length === 0) continue;
+    await db.query(
+      `INSERT INTO archrep.ar_user_roles (user_id, role_id, assigned_by_user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [userId, rr.rows[0].id, assignedBy || null]
+    );
   }
+}
+
+async function replaceUserRoles(pool, userId, roleCodes, assignedBy) {
+  await withTransaction(pool, (client) => setUserRoles(client, userId, roleCodes, assignedBy));
+}
+
+async function setRolePermissions(db, roleId, permissionCodes) {
+  const unique = [...new Set(permissionCodes.map((c) => String(c).trim()).filter(Boolean))];
+  await db.query(`DELETE FROM archrep.ar_role_permissions WHERE role_id = $1`, [roleId]);
+  for (const code of unique) {
+    const pr = await db.query(
+      `SELECT id FROM archrep.ar_permissions WHERE code = $1 AND is_active = true`,
+      [code]
+    );
+    if (pr.rows.length === 0) continue;
+    await db.query(
+      `INSERT INTO archrep.ar_role_permissions (role_id, permission_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [roleId, pr.rows[0].id]
+    );
+  }
+}
+
+async function replaceRolePermissions(pool, roleId, permissionCodes) {
+  await withTransaction(pool, (client) => setRolePermissions(client, roleId, permissionCodes));
 }
 
 module.exports = { createAdminRouter };
