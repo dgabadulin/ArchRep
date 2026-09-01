@@ -968,6 +968,40 @@ module.exports = {
     WHERE id = $8
     RETURNING *`,
   certificates_delete: `DELETE FROM archrep.ar_certificates WHERE id = $1`,
+  certificates_select_pending_placement_notify: `
+    SELECT c.id, c.code, c.ar_domains_id, c.placement_url, c.issued_at, c.expires_at,
+           c.wildcard_flag, d.name AS domain_name, p.name AS ca_name,
+           e.email AS responsible_email, e.full_name AS responsible_name
+    FROM archrep.ar_certificates c
+    JOIN archrep.ar_domains d ON c.ar_domains_id = d.id
+    LEFT JOIN archrep.ar_partners p ON c.ca_ar_partners_id = p.id
+    LEFT JOIN archrep.ar_employees e ON c.responsible_ar_employees_id = e.id
+    WHERE trim(coalesce(c.placement_url, '')) <> ''
+      AND (
+        c.placement_notified_url IS NULL
+        OR trim(c.placement_notified_url) <> trim(c.placement_url)
+      )
+    ORDER BY c.id`,
+  certificates_select_published_web_resources_by_domain: `
+    SELECT w.id, w.code, w.short_name, w.publication_url,
+           s.name AS system_name,
+           CASE WHEN s.parent_ar_systems_id IS NOT NULL THEN s.name ELSE NULL END AS module_name,
+           COALESCE(root.name, s.name) AS root_system_name,
+           it_e.full_name AS it_lead_name
+    FROM archrep.ar_web_resources w
+    JOIN archrep.ar_web_resource_statuses st ON w.ar_web_resource_statuses_id = st.id
+    JOIN archrep.ar_systems s ON w.ar_systems_id = s.id
+    LEFT JOIN archrep.ar_systems root ON root.id = COALESCE(s.parent_ar_systems_id, s.id)
+    LEFT JOIN archrep.ar_employees it_e ON s.it_lead_employee_id = it_e.id
+    WHERE w.ar_domains_id = $1::BIGINT
+      AND st.code = 'published'
+    ORDER BY root_system_name, module_name NULLS FIRST, w.code`,
+  certificates_mark_placement_notified: `
+    UPDATE archrep.ar_certificates
+    SET placement_notified_at = now(),
+        placement_notified_url = placement_url,
+        updated_at = now()
+    WHERE id = $1::BIGINT`,
   certificates_count_relations: `
     SELECT COUNT(*)::int AS c
     FROM archrep.ar_metamodel_relations
@@ -1034,7 +1068,22 @@ module.exports = {
         j.last_finished_at,
         j.last_started_at,
         to_timestamp(0)
-      ) <= now() - (j.interval_seconds * interval '1 second')
+      ) <= now() - (
+        CASE
+          WHEN j.code = 'certificate_placement_notify' THEN GREATEST(
+            3600,
+            COALESCE(
+              NULLIF(trim((
+                SELECT sp.value FROM archrep.ar_settings_parameters sp
+                WHERE sp.code = 'CHK_CERT_PLACEMENT_INTERVAL_SECONDS'
+                LIMIT 1
+              )), '')::int,
+              j.interval_seconds
+            )
+          )
+          ELSE j.interval_seconds
+        END
+      ) * interval '1 second'
     ORDER BY j.id`,
   jobs_update_enabled: `
     UPDATE archrep.ar_jobs

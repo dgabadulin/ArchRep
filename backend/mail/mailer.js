@@ -69,7 +69,7 @@ function getTransporter() {
 }
 
 /**
- * @param {{ to: string|string[], subject: string, text?: string, html?: string }} opts
+ * @param {{ to: string|string[], cc?: string|string[], subject: string, text?: string, html?: string }} opts
  */
 async function sendEmail(opts) {
   const cfg = assertSmtpConfigured();
@@ -79,10 +79,14 @@ async function sendEmail(opts) {
     err.code = 'NO_RECIPIENTS';
     throw err;
   }
+  const cc = opts.cc
+    ? (Array.isArray(opts.cc) ? opts.cc.join(', ') : opts.cc)
+    : undefined;
   const transport = getTransporter();
   const info = await transport.sendMail({
     from: cfg.from,
     to,
+    cc,
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
