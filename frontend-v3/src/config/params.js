@@ -7,6 +7,7 @@ const DEFAULTS = {
   ARR_MENU_COOKIE: 'ar-v3-menu-expanded',
   ARR_COLS_COOKIE: 'ar_cols_',
   ARR_SORT_COOKIE: 'ar_sort_',
+  ARR_FILTER_COOKIE: 'ar_filters_',
   ARR_COOKIE_MAX_DAYS: 365,
   ARR_SEARCH_PLACEHOLDER: 'Поиск по всем полям таблицы',
   GRAPH_LAYOUT_DEF: 'star',

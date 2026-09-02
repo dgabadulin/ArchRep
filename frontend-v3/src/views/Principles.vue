@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" v-click-outside="onFilterClickOutside">
     <div class="page-head">
       <h1>Архитектурные принципы</h1>
       <div class="head-actions">
@@ -16,20 +16,20 @@
             v-if="canExport"
             type="button"
             class="btn btn-excel btn-same"
-            :disabled="excelLoading"
+            :disabled="excelLoading || displayRows.length === 0"
+            :title="displayRows.length === 0 ? 'Нет данных для выгрузки' : ''"
             @click="exportExcel"
           >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
-          <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
-            <button type="button" class="btn btn-secondary btn-same" @click.stop="colPickerOpen = !colPickerOpen">Вид</button>
-            <div v-if="colPickerOpen" class="col-picker-dropdown">
-              <label v-for="col in principleColumns" :key="col.key" class="col-picker-item">
-                <input type="checkbox" :checked="visibleCols.includes(col.key)" @change="toggleCol(col.key)" />
-                {{ col.label || col.key }}
-              </label>
-            </div>
-          </div>
+          <RegistryColumnPicker
+            :columns="columns"
+            :visible-cols="visibleCols"
+            :open="colPickerOpen"
+            @toggle="colPickerOpen = !colPickerOpen"
+            @close="colPickerOpen = false"
+            @toggle-col="toggleCol"
+          />
         </div>
       </div>
     </div>
@@ -41,51 +41,46 @@
 
     <div v-if="loading" class="loading">Загрузка...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="card table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th
-              v-for="key in visibleCols"
-              :key="key"
-              :class="{ sortable: key !== 'actions' }"
-              @click="key !== 'actions' && toggleSort(key)"
-            >
-              {{ colLabel(key) }}
-              <span v-if="key !== 'actions' && sortKey === key" class="sort-indicator">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in sortedList" :key="r.id">
-            <td v-for="key in visibleCols" :key="key">
-              <template v-if="key === 'actions'">
-                <button
-                  v-if="canRead"
-                  type="button"
-                  class="btn-link"
-                  @click="openForm(r)"
-                >
-                  {{ canWrite ? 'Изменить' : 'Открыть' }}
-                </button>
-                <button
-                  v-if="canDelete"
-                  type="button"
-                  class="btn-link danger"
-                  @click="remove(r.id)"
-                >
-                  Удалить
-                </button>
-              </template>
-              <template v-else-if="key === 'statement'">{{ (r.statement || '—').slice(0, 80) }}{{ (r.statement && r.statement.length > 80) ? '…' : '' }}</template>
-              <template v-else-if="key === 'is_approved'">{{ r.is_approved ? 'Да' : 'Нет' }}</template>
-              <template v-else>{{ r[key] ?? '—' }}</template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="sortedList.length === 0" class="empty">Нет записей</p>
-    </div>
+    <RegistryDataTable
+      v-else
+      :visible-cols="visibleCols"
+      :rows="displayRows"
+      :sort-order="sortOrder"
+      :open-filter-key="openFilterKey"
+      :col-label="colLabel"
+      :filter-type-for="filterTypeFor"
+      :is-sorted="isSorted"
+      :toggle-sort="toggleSort"
+      :column-filter-active="columnFilterActive"
+      :toggle-filter-menu="toggleFilterMenu"
+      :get-text-filter="getTextFilter"
+      :get-enum-checked-for-menu="getEnumCheckedForMenu"
+      :distinct-for-column="distinctForColumn"
+      :apply-filter-from-menu="applyFilterFromMenu"
+      :cancel-filter-menu="cancelFilterMenu"
+    >
+      <template #cell="{ row, columnKey }">
+        <template v-if="columnKey === 'actions'">
+          <button
+            v-if="canRead"
+            type="button"
+            class="btn-link"
+            @click="openForm(row)"
+          >
+            {{ canWrite ? 'Изменить' : 'Открыть' }}
+          </button>
+          <button
+            v-if="canDelete"
+            type="button"
+            class="btn-link danger"
+            @click="remove(row.id)"
+          >
+            Удалить
+          </button>
+        </template>
+        <template v-else>{{ cellValue(row, columnKey) }}</template>
+      </template>
+    </RegistryDataTable>
 
     <div v-if="form" class="modal-overlay">
       <div class="modal modal-wide">
@@ -113,13 +108,16 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
-import { downloadBlob } from '../utils/downloadBlob'
-import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import RegistryDataTable from '../components/RegistryDataTable.vue'
+import RegistryColumnPicker from '../components/RegistryColumnPicker.vue'
+import { useRegistryTable } from '../composables/useRegistryTable'
 import { usePermissions } from '../composables/usePermissions'
+import { applyRegistryFilters } from '../utils/registryColumnFilters'
+import { vClickOutside } from '../directives/clickOutside'
 
 const { canRead, canWrite, canExport, canDelete } = usePermissions('principle')
 
-const principleColumns = [
+const columns = applyRegistryFilters([
   { key: 'id', label: 'ID', defaultVisible: false },
   { key: 'name', label: 'Наименование', defaultVisible: true },
   { key: 'statement', label: 'Утверждение', defaultVisible: true },
@@ -128,79 +126,58 @@ const principleColumns = [
   { key: 'is_approved', label: 'Утверждён', defaultVisible: true },
   { key: 'approve_document', label: 'Документ утверждения', defaultVisible: false },
   { key: 'actions', label: '', defaultVisible: true },
-]
+])
 
 const list = ref([])
 const search = ref('')
-const visibleCols = ref(getVisibleColumns('principles', principleColumns))
-const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
 const excelLoading = ref(false)
 const form = ref(null)
-const sortPref = getSortPref('principles', 'name', 'asc', principleColumns)
-const sortKey = ref(sortPref.sortKey)
-const sortOrder = ref(sortPref.sortOrder)
 
-const sortedList = computed(() => {
-  const rows = [...list.value]
-  const key = sortKey.value
-  const order = sortOrder.value
-  rows.sort((a, b) => {
-    const va = cellVal(a, key)
-    const vb = cellVal(b, key)
-    if (va === vb) return 0
-    const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
-    return order === 'asc' ? cmp : -cmp
-  })
-  return rows
+function cellValue(row, key) {
+  if (key === 'statement') {
+    const v = row.statement
+    if (!v) return '—'
+    return v.length > 80 ? v.slice(0, 80) + '…' : v
+  }
+  if (key === 'is_approved') return row.is_approved ? 'Да' : 'Нет'
+  return row[key] ?? '—'
+}
+
+const {
+  visibleCols,
+  colPickerOpen,
+  sortOrder,
+  displayRows,
+  openFilterKey,
+  toggleSort,
+  isSorted,
+  colLabel,
+  filterTypeFor,
+  toggleCol,
+  onFilterClickOutside,
+  resetFilters,
+  toggleFilterMenu,
+  cancelFilterMenu,
+  distinctForColumn,
+  columnFilterActive,
+  getTextFilter,
+  getEnumCheckedForMenu,
+  applyFilterFromMenu,
+  exportExcel: exportTableExcel,
+} = useRegistryTable({
+  tableId: 'principles',
+  columns,
+  rows: list,
+  cellValue,
+  defaultSortKey: 'name',
 })
 
 const formTitle = computed(() => {
   if (!form.value?.id) return 'Новый принцип'
   return canWrite.value ? 'Изменить принцип' : 'Просмотр принципа'
 })
-
-function cellVal(r, key) {
-  if (key === 'statement') return r.statement ?? ''
-  if (key === 'is_approved') return r.is_approved ? 'Да' : 'Нет'
-  return r[key] ?? ''
-}
-
-function toggleSort(key) {
-  if (key === 'actions') return
-  if (sortKey.value === key) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  else { sortKey.value = key; sortOrder.value = 'asc' }
-  setSortPref('principles', sortKey.value, sortOrder.value)
-}
-
-function colLabel(key) {
-  return principleColumns.find(c => c.key === key)?.label || key
-}
-function toggleCol(key) {
-  const idx = visibleCols.value.indexOf(key)
-  let next
-  if (idx >= 0) {
-    if (visibleCols.value.length <= 1) return
-    next = visibleCols.value.filter(k => k !== key)
-  } else {
-    const order = principleColumns.map(c => c.key)
-    const current = [...visibleCols.value]
-    const keyIdx = order.indexOf(key)
-    const insertAt = current.findIndex(k => order.indexOf(k) > keyIdx)
-    next = insertAt < 0 ? [...current, key] : current.slice(0, insertAt).concat(key, current.slice(insertAt))
-  }
-  visibleCols.value = next
-  setVisibleColumns('principles', next)
-}
-
-const vClickOutside = {
-  mounted(el, binding) {
-    el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value() }
-    document.addEventListener('click', el._clickOutside)
-  },
-  unmounted(el) { document.removeEventListener('click', el._clickOutside) },
-}
 
 async function load() {
   loading.value = true
@@ -214,14 +191,16 @@ async function load() {
   }
 }
 
-watch(search, load)
+watch(search, (newVal, oldVal) => {
+  if (oldVal !== undefined && newVal !== oldVal) resetFilters()
+  load()
+})
 onMounted(load)
 
 async function exportExcel() {
   excelLoading.value = true
   try {
-    const blob = await api.getPrinciples({ search: search.value || undefined, excel: true })
-    downloadBlob(blob, 'principles.xlsx')
+    await exportTableExcel({ sheetName: 'Принципы', filename: 'principles.xlsx' })
   } catch (e) {
     error.value = e.message || 'Ошибка выгрузки'
   } finally {
@@ -275,30 +254,6 @@ async function remove(id) {
 }
 .btn-same {
   min-width: 140px;
-}
-.col-picker-wrap {
-  position: relative;
-}
-.col-picker-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 2px;
-  background: var(--ar-surface);
-  border: 1px solid var(--ar-border);
-  border-radius: var(--ar-radius-sm);
-  box-shadow: var(--ar-shadow-card);
-  padding: 0.5rem;
-  min-width: 160px;
-  z-index: 50;
-}
-.col-picker-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  cursor: pointer;
-  font-size: 0.9rem;
 }
 .btn-link:not(.danger) {
   color: var(--ar-link);

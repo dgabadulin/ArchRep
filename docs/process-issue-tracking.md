@@ -24,6 +24,7 @@
 | `access-control-design.md` | RBAC: локальная авторизация, роли, проверки API/UI | [#66](https://github.com/dgabadulin/ArchRep/issues/66) |
 | `domain-registry-schema.md` | Реестр доменов + FK/проекция на веб-ресурсах | [#67](https://github.com/dgabadulin/ArchRep/issues/67) |
 | `job-runner-design.md` | Планировщик заданий, проверка сроков доменов, CHK_* | [#68](https://github.com/dgabadulin/ArchRep/issues/68) |
+| `table-column-filters-spec.md` | Фильтрация по колонкам в табличных формах (Excel-подобная) | [#72](https://github.com/dgabadulin/ArchRep/issues/72) |
 
 **Закрытые (справочно):** страница **Настройки → Сервисные операции** и перенос пересборки потоков — [#39](https://github.com/dgabadulin/ArchRep/issues/39) (закрыт).
 

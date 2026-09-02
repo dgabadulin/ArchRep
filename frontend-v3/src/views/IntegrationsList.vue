@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" v-click-outside="onFilterClickOutside">
     <div class="page-head">
       <h1>Интеграционные потоки</h1>
       <div class="head-actions">
@@ -15,20 +15,20 @@
             v-if="canExport"
             type="button"
             class="btn btn-excel btn-same"
-            :disabled="excelLoading"
+            :disabled="excelLoading || displayRows.length === 0"
+            :title="displayRows.length === 0 ? 'Нет данных для выгрузки' : ''"
             @click="exportExcel"
           >
             {{ excelLoading ? 'Выгрузка...' : 'Экспорт в Excel' }}
           </button>
-          <div class="col-picker-wrap" v-click-outside="() => colPickerOpen = false">
-            <button type="button" class="btn btn-secondary btn-same" @click.stop="colPickerOpen = !colPickerOpen">Вид</button>
-            <div v-if="colPickerOpen" class="col-picker-dropdown">
-              <label v-for="col in columns" :key="col.key" class="col-picker-item">
-                <input type="checkbox" :checked="visibleCols.includes(col.key)" @change="toggleCol(col.key)" />
-                {{ col.label || col.key }}
-              </label>
-            </div>
-          </div>
+          <RegistryColumnPicker
+            :columns="columns"
+            :visible-cols="visibleCols"
+            :open="colPickerOpen"
+            @toggle="colPickerOpen = !colPickerOpen"
+            @close="colPickerOpen = false"
+            @toggle-col="toggleCol"
+          />
         </div>
       </div>
     </div>
@@ -40,75 +40,75 @@
 
     <div v-if="loading" class="loading">Загрузка...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="card table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th
-              v-for="key in visibleCols"
-              :key="key"
-              :class="{ sortable: key !== 'actions' }"
-              @click="key !== 'actions' && toggleSort(key)"
-            >
-              {{ colLabel(key) }}
-              <span v-if="key !== 'actions' && sortKey === key" class="sort-indicator">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in sortedRows" :key="row.id">
-            <td v-for="key in visibleCols" :key="key">
-              <template v-if="key === 'source'">
-                <router-link
-                  v-if="row.source_ar_systems_id && canReadSystem"
-                  :to="`/systems/${row.source_ar_systems_id}/edit`"
-                  class="link"
-                >{{ row.source_name ?? '—' }}</router-link>
-                <span v-else>{{ row.source_name ?? '—' }}</span>
-              </template>
-              <template v-else-if="key === 'target'">
-                <router-link
-                  v-if="row.target_ar_systems_id && canReadSystem"
-                  :to="`/systems/${row.target_ar_systems_id}/edit`"
-                  class="link"
-                >{{ row.target_name ?? '—' }}</router-link>
-                <span v-else>{{ row.target_name ?? '—' }}</span>
-              </template>
-              <template v-else-if="key === 'actions'">
-                <router-link
-                  v-if="canRead"
-                  :to="linkTo(`/integrations/${row.id}/edit`)"
-                  class="link"
-                >
-                  {{ canWrite ? 'Изменить' : 'Открыть' }}
-                </router-link>
-              </template>
-              <template v-else>{{ cellValue(row, key) }}</template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="sortedRows.length === 0" class="empty">Нет записей</p>
-    </div>
+    <RegistryDataTable
+      v-else
+      :visible-cols="visibleCols"
+      :rows="displayRows"
+      :sort-order="sortOrder"
+      :open-filter-key="openFilterKey"
+      :col-label="colLabel"
+      :filter-type-for="filterTypeFor"
+      :is-sorted="isSorted"
+      :toggle-sort="toggleSort"
+      :column-filter-active="columnFilterActive"
+      :toggle-filter-menu="toggleFilterMenu"
+      :get-text-filter="getTextFilter"
+      :get-enum-checked-for-menu="getEnumCheckedForMenu"
+      :distinct-for-column="distinctForColumn"
+      :apply-filter-from-menu="applyFilterFromMenu"
+      :cancel-filter-menu="cancelFilterMenu"
+    >
+      <template #cell="{ row, columnKey }">
+        <template v-if="columnKey === 'source'">
+          <router-link
+            v-if="row.source_ar_systems_id && canReadSystem"
+            :to="`/systems/${row.source_ar_systems_id}/edit`"
+            class="link"
+          >{{ row.source_name ?? '—' }}</router-link>
+          <span v-else>{{ row.source_name ?? '—' }}</span>
+        </template>
+        <template v-else-if="columnKey === 'target'">
+          <router-link
+            v-if="row.target_ar_systems_id && canReadSystem"
+            :to="`/systems/${row.target_ar_systems_id}/edit`"
+            class="link"
+          >{{ row.target_name ?? '—' }}</router-link>
+          <span v-else>{{ row.target_name ?? '—' }}</span>
+        </template>
+        <template v-else-if="columnKey === 'actions'">
+          <router-link
+            v-if="canRead"
+            :to="linkTo(`/integrations/${row.id}/edit`)"
+            class="link"
+          >
+            {{ canWrite ? 'Изменить' : 'Открыть' }}
+          </router-link>
+        </template>
+        <template v-else>{{ cellValue(row, columnKey) }}</template>
+      </template>
+    </RegistryDataTable>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { api } from '../api/client'
 import TableToolbar from '../components/TableToolbar.vue'
-import { downloadBlob } from '../utils/downloadBlob'
-import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import RegistryDataTable from '../components/RegistryDataTable.vue'
+import RegistryColumnPicker from '../components/RegistryColumnPicker.vue'
 import { useListSearch } from '../composables/useListSearch'
+import { useRegistryTable } from '../composables/useRegistryTable'
 import { usePermissions } from '../composables/usePermissions'
+import { applyRegistryFilters } from '../utils/registryColumnFilters'
+import { vClickOutside } from '../directives/clickOutside'
 
 const { search, linkTo } = useListSearch()
 const { canRead, canWrite, canExport } = usePermissions('integration_flow')
 const { canRead: canReadSystem } = usePermissions('system')
 
-const columns = [
-  { key: 'source', label: 'Система источник', defaultVisible: true },
-  { key: 'target', label: 'Система получатель', defaultVisible: true },
+const columns = applyRegistryFilters([
+  { key: 'source', label: 'Система источник', defaultVisible: true, sortField: 'source_name' },
+  { key: 'target', label: 'Система получатель', defaultVisible: true, sortField: 'target_name' },
   { key: 'event_type_name', label: 'Тип инициирующего события', defaultVisible: true },
   { key: 'periodicity', label: 'Периодичность', defaultVisible: true },
   { key: 'transferred_data', label: 'Передаваемые данные', defaultVisible: true },
@@ -116,79 +116,49 @@ const columns = [
   { key: 'status_name', label: 'Статус потока', defaultVisible: true },
   { key: 'created_at', label: 'Создано', defaultVisible: false },
   { key: 'actions', label: '', defaultVisible: true },
-]
+])
 
 const rows = ref([])
-const visibleCols = ref(getVisibleColumns('integrations', columns))
-const colPickerOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
 const excelLoading = ref(false)
-const sortPref = getSortPref('integrations', 'source_name', 'asc', columns)
-const sortKey = ref(sortPref.sortKey)
-const sortOrder = ref(sortPref.sortOrder)
-
-const sortedRows = computed(() => {
-  const list = [...rows.value]
-  const key = sortKey.value
-  const order = sortOrder.value
-  list.sort((a, b) => {
-    const va = cellValue(a, key)
-    const vb = cellValue(b, key)
-    if (va === vb) return 0
-    const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
-    return order === 'asc' ? cmp : -cmp
-  })
-  return list
-})
-
-function toggleSort(key) {
-  if (key === 'actions') return
-  const sortField = key === 'source' ? 'source_name' : key === 'target' ? 'target_name' : key
-  if (sortKey.value === sortField) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  else { sortKey.value = sortField; sortOrder.value = 'asc' }
-  setSortPref('integrations', sortKey.value, sortOrder.value)
-}
-
-function colLabel(key) {
-  return columns.find(c => c.key === key)?.label || key
-}
 
 function cellValue(row, key) {
-  if (key === 'source' || key === 'target') return row[key === 'source' ? 'source_name' : 'target_name'] ?? '—'
+  if (key === 'source') return row.source_name ?? '—'
+  if (key === 'target') return row.target_name ?? '—'
   const v = row[key]
-  if (v && (key === 'created_at' || key === 'updated_at')) return new Date(v).toLocaleString()
+  if (v && key === 'created_at') return new Date(v).toLocaleString()
   return v ?? '—'
 }
 
-function toggleCol(key) {
-  const idx = visibleCols.value.indexOf(key)
-  let next
-  if (idx >= 0) {
-    if (visibleCols.value.length <= 1) return
-    next = visibleCols.value.filter(k => k !== key)
-  } else {
-    const order = columns.map(c => c.key)
-    const current = [...visibleCols.value]
-    const keyIdx = order.indexOf(key)
-    const insertAt = current.findIndex(k => order.indexOf(k) > keyIdx)
-    if (insertAt < 0) current.push(key)
-    else current.splice(insertAt, 0, key)
-    next = current
-  }
-  visibleCols.value = next
-  setVisibleColumns('integrations', next)
-}
-
-const vClickOutside = {
-  mounted(el, binding) {
-    el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value() }
-    document.addEventListener('click', el._clickOutside)
-  },
-  unmounted(el) {
-    document.removeEventListener('click', el._clickOutside)
-  },
-}
+const {
+  visibleCols,
+  colPickerOpen,
+  sortOrder,
+  displayRows,
+  openFilterKey,
+  toggleSort,
+  isSorted,
+  colLabel,
+  filterTypeFor,
+  toggleCol,
+  onFilterClickOutside,
+  resetFilters,
+  toggleFilterMenu,
+  cancelFilterMenu,
+  distinctForColumn,
+  columnFilterActive,
+  getTextFilter,
+  getEnumCheckedForMenu,
+  applyFilterFromMenu,
+  exportExcel: exportTableExcel,
+} = useRegistryTable({
+  tableId: 'integrations',
+  columns,
+  rows,
+  cellValue,
+  defaultSortKey: 'source_name',
+})
 
 async function load() {
   loading.value = true
@@ -202,14 +172,16 @@ async function load() {
   }
 }
 
-watch(search, () => { load() })
+watch(search, (newVal, oldVal) => {
+  if (oldVal !== undefined && newVal !== oldVal) resetFilters()
+  load()
+})
 onMounted(load)
 
 async function exportExcel() {
   excelLoading.value = true
   try {
-    const blob = await api.getIntegrationFlows({ search: search.value || undefined, excel: true })
-    downloadBlob(blob, 'integration-flows.xlsx')
+    await exportTableExcel({ sheetName: 'Интеграционные потоки', filename: 'integration-flows.xlsx' })
   } catch (e) {
     error.value = e.message || 'Ошибка выгрузки'
   } finally {
@@ -232,29 +204,5 @@ async function exportExcel() {
 }
 .btn-same {
   min-width: 140px;
-}
-.col-picker-wrap {
-  position: relative;
-}
-.col-picker-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 2px;
-  background: var(--ar-surface);
-  border: 1px solid var(--ar-border);
-  border-radius: var(--ar-radius-sm);
-  box-shadow: var(--ar-shadow-card);
-  padding: 0.5rem;
-  min-width: 180px;
-  z-index: 50;
-}
-.col-picker-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  cursor: pointer;
-  font-size: 0.9rem;
 }
 </style>
