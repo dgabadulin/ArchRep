@@ -1,0 +1,4 @@
+# Demo / shell: только LF, иначе на Linux ломается `source env.demo` и пароли в docker compose.
+infra/demo/env.demo text eol=lf
+infra/demo/env.demo.example text eol=lf
+infra/demo/*.sh text eol=lf

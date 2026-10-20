@@ -1,0 +1,39 @@
+# Сборка фронта (Vue v3, Vite), затем backend + статика в одном образе
+# Контекст сборки: корень репозитория (docker build -f infra/common/dockerfile .)
+# Статика: корень сайта /
+
+FROM node:20-alpine AS frontend-v3-build
+WORKDIR /app/frontend-v3
+
+# Зависимости отдельным слоем: кэш не сбрасывается при правке исходников фронта.
+COPY frontend-v3/package.json frontend-v3/package-lock.json* ./
+RUN npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
+
+# Копируем ТОЛЬКО исходники фронта. `COPY frontend-v3 .` опасен: он приносит
+# локальный (Windows) node_modules поверх установленного здесь — и тогда
+# node_modules/.bin/vite без exec-бита, сборка падает:
+# «sh: vite: Permission denied», exit 126.
+# При добавлении новых корневых файлов/папок фронта — дополнить список COPY.
+COPY frontend-v3/index.html frontend-v3/vite.config.js ./
+COPY frontend-v3/public ./public
+COPY frontend-v3/src ./src
+
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
+
+# Миграции и конфиг node-pg-migrate (npm run db:migrate в demo/prod deploy)
+COPY pgmrc.json ./
+COPY DB/migrations ./DB/migrations
+# SQL, на который ссылаются миграции через readFileSync (см. DB/migrations/*.js)
+COPY DB/scripts ./DB/scripts
+
+COPY backend ./backend
+COPY --from=frontend-v3-build /app/frontend-v3-dist ./frontend-v3-dist
+
+EXPOSE 5000
+CMD ["node", "backend/index.js"]

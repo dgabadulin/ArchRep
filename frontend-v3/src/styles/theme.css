@@ -1,0 +1,311 @@
+/**
+ * Тема «по мотивам» партнёрского portal.html: Inter, нейтральный фон,
+ * белый сайдбар, акцент teal, тёмный текст.
+ */
+:root {
+  --ar-bg: #f0f2f5;
+  --ar-surface: #ffffff;
+  --ar-header: #1a1d2e;
+  --ar-header-border: #2a2d3e;
+  --ar-accent: #00e5cc;
+  --ar-accent-hover: #00ccb8;
+  --ar-accent-muted: rgba(0, 229, 204, 0.12);
+  --ar-accent-soft: rgba(0, 229, 204, 0.08);
+  --ar-text: #1a1a2e;
+  --ar-text-on-accent: #0f1117;
+  --ar-muted: #8b8fa8;
+  --ar-border: #e4e6ea;
+  --ar-table-head-bg: #f8f9fb;
+  --ar-row-hover: #fafbfc;
+  --ar-shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --ar-radius-sm: 6px;
+  --ar-radius: 8px;
+  --ar-radius-lg: 12px;
+  --ar-radius-xl: 14px;
+  --ar-font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --ar-danger: #b91c1c;
+  --ar-link: #0a7d72;
+  --ar-excel-bg: #1e5a3a;
+  --ar-excel-bg-hover: #256b44;
+  --ar-excel-fg: #f5f6f8;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--ar-font);
+  background: var(--ar-bg);
+  color: var(--ar-text);
+  line-height: 1.45;
+}
+
+#app {
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d3dc;
+  border-radius: 4px;
+}
+
+/* ---------- Общая разметка страницы ---------- */
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.page-head h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ar-text);
+}
+
+/* ---------- Кнопки ---------- */
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--ar-radius);
+  text-decoration: none;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-block;
+  text-align: center;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+.btn-primary {
+  background: var(--ar-accent);
+  color: var(--ar-text-on-accent);
+  border-color: var(--ar-accent);
+  font-weight: 700;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--ar-accent-hover);
+  border-color: var(--ar-accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.btn-secondary {
+  background: var(--ar-surface);
+  color: var(--ar-text);
+  border-color: var(--ar-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--ar-row-hover);
+  border-color: #d0d3dc;
+}
+.btn-excel {
+  background: var(--ar-excel-bg);
+  color: var(--ar-excel-fg);
+  border-color: var(--ar-excel-bg);
+}
+.btn-excel:hover:not(:disabled) {
+  background: var(--ar-excel-bg-hover);
+  border-color: var(--ar-excel-bg-hover);
+}
+.btn-excel:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* ---------- Карточки и формы ---------- */
+.card {
+  background: var(--ar-surface);
+  border-radius: var(--ar-radius-lg);
+  box-shadow: var(--ar-shadow-card);
+  border: 1px solid var(--ar-border);
+}
+.card--padded {
+  padding: 1.5rem;
+}
+.form.card,
+.card.form {
+  padding: 1.5rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.25rem;
+}
+.field-wide {
+  grid-column: 1 / -1;
+}
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ar-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.95rem;
+  color: var(--ar-text);
+  background: var(--ar-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 2px var(--ar-accent-muted);
+}
+.req {
+  color: var(--ar-danger);
+}
+.actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* ---------- Вкладки ---------- */
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.tab {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ar-border);
+  background: var(--ar-surface);
+  border-radius: var(--ar-radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ar-muted);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.tab:hover {
+  background: var(--ar-row-hover);
+  border-color: #d0d3dc;
+}
+.tab.active {
+  background: var(--ar-accent);
+  color: var(--ar-text-on-accent);
+  border-color: var(--ar-accent);
+  font-weight: 700;
+}
+
+/* ---------- Таблицы ---------- */
+.table-wrap {
+  padding: 0;
+  overflow: hidden;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.table th,
+.table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--ar-border);
+}
+.table th {
+  background: var(--ar-table-head-bg);
+  font-weight: 600;
+  color: var(--ar-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.table th.sortable:hover {
+  background: #eef0f4;
+}
+.table tbody tr:hover {
+  background: var(--ar-row-hover);
+}
+.sort-indicator {
+  margin-left: 0.25rem;
+  font-size: 0.8em;
+  color: var(--ar-accent);
+}
+.table th.th-with-filter {
+  vertical-align: middle;
+}
+
+.link {
+  color: var(--ar-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+.loading,
+.error,
+.empty {
+  padding: 1rem;
+}
+.error {
+  color: var(--ar-danger);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  padding: 0;
+  font-family: inherit;
+}
+.btn-link.danger {
+  color: var(--ar-danger);
+}

@@ -1,0 +1,3711 @@
+const path = require('path');
+const crypto = require('crypto');
+const express = require('express');
+const { Pool } = require('pg');
+const queries = require('./queries');
+const { buildExcelBuffer } = require('./excelHelper');
+const { createWebResourceService } = require('./webResourceService');
+const { buildTemplateBuffer, buildExportBuffer } = require('./webResourceExcel');
+const { runImport, buildTemplate, buildExport } = require('./dataImport');
+const { getImportEntity, listSupportedEntityCodes } = require('./importEntities');
+const { loadParams, getParam } = require('./settingsParams');
+const {
+  loadRefCodes,
+  getAdrStatusCodeById,
+  resolveFlowStatusIdFromMap,
+  getSystemStatusIdByCode,
+  getSysFuncStatusIdByCode,
+  getIncrSysFuncStatusIdByCode,
+  getIncrSysStatusIdByCode,
+  getIncrRelStatusCodeById,
+  getIncrRelStatusIdByCode,
+  resolveStatusIdFromMap,
+} = require('./refCodes');
+const { applyDisplayName, validateTemplateValue } = require('./displayName');
+const { enrichRelationRow, enrichRelationRows } = require('./relationLabels');
+const { isManagedRelationType } = require('./relationTypePolicy');
+const { buildHomeStats } = require('./homeDashboard');
+const { buildMxfile, mergeMxfileWithData } = require('./incrementDiagram');
+const {
+  DEFAULT_DRAWIO_NODE_STYLE,
+  DEFAULT_DRAWIO_EDGE_STYLE,
+  DEFAULT_DRAWIO_LAYOUT_STYLE,
+} = require('./drawioStyles');
+const { isAuthEnabled, assertAuthConfig } = require('./auth/authConfig');
+const { publicKeycloakFlags } = require('./auth/keycloakConfig');
+const { createAuthMiddleware } = require('./auth/middleware');
+const { createAuthRouter } = require('./auth/authRoutes');
+const { createAdminRouter } = require('./auth/adminRoutes');
+const { createJobsRouter } = require('./jobsRoutes');
+const { createJobRunner } = require('./jobs/runner');
+const { createAiRouter } = require('./ai/aiRoutes');
+const { PUBLIC_DEFAULTS: AI_PUBLIC_CONFIG_DEFAULTS, aiPublicEnvOverrides } = require('./ai/aiConfig');
+const { bootstrapAuth } = require('./auth/bootstrapAuth');
+const { normalizeDomainName } = require('./domainFromUrl');
+
+// Параметры ADR: только коды справочников (issue #31).
+// Значения — коды из ar_integration_flow_statuses (issue #91): FLOW_STATUS_1 «Планируется к реализации»,
+// FLOW_STATUS_2 «В процессе реализации», FLOW_STATUS_3 «В промышленной эксплуатации»,
+// FLOW_STATUS_4 «Исключена», FLOW_STATUS_5 «Реализация отменена».
+// Раньше здесь были коды FLOW_STATUS_PLANNED/PRODUCTION/…, которых нет в справочнике → маппинг молча уходил в fallback.
+const DEFAULT_FLOW_STATUS_MAP_BY_CODE = {
+  ADR_INCR_REL_CREATING: 'FLOW_STATUS_1',
+  ADR_INCR_REL_MODIFYING: 'FLOW_STATUS_3',
+  ADR_INCR_REL_IN_USE: 'FLOW_STATUS_3',
+  ADR_INCR_REL_REMOVING: 'FLOW_STATUS_4',
+  ADR_INCR_REL_PLANNED: 'FLOW_STATUS_1',
+  ADR_INCR_REL_IMPLEMENTING: 'FLOW_STATUS_2',
+  ADR_INCR_REL_DONE: 'FLOW_STATUS_3',
+};
+const DEFAULT_APPROVED_STATUS_CODES = ['ADR_STATUS_APPROVED_ARCH', 'ADR_STATUS_APPROVED_COUNCIL'];
+const DEFAULT_DRAFT_STATUS_CODE = 'ADR_STATUS_DRAFT';
+
+// Дефолтные маппинги статусов «в заключении → в реестре» (issue #74).
+// Пустая строка означает «без изменений» (существующая сущность).
+const DEFAULT_SYSTEM_STATUS_MAP = {
+  ADR_INCR_SYS_CREATING: 'SYS_STATUS_PLANNED',
+  ADR_INCR_SYS_MODIFYING: '',
+  ADR_INCR_SYS_IN_USE: '',
+  ADR_INCR_SYS_DECOMMISSIONING: 'SYS_STATUS_RETIRING',
+  ADR_INCR_SYS_OTHER_SOLUTION: '',
+};
+const DEFAULT_SYSFUNC_STATUS_MAP = {
+  ADR_INCR_SYSFUNC_CREATING: 'SYSFUNC_STATUS_PLANNED',
+  ADR_INCR_SYSFUNC_MODIFYING: '',
+  ADR_INCR_SYSFUNC_IN_USE: '',
+  ADR_INCR_SYSFUNC_DECOMMISSIONING: 'SYSFUNC_STATUS_RETIRED',
+};
+
+// Статусы контура заключения по умолчанию (issue #91): коды справочников, а не «магические» строки в коде.
+// Значения переопределяются параметрами ar_settings_parameters (группа ADR) на странице «Настройки → Параметры»
+// без правки кода; дефолты обязаны совпадать с официальными сидами в DB/scripts/migrate_*_adr_increment_status_params.sql.
+const DEFAULT_INCR_SYS_NEW_STATUS_CODE = 'ADR_INCR_SYS_CREATING';
+const DEFAULT_INCR_SYSFUNC_NEW_STATUS_CODE = 'ADR_INCR_SYSFUNC_CREATING';
+const DEFAULT_INCR_REL_NEW_STATUS_CODE = 'ADR_INCR_REL_CREATING';
+const DEFAULT_FLOW_DEFAULT_STATUS_CODE = 'FLOW_STATUS_1';
+/** Крайний резерв id статуса потока — для баз, где `ar_integration_flow_statuses.code` ещё не заполнен. */
+const LEGACY_FLOW_STATUS_FALLBACK_ID = 1;
+
+// .env ищем в корне репозитория (при запуске node backend/index.js из корня cwd = корень)
+const env = process.env.NODE_ENV || 'development';
+const envPath = path.join(process.cwd(), `.env.${env}`);
+require('dotenv').config({ path: envPath });
+
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_USER:', process.env.DB_USER);
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '(set)' : '(not set)');
+console.log('DB_NAME:', process.env.DB_NAME);
+console.log('DB_PORT:', process.env.DB_PORT);
+
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+  connectionTimeoutMillis: 10_000,
+});
+
+/** node-postgres не принимает undefined в параметрах запроса — подставляем SQL NULL */
+function pgParam(v) {
+  return v === undefined ? null : v;
+}
+
+/** Текст поля «Функции» в строке системы решения (issue #52). */
+function formatSystemFunctionsComment(names) {
+  const list = (names || []).map((n) => String(n || '').trim()).filter(Boolean);
+  if (!list.length) return '';
+  return list.map((n) => `-${n};`).join('\r\n');
+}
+
+const app = express();
+app.use((err, req, res, next) => {
+  console.error('Server error:', err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+app.use((req, res, next) => {
+  const allowed = (process.env.CORS_ORIGIN || 'http://localhost:5175').split(',').map(s => s.trim()).filter(Boolean);
+  const origin = req.headers.origin;
+  if (origin && (allowed.includes(origin) || allowed.includes('*'))) {
+    res.setHeader('Access-Control-Allow-Origin', allowed.includes('*') ? '*' : origin);
+  } else if (allowed.length === 1 && allowed[0] !== '*') {
+    res.setHeader('Access-Control-Allow-Origin', allowed[0]);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Restart-Secret');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+app.use(express.json({ limit: '20mb' }));
+app.use(createAuthMiddleware(pool));
+app.use('/api/auth', createAuthRouter(pool));
+app.use('/api/admin', createAdminRouter(pool));
+
+const jobRunner = createJobRunner(pool, queries);
+app.use('/api/jobs', createJobsRouter(pool, queries, jobRunner));
+app.use('/api/ai', createAiRouter(pool, queries));
+
+const DISPLAY_NAME_PATHS = [
+  [/^\/api\/ar-systems(?:\/\d+)?$/, 'system'],
+  [/^\/api\/parent-systems$/, 'system'],
+  [/^\/api\/technologies(?:\/\d+)?$/, 'technology'],
+  [/^\/api\/partners(?:\/\d+)?$/, 'partner'],
+  [/^\/api\/ar-employees(?:\/\d+)?$/, 'employee'],
+  [/^\/api\/ar-vendors$/, 'partner'],
+  [/^\/api\/owners(?:\/\d+)?$/, 'owner'],
+  [/^\/api\/hosting-types(?:\/\d+)?$/, 'hosting_type'],
+  [/^\/api\/system-statuses(?:\/\d+)?$/, 'system_status'],
+  [/^\/api\/technology-classes(?:\/\d+)?$/, 'tech_class'],
+  [/^\/api\/technology-types(?:\/\d+)?$/, 'tech_type'],
+  [/^\/api\/technology-statuses(?:\/\d+)?$/, 'tech_status'],
+  [/^\/api\/adr-statuses(?:\/\d+)?$/, 'adr_status'],
+  [/^\/api\/adr-system-statuses(?:\/\d+)?$/, 'adr_system_status'],
+  [/^\/api\/adr-relation-statuses(?:\/\d+)?$/, 'adr_relation_status'],
+  [/^\/api\/adr-increment-types(?:\/\d+)?$/, 'adr_increment_type'],
+  [/^\/api\/decisions\/principle(?:\/\d+)?$/, 'adrp'],
+  [/^\/api\/decisions\/applied(?:\/\d+)?$/, 'adra'],
+  [/^\/api\/ar-gaps(?:\/\d+)?$/, 'gap'],
+  [/^\/api\/ar-gap-types(?:\/\d+)?$/, 'gap_type'],
+  [/^\/api\/ar-impact-level-types(?:\/\d+)?$/, 'impact_level'],
+  [/^\/api\/ar-gap-states(?:\/\d+)?$/, 'gap_state'],
+  [/^\/api\/integration-flow-event-types(?:\/\d+)?$/, 'flow_event_type'],
+  [/^\/api\/integration-flow-statuses(?:\/\d+)?$/, 'flow_status'],
+  [/^\/api\/togaf\/organization-units(?:\/\d+)?$/, 'org_unit'],
+  [/^\/api\/togaf\/refs\/organization-unit-categories(?:\/\d+)?$/, 'org_unit_category'],
+  [/^\/api\/togaf\/actors(?:\/\d+)?$/, 'actor'],
+  [/^\/api\/togaf\/refs\/actor-types(?:\/\d+)?$/, 'actor_type'],
+  [/^\/api\/togaf\/business-services(?:\/\d+)?$/, 'business_service'],
+  [/^\/api\/togaf\/web-resources(?:\/\d+)?$/, 'web_resource'],
+  [/^\/api\/togaf\/web-resource-statuses(?:\/\d+)?$/, 'web_resource_status'],
+  [/^\/api\/togaf\/web-resource-categories(?:\/\d+)?$/, 'web_resource_category'],
+  [/^\/api\/togaf\/web-resource-stage-types(?:\/\d+)?$/, 'web_resource_stage_type'],
+  [/^\/api\/togaf\/domains(?:\/\d+)?$/, 'domain'],
+  [/^\/api\/togaf\/domain-statuses(?:\/\d+)?$/, 'domain_status'],
+  [/^\/api\/togaf\/refs\/business-service-statuses(?:\/\d+)?$/, 'business_service_status'],
+  [/^\/api\/togaf\/business-functions(?:\/\d+)?$/, 'business_function'],
+  [/^\/api\/togaf\/entity-types(?:\/\d+)?$/, 'meta_entity_type'],
+  [/^\/api\/togaf\/relation-types(?:\/\d+)?$/, 'meta_relation_type'],
+];
+
+app.use((req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (payload) => {
+    if (req.method === 'GET') {
+      const hit = DISPLAY_NAME_PATHS.find(([re]) => re.test(req.path));
+      const hasDisplayName = Array.isArray(payload)
+        ? payload.some((r) => r && typeof r === 'object' && typeof r.display_name === 'string')
+        : payload && typeof payload === 'object' && typeof payload.display_name === 'string';
+      if (hit && !hasDisplayName) payload = applyDisplayName(payload, hit[1]);
+    }
+    return json(payload);
+  };
+  next();
+});
+
+// Статика единственного фронта (v3) подключается после loadParams() — путь ARR_FRONTEND_V3_PATH
+const fs = require('fs');
+
+/** Редирект со старых префиксов /v3 и /v2 на корень (тот же SPA). */
+function legacyFrontendPrefixRedirect(req, res, next) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api')) return next();
+  let rest = req.path;
+  if (rest === '/v2' || rest.startsWith('/v2/')) rest = rest.slice(3) || '/';
+  else if (rest === '/v3' || rest.startsWith('/v3/')) rest = rest.slice(3) || '/';
+  else return next();
+  if (!rest.startsWith('/')) rest = '/' + rest;
+  const q = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  return res.redirect(301, rest + q);
+}
+
+function mountFrontendStatic() {
+  const v3Rel = getParam('ARR_FRONTEND_V3_PATH', 'frontend-v3-dist') || 'frontend-v3-dist';
+  const frontendV3Dist = path.join(process.cwd(), v3Rel);
+  if (fs.existsSync(frontendV3Dist)) {
+    app.use(legacyFrontendPrefixRedirect);
+    app.use(express.static(frontendV3Dist));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(frontendV3Dist, 'index.html'));
+    });
+  } else {
+    app.get('/', (req, res) => res.send('Hello, World!'));
+    app.get(/^\/v3(\/.*)?$|^\/v2(\/.*)?$/, (_req, res) => {
+      res.status(503).set('Content-Type', 'text/html; charset=utf-8').send(
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Фронт не собран</title></head><body><h1>Статика фронта не найдена</h1><p>Выполните <code>npm run build:v3</code> и убедитесь, что каталог <code>frontend-v3-dist</code> лежит рядом с бэкендом (или задайте <code>ARR_FRONTEND_V3_PATH</code>).</p></body></html>'
+      );
+    });
+  }
+}
+
+// Проверка доступности бэкенда (без БД); после deploy — открыть http://host:3000/api/health
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+/** Политика перезапуска процесса Node (сервисные операции UI). */
+function getNodeRestartPolicy() {
+  const secret = process.env.ADMIN_API_RESTART_SECRET;
+  const hasSecret = secret != null && String(secret).length > 0;
+  const insecure = process.env.ALLOW_INSECURE_RESTART_WITHOUT_SECRET === 'true';
+  return {
+    enabled: hasSecret || insecure,
+    requiresSecret: hasSecret,
+  };
+}
+
+app.get('/api/admin/restart-node/status', (req, res) => {
+  const p = getNodeRestartPolicy();
+  res.json({ enabled: p.enabled, requiresSecret: p.requiresSecret });
+});
+
+/**
+ * Завершает процесс Node (код 0). В Docker при --restart=always (см. infra/deploy.bat, docker-compose)
+ * демон перезапускает тот же контейнер; иначе — PM2/systemd или ручной запуск.
+ * Защита: ADMIN_API_RESTART_SECRET (заголовок X-Admin-Restart-Secret или body.secret) либо ALLOW_INSECURE_RESTART_WITHOUT_SECRET=true.
+ */
+app.post('/api/admin/restart-node', (req, res) => {
+  const p = getNodeRestartPolicy();
+  if (!p.enabled) {
+    return res.status(403).json({
+      error:
+        'Перезапуск API отключён. На сервере задайте ADMIN_API_RESTART_SECRET или (только в доверенной среде) ALLOW_INSECURE_RESTART_WITHOUT_SECRET=true.',
+    });
+  }
+  if (p.requiresSecret) {
+    const sent = req.headers['x-admin-restart-secret'] || (req.body && req.body.secret);
+    const a = Buffer.from(String(sent || ''), 'utf8');
+    const b = Buffer.from(String(process.env.ADMIN_API_RESTART_SECRET || ''), 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: 'Неверный секрет перезапуска' });
+    }
+  }
+  console.warn('[admin] Перезапуск API: process.exit(0) через 400 ms');
+  res.status(202).json({
+    ok: true,
+    message:
+      'Процесс API завершается. При Docker --restart=always (deploy.bat) или restart: always в compose контейнер поднимется снова; иначе PM2/служба или ручной запуск.',
+  });
+  setTimeout(() => process.exit(0), 400);
+});
+app.get('/api/health/db', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true, db: 'ok' });
+  } catch (err) {
+    console.error('Health DB check failed:', err.message);
+    res.status(503).json({ ok: false, db: err.message });
+  }
+});
+
+// Публичный конфиг для фронта (только несекретные параметры, по белому списку)
+const PUBLIC_CONFIG_DEFAULTS = {
+  ARR_APP_BASE: '/',
+  ARR_MENU_COOKIE: 'ar-v3-menu-expanded',
+  ARR_COLS_COOKIE: 'ar_cols_',
+  ARR_SORT_COOKIE: 'ar_sort_',
+  ARR_COOKIE_MAX_DAYS: 365,
+  ARR_SEARCH_PLACEHOLDER: 'Поиск по всем полям таблицы',
+  GRAPH_LAYOUT_DEF: 'star',
+  GRAPH_MAX_NODES: 200,
+  GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
+  GRAPH_EDGE_FONTSZ: 10,
+  GRAPH_VIEWBOX_MIN: 500,
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'certificate', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ICONS: null,
+  /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
+  GRAPH_COLLAPSED_SYSTEM_ICON: null,
+  ADR_CODE_MAXLEN: 15,
+  SYS_CODE_MAXLEN: 32,
+  /**
+   * Статусы контура заключения (issue #91): коды справочников вместо строк в коде фронта.
+   * Правится в «Настройки → Параметры» (группа ADR) — форма читает значения из `/api/config`.
+   */
+  ADR_INCR_SYS_NEW_STATUS_CODE: 'ADR_INCR_SYS_CREATING',
+  ADR_INCR_SYSFUNC_NEW_STATUS_CODE: 'ADR_INCR_SYSFUNC_CREATING',
+  ADR_INCR_REL_NEW_STATUS_CODE: 'ADR_INCR_REL_CREATING',
+  /** Код статуса системы в решении, существующей в реестре (пикер статуса по умолчанию на форме). */
+  ADR_INCR_SYS_DEFAULT_STATUS_CODE: 'ADR_INCR_SYS_IN_USE',
+  /** Код статуса связи для потока из реестра (модалка интеграций). */
+  ADR_INCR_REL_EXISTING_STATUS_CODE: 'ADR_INCR_REL_IN_USE',
+  /** Коды статусов заключения, при которых форма разрешает править структуру (массив кодов). */
+  ADR_EDITABLE_STATUS_CODES: ['ADR_STATUS_DRAFT'],
+  /** Базовый URL Draw.io/diagrams.net для embed (например https://host/drawio). Пусто — фронт покажет подсказку. */
+  DRAWIO_EMBED_BASE: '',
+  /** Полный URL iframe «Тех.радар». Только из БД (`ar_settings_parameters`) или env `TECH_RADAR_EMBED_URL`; в коде дефолта нет. */
+  TECH_RADAR_EMBED_URL: '',
+  /** Стили узлов/рёбер/раскладки для генерации mxfile (issue #53); переопределение в ar_settings_parameters value_type=json. */
+  DRAWIO_NODE_STYLE: DEFAULT_DRAWIO_NODE_STYLE,
+  DRAWIO_EDGE_STYLE: DEFAULT_DRAWIO_EDGE_STYLE,
+  DRAWIO_LAYOUT_STYLE: DEFAULT_DRAWIO_LAYOUT_STYLE,
+  /** ИИ-архитектор (issue #78): публичные параметры панели; секреты (AI_API_KEY) в /api/config не попадают. */
+  ...AI_PUBLIC_CONFIG_DEFAULTS,
+};
+app.get('/api/config', (req, res) => {
+  const out = {};
+  for (const [code, def] of Object.entries(PUBLIC_CONFIG_DEFAULTS)) {
+    const v = getParam(code, def);
+    out[code] = v !== undefined && v !== '' ? v : def;
+  }
+  if (out.GRAPH_ENTITY_ICONS == null) {
+    out.GRAPH_ENTITY_ICONS = {
+      system: { label: 'Информационная система', icon: 'Monitor', listLabel: 'ИС' },
+      subsystem: { label: 'Модуль системы', icon: 'Puzzle', listLabel: 'Модули систем' },
+      system_child: { label: 'Модуль системы', icon: 'Puzzle', listLabel: 'Модули систем' },
+      technology: { label: 'Технология', icon: 'Cpu', listLabel: 'Технологии' },
+      organization_unit: { label: 'Организационная единица', icon: 'Building2', listLabel: 'Орг. единицы' },
+      actor: { label: 'Актор', icon: 'User', listLabel: 'Акторы' },
+      employee: { label: 'Сотрудник', icon: 'UserCircle', listLabel: 'Сотрудники' },
+      business_service: { label: 'Бизнес-сервис (продукт)', icon: 'Package', listLabel: 'Продукты' },
+      business_function: { label: 'Бизнес-функция', icon: 'GitBranch', listLabel: 'Бизнес-способности' },
+      principle: { label: 'Принцип', icon: 'Scale', listLabel: 'Принципы' },
+      web_resource: { label: 'Веб-ресурс', icon: 'Globe', listLabel: 'Веб-ресурсы' },
+      domain: { label: 'Домен', icon: 'AppWindow', listLabel: 'Домены' },
+      certificate: { label: 'Сертификат', icon: 'Shield', listLabel: 'Сертификаты' },
+    };
+  }
+  if (out.GRAPH_COLLAPSED_SYSTEM_ICON == null || String(out.GRAPH_COLLAPSED_SYSTEM_ICON).trim() === '') {
+    out.GRAPH_COLLAPSED_SYSTEM_ICON = 'MonitorDot';
+  }
+  const drawioEnv = process.env.DRAWIO_EMBED_BASE;
+  if (drawioEnv != null && String(drawioEnv).trim() !== '') {
+    out.DRAWIO_EMBED_BASE = String(drawioEnv).trim();
+  }
+  const techRadarEnv = process.env.TECH_RADAR_EMBED_URL;
+  if (techRadarEnv != null && String(techRadarEnv).trim() !== '') {
+    out.TECH_RADAR_EMBED_URL = String(techRadarEnv).trim();
+  }
+  aiPublicEnvOverrides(out);
+  out.auth_enabled = isAuthEnabled();
+  Object.assign(out, publicKeycloakFlags());
+  res.json(out);
+});
+
+app.get('/api/dashboard/home-stats', async (req, res) => {
+  try {
+    const data = await buildHomeStats(pool);
+    res.json(data);
+  } catch (e) {
+    console.error('GET /api/dashboard/home-stats', e);
+    res.status(500).json({ error: e.message || 'home-stats failed' });
+  }
+});
+
+app.get('/api/ar-systems', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const excludeModules = req.query.exclude_modules === '1' || req.query.exclude_modules === 'true';
+    const onlyModules = req.query.only_modules === '1' || req.query.only_modules === 'true';
+    const q = search ? queries.systems_select_search : queries.systems_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    let rows = result.rows;
+    if (excludeModules && !onlyModules) rows = rows.filter((r) => r.parent_ar_systems_id == null);
+    if (onlyModules && !excludeModules) rows = rows.filter((r) => r.parent_ar_systems_id != null);
+    rows = rows.map((r) => applyDisplayName(r, r.parent_ar_systems_id != null ? 'subsystem' : 'system'));
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Системы');
+      res.setHeader('Content-Disposition', 'attachment; filename=systems.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.get('/api/ar-systems/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.systems_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const row = r.rows[0];
+    res.json(applyDisplayName(row, row.parent_ar_systems_id != null ? 'subsystem' : 'system'));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+
+// GET на URL обновления не поддерживается — использовать PUT
+app.get('/api/update-ar-systems/:id', (req, res) => {
+  res.set('Allow', 'PUT');
+  res.status(405).json({ error: 'Method Not Allowed. Use PUT to update the system.' });
+});
+
+app.put('/api/update-ar-systems/:id', async (req, res) => {
+  const { id } = req.params;
+  const b = req.body || {};
+  const {
+    code,
+    name,
+    fullname,
+    parent_ar_systems_id,
+    ar_system_statuses_id,
+    vendor_ar_partners_id,
+    supplier_ar_partners_id,
+    supporter_ar_partners_id,
+    description,
+    ar_system_hosting_types_id,
+    technologies = '',
+    external_system = false,
+    comment,
+    it_lead_employee_id,
+    business_lead_employee_id,
+  } = b;
+  if (!code || !name) {
+    return res.status(400).json({ error: 'Missing required fields: code or name' });
+  }
+  try {
+    const result = await pool.query(queries.systems_update, [
+      code,
+      name,
+      pgParam(fullname),
+      pgParam(parent_ar_systems_id),
+      pgParam(ar_system_statuses_id),
+      pgParam(vendor_ar_partners_id),
+      pgParam(supplier_ar_partners_id),
+      pgParam(supporter_ar_partners_id),
+      pgParam(description),
+      pgParam(ar_system_hosting_types_id),
+      technologies,
+      external_system,
+      pgParam(comment),
+      pgParam(it_lead_employee_id),
+      pgParam(business_lead_employee_id),
+      id
+    ]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'System not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.post('/api/add-ar-systems', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const {
+      code,
+      name,
+      fullname,
+      parent_ar_systems_id,
+      ar_system_statuses_id,
+      vendor_ar_partners_id,
+      supplier_ar_partners_id,
+      supporter_ar_partners_id,
+      description,
+      ar_system_hosting_types_id,
+      technologies = '',
+      external_system = false,
+      comment,
+      it_lead_employee_id,
+      business_lead_employee_id,
+    } = b;
+    if (!code || !name) {
+      return res.status(400).json({ error: 'Fields "code" and "name" are required' });
+    }
+    const result = await pool.query(queries.systems_insert, [
+      code,
+      name,
+      pgParam(fullname),
+      pgParam(parent_ar_systems_id),
+      pgParam(ar_system_statuses_id),
+      pgParam(vendor_ar_partners_id),
+      pgParam(supplier_ar_partners_id),
+      pgParam(supporter_ar_partners_id),
+      pgParam(description),
+      pgParam(ar_system_hosting_types_id),
+      technologies,
+      external_system,
+      pgParam(comment),
+      pgParam(it_lead_employee_id),
+      pgParam(business_lead_employee_id),
+    ]);
+    res.status(201).json({ message: 'Record created successfully', id: result.rows[0].id });
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).json({ error: 'Failed to create record' });
+  }
+});
+
+app.get('/api/parent-systems', async (req, res) => {
+  try {
+    const result = await pool.query(queries.parent_systems_select);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.get('/api/system-statuses', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.system_statuses_select_search : queries.system_statuses_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Статусы систем');
+      res.setHeader('Content-Disposition', 'attachment; filename=system-statuses.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.get('/api/hosting-types', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.hosting_types_select_search : queries.system_hosting_types_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Типы хостинга');
+      res.setHeader('Content-Disposition', 'attachment; filename=hosting-types.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.get('/api/owners', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.owners_select_search : queries.owners_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Владельцы');
+      res.setHeader('Content-Disposition', 'attachment; filename=owners.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+app.get('/api/ar-vendors', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.partners_select_search : queries.vendors_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Партнёры');
+      res.setHeader('Content-Disposition', 'attachment; filename=partners.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+// --- Partners (CRUD) ---
+app.get('/api/partners', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.partners_select_search : queries.partners_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Партнёры'); res.setHeader('Content-Disposition', 'attachment; filename=partners.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/partners/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.partners_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/partners', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.partners_insert, [name]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/partners/:id', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.partners_update, [name, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/partners/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.partners_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Employees (ar_employees) ---
+app.get('/api/ar-employees', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.employees_select_search : queries.employees_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows.map((r) => applyDisplayName(r, 'employee'));
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Сотрудники');
+      res.setHeader('Content-Disposition', 'attachment; filename=employees.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.get('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.employees_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.post('/api/ar-employees', async (req, res) => {
+  try {
+    const { employee_number, full_name, email, active } = req.body || {};
+    if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
+    const r = await pool.query(queries.employees_insert, [
+      employee_number != null ? String(employee_number) : null,
+      String(full_name).trim(),
+      email != null ? String(email) : null,
+      active,
+    ]);
+    res.status(201).json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с таким табельным номером, email или фамилией уже есть' });
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const { employee_number, full_name, email, active } = req.body || {};
+    if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
+    const r = await pool.query(queries.employees_update, [
+      employee_number != null ? String(employee_number) : null,
+      String(full_name).trim(),
+      email != null ? String(email) : null,
+      active,
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'employee'));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Сотрудник с таким табельным номером, email или фамилией уже есть' });
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/ar-employees/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.employees_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+
+// --- Owners CRUD (additional to GET /api/owners) ---
+app.post('/api/owners', async (req, res) => {
+  try {
+    const { name, leader } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.owners_insert, [name, leader]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.get('/api/owners/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.owners_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.put('/api/owners/:id', async (req, res) => {
+  try {
+    const { name, leader } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.owners_update, [name, leader, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/owners/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.owners_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- System statuses CRUD (additional to GET) ---
+app.post('/api/system-statuses', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.system_statuses_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/system-statuses/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.system_statuses_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/system-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Hosting types CRUD (additional to GET) ---
+app.post('/api/hosting-types', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.hosting_types_insert, [name]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/hosting-types/:id', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.hosting_types_update, [name, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/hosting-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.hosting_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Technologies ---
+app.get('/api/technologies', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const vendor = req.query.vendor_id;
+    const q = search ? queries.technologies_select_search : queries.technologies_select;
+    let result; const params = search ? ['%' + search + '%'] : [];
+    if (search) result = await pool.query(q, params);
+    else result = await pool.query(q);
+    let rows = result.rows;
+    if (vendor) rows = rows.filter(r => r.vendor_ar_partners_id == vendor);
+    if (excel) { const buf = buildExcelBuffer(rows, 'Технологии'); res.setHeader('Content-Disposition', 'attachment; filename=technologies.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/technologies/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.technologies_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/technologies', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technologies_insert, [b.name, b.vendor_ar_partners_id, b.technology_classes_id, b.approve_document, b.technology_types_id, b.technology_statuses_id, b.radar_include_flag ?? null, b.description, b.domestic_flag ?? null]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/technologies/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technologies_update, [b.name, b.vendor_ar_partners_id, b.technology_classes_id, b.approve_document, b.technology_types_id, b.technology_statuses_id, b.radar_include_flag ?? null, b.description, b.domestic_flag ?? null, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/technologies/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.technologies_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Technology classes, statuses, types ---
+app.get('/api/technology-classes', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.technology_classes_select_search : queries.technology_classes_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Классы технологий'); res.setHeader('Content-Disposition', 'attachment; filename=technology-classes.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/technology-classes', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technology_classes_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/technology-classes/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technology_classes_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/technology-classes/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.technology_classes_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/technology-statuses', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.technology_statuses_select_search : queries.technology_statuses_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Статусы технологий'); res.setHeader('Content-Disposition', 'attachment; filename=technology-statuses.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/technology-statuses', async (req, res) => {
+  try {
+    const { name, fullname, description } = req.body || {};
+    if (!name || !fullname) return res.status(400).json({ error: 'name and fullname required' });
+    const r = await pool.query(queries.technology_statuses_insert, [name, fullname, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/technology-statuses/:id', async (req, res) => {
+  try {
+    const { name, fullname, description } = req.body || {};
+    if (!name || !fullname) return res.status(400).json({ error: 'name and fullname required' });
+    const r = await pool.query(queries.technology_statuses_update, [name, fullname, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/technology-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.technology_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/technology-types', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.technology_types_select_search : queries.technology_types_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Типы технологий'); res.setHeader('Content-Disposition', 'attachment; filename=technology-types.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/technology-types', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technology_types_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/technology-types/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.technology_types_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/technology-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.technology_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Principles ---
+app.get('/api/principles', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.principles_select_search : queries.principles_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Принципы'); res.setHeader('Content-Disposition', 'attachment; filename=principles.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/principles/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.principles_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/principles', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.principles_insert, [b.name, b.statement, b.rationale, b.implications, b.is_approved, b.approve_document]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/principles/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.principles_update, [b.name, b.statement, b.rationale, b.implications, b.is_approved, b.approve_document, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/principles/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.principles_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Architecture decisions v2: principle (ADRP) + applied (ADRA) + increments ---
+/** ID сохранённого заключения в path (отсекает undefined/new из ошибочного URL). */
+function parseAppliedRecordId(raw, res) {
+  if (raw == null || raw === '' || String(raw).trim() === '' || raw === 'undefined' || raw === 'new') {
+    res.status(400).json({
+      error: 'Сначала сохраните заключение или откройте запись на редактирование — без id нельзя добавлять решения.',
+    });
+    return null;
+  }
+  const n = Number(String(raw).trim());
+  if (!Number.isInteger(n) || n < 1) {
+    res.status(400).json({ error: 'Некорректный идентификатор записи заключения.' });
+    return null;
+  }
+  return n;
+}
+
+/** FK bigint из тела запроса; node-pg + undefined даёт в PG строку "undefined". */
+function normalizeOptionalBigint(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'string' && (v.trim() === '' || v === 'undefined' || v === 'null')) return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+app.get('/api/adr-statuses', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_statuses_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/decisions/principle', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.adrs_principle_select_search : queries.adrs_principle_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Принципиальные решения');
+      res.setHeader('Content-Disposition', 'attachment; filename=decisions-principle.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/decisions/principle/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adrs_principle_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/decisions/principle', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const adrpPrefix = getParam('ADR_ADRP_PREFIX', 'ADRP-') || 'ADRP-';
+    const r = await pool.query(queries.adrs_principle_insert, [adrpPrefix, b.name, b.context, b.decision, b.consequences, b.ar_adr_statuses_id, b.author]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/decisions/principle/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.adrs_principle_update, [b.name, b.context, b.decision, b.consequences, b.ar_adr_statuses_id, b.author, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/decisions/principle/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adrs_principle_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/decisions/applied', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.adrs_applied_select_search : queries.adrs_applied_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Прикладные решения');
+      res.setHeader('Content-Disposition', 'attachment; filename=decisions-applied.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/decisions/applied/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adrs_applied_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/decisions/applied', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const adraPrefix = getParam('ADR_ADRA_PREFIX', 'ADRA-') || 'ADRA-';
+    const r = await pool.query(queries.adrs_applied_insert, [adraPrefix, b.task_name, b.task_link, b.conclusion, b.ar_adr_statuses_id, b.author]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/decisions/applied/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await pool.query(queries.adrs_applied_update, [b.task_name, b.task_link, b.conclusion, b.ar_adr_statuses_id, b.author, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/decisions/applied/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adrs_applied_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// Полное сохранение архитектурного заключения: основная запись + инкременты с системами и интеграциями
+app.post('/api/decisions/applied/full', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const b = req.body || {};
+    const { task_name, task_link, conclusion, ar_adr_statuses_id, author, increments = [] } = b;
+    const adraPrefix = getParam('ADR_ADRA_PREFIX', 'ADRA-') || 'ADRA-';
+    const r = await client.query(queries.adrs_applied_insert, [adraPrefix, task_name || '', task_link || '', conclusion || '', ar_adr_statuses_id || null, author || '']);
+    const appliedId = r.rows[0].id;
+    // Ключи новых систем заключения (local_key → id) — для связей интеграций (issue #74).
+    const systemKeyMap = new Map();
+    for (let i = 0; i < increments.length; i++) {
+      const inc = increments[i];
+      const incR = await client.query(queries.adr_increments_insert, [
+        appliedId,
+        inc.order_index ?? i + 1,
+        inc.name || '',
+        normalizeOptionalBigint(inc.ar_adr_increment_types_id),
+      ]);
+      const incId = incR.rows[0].id;
+      const systems = inc.systems || [];
+      const relations = inc.relations || [];
+      for (const s of systems) {
+        let sysId = s.ar_systems_id;
+        if (s.kind === 'new') {
+          sysId = await createSystemFromNew(client, s);
+        }
+        if (s.local_key) systemKeyMap.set(String(s.local_key).trim(), sysId);
+        const incrStatusId = s.ar_adr_increment_system_statuses_id
+          || (s.increment_status_code ? getIncrSysStatusIdByCode(s.increment_status_code) : null);
+        const fnNames = (s.functions || []).map((fn) => fn.name).filter(Boolean);
+        // Текст «Функции» пересчитывается из актуального списка (issue #74): раньше присланный comment
+        // перекрывал новые функции, и схема решения не видела изменений.
+        const sysComment = Array.isArray(s.functions)
+          ? formatSystemFunctionsComment(fnNames)
+          : (s.comment || '');
+        const sysRow = await client.query(queries.adr_increment_systems_insert, [incId, sysId, incrStatusId || null, sysComment]);
+        const incrSysId = sysRow.rows[0].id;
+        const functions = s.functions || [];
+        for (let k = 0; k < functions.length; k++) {
+          const fn = functions[k];
+          let fnId = fn.ar_system_functions_id;
+          if (fn.kind === 'new') {
+            fnId = await createFunctionFromNew(client, sysId, fn);
+          }
+          const fnStatusId = fn.ar_adr_increment_system_function_statuses_id
+            || (fn.increment_sysfunc_status_code ? getIncrSysFuncStatusIdByCode(fn.increment_sysfunc_status_code) : null);
+          await client.query(queries.adr_increment_system_functions_insert_row, [incrSysId, fnId, k, fnStatusId || null]);
+        }
+      }
+      for (const rel of relations) {
+        const fromId = resolveRelationEndpoint(rel.from_ar_systems_id, rel.from_new_key, systemKeyMap);
+        const toId = resolveRelationEndpoint(rel.to_ar_systems_id, rel.to_new_key, systemKeyMap);
+        const relStatusId = rel.ar_adr_increment_relation_statuses_id
+          || (rel.increment_relation_status_code ? getIncrRelStatusIdByCode(rel.increment_relation_status_code) : null);
+        const relRow = await client.query(queries.adr_increment_relations_insert, [
+          incId, fromId, toId, relStatusId || null, rel.ar_integration_flows_id || null,
+          rel.transferred_data || null, rel.transfer_method || null, rel.periodicity || null,
+          rel.ar_integration_flow_event_types_id || null,
+        ]);
+        // Поток реестра: выбранный существующий — обновляем; иначе создаём/находим и привязываем (issue #74).
+        await syncFlowFromRelation(client, appliedId, relRow.rows[0].id, {
+          ...rel,
+          from_ar_systems_id: fromId,
+          to_ar_systems_id: toId,
+          ar_adr_increment_relation_statuses_id: relStatusId || null,
+          increment_relation_status_code: rel.increment_relation_status_code || getIncrRelStatusCodeById(relStatusId) || null,
+        });
+      }
+    }
+    await client.query('COMMIT');
+    client.release();
+    res.status(201).json({ id: appliedId, code: r.rows[0].code });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    client.release();
+    console.error(err);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+
+/**
+ * Резолвить id статуса потока по статусу связи в заключении (issue #74).
+ * @param {{ increment_relation_status_code?: string|null, ar_adr_increment_relation_statuses_id?: number|null }} rel
+ */
+function resolveFlowStatusIdForRelation(rel) {
+  const relCode = (rel.increment_relation_status_code
+    || getIncrRelStatusCodeById(rel.ar_adr_increment_relation_statuses_id)
+    || adrStatusCodeParam('ADR_INCR_REL_NEW_STATUS_CODE', DEFAULT_INCR_REL_NEW_STATUS_CODE));
+  const flowMapRaw = getParam('ADR_FLOW_STATUS_MAP', null);
+  const flowMap = flowMapRaw && typeof flowMapRaw === 'object' && Object.keys(flowMapRaw).length
+    ? flowMapRaw
+    : DEFAULT_FLOW_STATUS_MAP_BY_CODE;
+  return resolveFlowStatusIdFromMap(
+    flowMap,
+    { increment_relation_status_code: relCode },
+    LEGACY_FLOW_STATUS_FALLBACK_ID,
+    {
+      ...adrStatusMapOpts('ADR_FLOW_STATUS_MAP'),
+      defaultCode: adrStatusCodeParam('ADR_FLOW_DEFAULT_STATUS_CODE', DEFAULT_FLOW_DEFAULT_STATUS_CODE),
+    },
+  );
+}
+
+/**
+ * Идемпотентно привести поток реестра в соответствие со связью заключения (issue #74, п.3):
+ * потоки привязываются к заключению (ar_adrs_applied_id) и обновляются, а не пересоздаются —
+ * связи инкремента при каждом сохранении пересоздаются, поэтому ar_adr_increment_relation_id нестабилен.
+ */
+async function syncFlowFromRelation(client, appliedId, relationId, rel) {
+  const from = rel.from_ar_systems_id;
+  const to = rel.to_ar_systems_id;
+  if (from == null || to == null) return null;
+  const flowStatusId = resolveFlowStatusIdForRelation(rel);
+  // Реестровые поля связи (name/description — legacy-зеркало).
+  const transferredData = rel.transferred_data != null && rel.transferred_data !== '' ? rel.transferred_data : (rel.name || '');
+  const transferMethod = rel.transfer_method != null && rel.transfer_method !== '' ? rel.transfer_method : (rel.description || '');
+  const periodicity = rel.periodicity || null;
+  const eventTypeId = rel.ar_integration_flow_event_types_id || null;
+  const relCode = String(rel.increment_relation_status_code || '').trim();
+  // Поля потока переписываем только при «Модифицируется»; «Используется» — только статус/привязка.
+  const applyFields = relCode === 'ADR_INCR_REL_MODIFYING';
+
+  // 1) В заключении выбран существующий поток реестра — не создаём новый.
+  if (rel.ar_integration_flows_id != null && String(rel.ar_integration_flows_id).trim() !== '') {
+    const flowId = Number(rel.ar_integration_flows_id);
+    if (applyFields) {
+      await client.query(queries.integration_flows_update_from_conclusion, [
+        flowStatusId, eventTypeId, transferredData, transferMethod, periodicity, relationId, flowId,
+      ]);
+    } else {
+      await client.query(queries.integration_flows_update_status_and_link, [flowStatusId, relationId, flowId]);
+    }
+    await client.query(queries.adr_increment_relations_set_flow, [flowId, relationId]);
+    return flowId;
+  }
+
+  // 2) Поток, созданный этим заключением ранее (идемпотентность повторного сохранения).
+  const existing = await client.query(queries.integration_flows_find_by_applied_endpoints, [
+    appliedId, from, to, transferredData || '',
+  ]);
+  if (existing.rowCount > 0) {
+    const flowId = existing.rows[0].id;
+    await client.query(queries.integration_flows_update_from_conclusion, [
+      flowStatusId, eventTypeId, transferredData, transferMethod, periodicity, relationId, flowId,
+    ]);
+    await client.query(queries.adr_increment_relations_set_flow, [flowId, relationId]);
+    return flowId;
+  }
+
+  // 3) Новый поток в реестре.
+  const ins = await client.query(queries.integration_flows_insert_from_conclusion, [
+    from, to, transferredData || '', transferMethod || '', flowStatusId, appliedId, relationId,
+  ]);
+  const flowId = ins.rows[0].id;
+  await client.query(queries.adr_increment_relations_set_flow, [flowId, relationId]);
+  return flowId;
+}
+
+/** Создать/обновить записи в реестре интеграций по связям инкрементов заключения (задача #20 п.5–6, issue #74). */
+async function createFlowsFromConclusion(client, appliedId) {
+  const incs = await client.query(queries.adr_increments_by_applied, [appliedId]);
+  for (const inc of incs.rows) {
+    const rels = await client.query(queries.adr_increment_relations_by_increment, [inc.id]);
+    for (const rel of rels.rows) {
+      await syncFlowFromRelation(client, appliedId, rel.id, rel);
+    }
+  }
+}
+
+/**
+ * Резолвить конец связи интеграции (issue #74): существующая система — по id,
+ * новая система заключения — по ключу `local_key` из `systems[]` (создана в этой же транзакции).
+ * @param {number|string|null} systemId
+ * @param {string|null} newKey
+ * @param {Map<string, number>} systemKeyMap
+ */
+function resolveRelationEndpoint(systemId, newKey, systemKeyMap) {
+  if (systemId != null && String(systemId).trim() !== '') return Number(systemId);
+  const key = newKey != null ? String(newKey).trim() : '';
+  if (key) {
+    const id = systemKeyMap.get(key);
+    if (id == null) {
+      throw Object.assign(new Error(`Не найдена новая система «${key}» для связи интеграции`), { statusCode: 400 });
+    }
+    return id;
+  }
+  return null;
+}
+
+/**
+ * Код статуса из параметра (issue #91): конкретный статус («Создаётся», «Применяется»…) задаётся данными,
+ * а не строкой в коде. Значение меняется в «Настройки → Параметры» (группа ADR); пустое — дефолт в коде,
+ * который совпадает с официальным сидом.
+ * @param {string} code — код параметра
+ * @param {string} def — дефолт (совпадает с сидом в DB/scripts)
+ */
+function adrStatusCodeParam(code, def) {
+  return String(getParam(code, def) || def).trim() || def;
+}
+
+/**
+ * Список кодов статусов из параметра (`value_type = json` — массив, `string_list` — тоже массив,
+ * строка — через запятую). Пустой результат → дефолт в коде.
+ * @param {string} code — код параметра
+ * @param {string[]} def — дефолт
+ */
+function adrStatusCodeListParam(code, def) {
+  const raw = getParam(code, def);
+  const list = Array.isArray(raw) ? raw : String(raw == null ? '' : raw).split(',');
+  const codes = list.map((v) => String(v == null ? '' : v).trim()).filter(Boolean);
+  return codes.length ? codes : def;
+}
+
+/**
+ * Опции маппинга статусов для `refCodes.resolveStatusIdFromMap`/`resolveFlowStatusIdFromMap`:
+ * имя параметра (для диагностики) и строгий режим `ADR_STATUS_MAP_STRICT` — если статус заключения
+ * не описан в маппинге, статус реестра не меняется вместо молчаливой подстановки «по умолчанию».
+ * @param {string} label — код параметра-маппинга
+ */
+function adrStatusMapOpts(label) {
+  return { label, strict: Boolean(getParam('ADR_STATUS_MAP_STRICT', false)) };
+}
+
+/** Резолвить id статуса системы в реестре по коду статуса в заключении (issue #74). */
+function resolveSystemRegistryStatusId(incrementStatusCode) {
+  const raw = getParam('ADR_SYSTEM_STATUS_MAP', null);
+  const map = raw && typeof raw === 'object' && Object.keys(raw).length ? raw : DEFAULT_SYSTEM_STATUS_MAP;
+  return resolveStatusIdFromMap(
+    map,
+    incrementStatusCode,
+    getSystemStatusIdByCode,
+    getSystemStatusIdByCode('SYS_STATUS_PLANNED'),
+    adrStatusMapOpts('ADR_SYSTEM_STATUS_MAP'),
+  );
+}
+
+/** Резолвить id статуса функции в реестре по коду статуса в заключении (issue #74). */
+function resolveSysFuncRegistryStatusId(incrementStatusCode) {
+  const raw = getParam('ADR_SYSFUNC_STATUS_MAP', null);
+  const map = raw && typeof raw === 'object' && Object.keys(raw).length ? raw : DEFAULT_SYSFUNC_STATUS_MAP;
+  return resolveStatusIdFromMap(
+    map,
+    incrementStatusCode,
+    getSysFuncStatusIdByCode,
+    getSysFuncStatusIdByCode('SYSFUNC_STATUS_PLANNED'),
+    adrStatusMapOpts('ADR_SYSFUNC_STATUS_MAP'),
+  );
+}
+
+/**
+ * Создать новую систему (kind:"new") в реестре со статусом планирования
+ * и вернуть её id. Доп. поля — опционально (для полной формы).
+ */
+async function createSystemFromNew(client, s) {
+  const registryStatusId = resolveSystemRegistryStatusId(
+    s.increment_status_code || adrStatusCodeParam('ADR_INCR_SYS_NEW_STATUS_CODE', DEFAULT_INCR_SYS_NEW_STATUS_CODE),
+  );
+  const r = await client.query(queries.systems_insert, [
+    s.code || '',
+    s.name || '',
+    s.fullname || null,
+    s.parent_ar_systems_id || null,
+    registryStatusId,
+    s.vendor_ar_partners_id || null,
+    s.supplier_ar_partners_id || null,
+    s.supporter_ar_partners_id || null,
+    s.description || null,
+    s.ar_system_hosting_types_id || null,
+    s.technologies || null,
+    s.external_system || false,
+    s.comment || null,
+    s.it_lead_employee_id || null,
+    s.business_lead_employee_id || null,
+  ]);
+  return r.rows[0].id;
+}
+
+/** Создать новую функцию (kind:"new") в реестре и вернуть её id. */
+async function createFunctionFromNew(client, systemId, fn) {
+  const registryStatusId = resolveSysFuncRegistryStatusId(
+    fn.increment_sysfunc_status_code
+      || adrStatusCodeParam('ADR_INCR_SYSFUNC_NEW_STATUS_CODE', DEFAULT_INCR_SYSFUNC_NEW_STATUS_CODE),
+  );
+  const r = await client.query(queries.system_functions_insert_with_status, [
+    systemId,
+    fn.name || '',
+    fn.description || null,
+    registryStatusId,
+  ]);
+  return r.rows[0].id;
+}
+
+/**
+ * При утверждении заключения применить маппинги статусов к системам и функциям
+ * (в реестре), которые фигурируют в инкрементах этого заключения (issue #74).
+ */
+async function applyStatusMapsOnApproval(client, appliedId) {
+  // системы
+  const sysRows = await client.query(queries.adr_increment_systems_by_applied, [appliedId]);
+  for (const row of sysRows.rows) {
+    if (row.ar_systems_id == null) continue;
+    const registryStatusId = resolveSystemRegistryStatusId(row.increment_system_status_code);
+    if (registryStatusId != null) {
+      await client.query(queries.system_status_update, [registryStatusId, row.ar_systems_id]);
+    }
+  }
+  // функции
+  const fnRows = await client.query(queries.adr_increment_system_functions_by_applied, [appliedId]);
+  for (const row of fnRows.rows) {
+    if (row.ar_system_functions_id == null) continue;
+    const registryStatusId = resolveSysFuncRegistryStatusId(row.increment_sysfunc_status_code);
+    if (registryStatusId != null) {
+      await client.query(queries.system_function_status_update, [registryStatusId, row.ar_system_functions_id]);
+    }
+  }
+}
+
+app.put('/api/decisions/applied/:id/full', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const appliedId = req.params.id;
+    const b = req.body || {};
+    const { task_name, task_link, conclusion, ar_adr_statuses_id, author, increments = [] } = b;
+
+    const current = await client.query(queries.adrs_applied_get, [appliedId]);
+    if (current.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const currentRow = current.rows[0];
+    const currentStatusCode = (currentRow.status_code || getAdrStatusCodeById(currentRow.ar_adr_statuses_id) || '').trim();
+    const draftStatusCode = String(getParam('ADR_DRAFT_STATUS_CODE', DEFAULT_DRAFT_STATUS_CODE) || DEFAULT_DRAFT_STATUS_CODE).trim();
+    // Править состав можно в статусах-«редактируемых» (issue #91): список кодов — параметр
+    // ADR_EDITABLE_STATUS_CODES (дефолт ['ADR_STATUS_DRAFT']), тот же, что использует форма.
+    // Раньше правило было жёстко привязано к одному коду черновика (ADR_DRAFT_STATUS_CODE).
+    const editableStatusCodes = adrStatusCodeListParam('ADR_EDITABLE_STATUS_CODES', [draftStatusCode]);
+    const isEditable = editableStatusCodes.includes(currentStatusCode);
+
+    const payloadIsStatusOnly = b.increments === undefined;
+    if (!isEditable || payloadIsStatusOnly) {
+      // П.5: не в редактируемом статусе — только статус; или он редактируемый, но прислан только смена статуса
+      // (без increments) — не затирать данные
+      const upd = await client.query(queries.adrs_applied_update, [
+        payloadIsStatusOnly ? (currentRow.task_name ?? '') : (task_name || ''),
+        payloadIsStatusOnly ? (currentRow.task_link ?? '') : (task_link || ''),
+        payloadIsStatusOnly ? (currentRow.conclusion ?? '') : (conclusion || ''),
+        ar_adr_statuses_id ?? currentRow.ar_adr_statuses_id,
+        payloadIsStatusOnly ? (currentRow.author ?? '') : (author || ''),
+        appliedId,
+      ]);
+      if (upd.rowCount === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(404).json({ error: 'Not found' });
+      }
+    } else {
+      const upd = await client.query(queries.adrs_applied_update, [task_name || '', task_link || '', conclusion || '', ar_adr_statuses_id || null, author || '', appliedId]);
+      if (upd.rowCount === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(404).json({ error: 'Not found' });
+      }
+      // Схемы решения привязаны к строкам инкрементов (FK ON DELETE CASCADE): сохраняем их
+      // и возвращаем после пересоздания инкрементов (issue #74).
+      const savedDiagrams = (await client.query(queries.adr_increment_diagrams_by_applied, [appliedId])).rows;
+      const incs = await client.query(queries.adr_increments_by_applied, [appliedId]);
+      for (const inc of incs.rows) {
+        await client.query(queries.adr_increment_relations_delete_by_increment, [inc.id]);
+        await client.query(queries.adr_increment_systems_delete_by_increment, [inc.id]);
+        await client.query(queries.adr_increments_delete, [inc.id]);
+      }
+      // Ключи новых систем заключения (local_key → id) — для связей интеграций (issue #74).
+      const systemKeyMap = new Map();
+      // Ключи пересозданных решений (порядок|наименование → id) — для восстановления схем.
+      const incKeyMap = new Map();
+      for (let i = 0; i < increments.length; i++) {
+        const inc = increments[i];
+        const incR = await client.query(queries.adr_increments_insert, [
+        appliedId,
+        inc.order_index ?? i + 1,
+        inc.name || '',
+        normalizeOptionalBigint(inc.ar_adr_increment_types_id),
+      ]);
+        const incId = incR.rows[0].id;
+        incKeyMap.set(`${inc.order_index ?? i + 1}|${inc.name || ''}`, incId);
+        const systems = inc.systems || [];
+        const relations = inc.relations || [];
+        for (const s of systems) {
+          let sysId = s.ar_systems_id;
+          if (s.kind === 'new') {
+            sysId = await createSystemFromNew(client, s);
+          }
+          if (s.local_key) systemKeyMap.set(String(s.local_key).trim(), sysId);
+          const incrStatusId = s.ar_adr_increment_system_statuses_id
+            || (s.increment_status_code ? getIncrSysStatusIdByCode(s.increment_status_code) : null);
+          const fnNames = (s.functions || []).map((fn) => fn.name).filter(Boolean);
+          // Текст «Функции» пересчитывается из актуального списка (issue #74): иначе схема решения
+          // показывает функции, сохранённые при предыдущем сохранении заключения.
+          const sysComment = Array.isArray(s.functions)
+            ? formatSystemFunctionsComment(fnNames)
+            : (s.comment || '');
+          const sysRow = await client.query(queries.adr_increment_systems_insert, [incId, sysId, incrStatusId || null, sysComment]);
+          const incrSysId = sysRow.rows[0].id;
+          const functions = s.functions || [];
+          for (let k = 0; k < functions.length; k++) {
+            const fn = functions[k];
+            let fnId = fn.ar_system_functions_id;
+            if (fn.kind === 'new') {
+              fnId = await createFunctionFromNew(client, sysId, fn);
+            }
+            const fnStatusId = fn.ar_adr_increment_system_function_statuses_id
+              || (fn.increment_sysfunc_status_code ? getIncrSysFuncStatusIdByCode(fn.increment_sysfunc_status_code) : null);
+            await client.query(queries.adr_increment_system_functions_insert_row, [incrSysId, fnId, k, fnStatusId || null]);
+          }
+        }
+        for (const rel of relations) {
+          const fromId = resolveRelationEndpoint(rel.from_ar_systems_id, rel.from_new_key, systemKeyMap);
+          const toId = resolveRelationEndpoint(rel.to_ar_systems_id, rel.to_new_key, systemKeyMap);
+          const relStatusId = rel.ar_adr_increment_relation_statuses_id
+            || (rel.increment_relation_status_code ? getIncrRelStatusIdByCode(rel.increment_relation_status_code) : null);
+          const relRow = await client.query(queries.adr_increment_relations_insert, [
+            incId, fromId, toId, relStatusId || null, rel.ar_integration_flows_id || null,
+            rel.transferred_data || null, rel.transfer_method || null, rel.periodicity || null,
+            rel.ar_integration_flow_event_types_id || null,
+          ]);
+          // Поток реестра: выбранный существующий — обновляем; иначе создаём/находим и привязываем (issue #74).
+          await syncFlowFromRelation(client, appliedId, relRow.rows[0].id, {
+            ...rel,
+            from_ar_systems_id: fromId,
+            to_ar_systems_id: toId,
+            ar_adr_increment_relation_statuses_id: relStatusId || null,
+            increment_relation_status_code: rel.increment_relation_status_code || getIncrRelStatusCodeById(relStatusId) || null,
+          });
+        }
+      }
+      // Вернуть сохранённые схемы решения к пересозданным инкрементам (сопоставление по порядку и наименованию).
+      for (const d of savedDiagrams) {
+        const newIncId = incKeyMap.get(`${d.order_index}|${d.increment_name || ''}`);
+        if (newIncId == null) continue;
+        await client.query(queries.adr_increment_diagrams_insert_full, [
+          newIncId, d.version_no, d.mxfile, d.last_edited_by, d.created_at, d.updated_at,
+        ]);
+      }
+    }
+
+    const newStatusId = ar_adr_statuses_id ?? current.rows[0].ar_adr_statuses_id;
+    if (newStatusId) {
+      const approvedCodes = getParam('ADR_APPROVED_STATUS_CODES', DEFAULT_APPROVED_STATUS_CODES);
+      const statusRow = await client.query(queries.adr_status_get_name, [newStatusId]);
+      const st = statusRow.rows[0] || {};
+      const newCode = (st.code || getAdrStatusCodeById(newStatusId) || '').trim();
+      const triggerFlows = Array.isArray(approvedCodes) && approvedCodes.map(String).includes(newCode);
+      if (triggerFlows) {
+        await createFlowsFromConclusion(client, appliedId);
+        await applyStatusMapsOnApproval(client, appliedId);
+      }
+    }
+
+    await client.query('COMMIT');
+    client.release();
+    res.json({ id: appliedId });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    client.release();
+    console.error(err);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+
+app.get('/api/adr-increment-types', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_types_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/decisions/applied/:id/increments', async (req, res) => {
+  try {
+    const appliedId = parseAppliedRecordId(req.params.id, res);
+    if (appliedId == null) return;
+    const r = await pool.query(queries.adr_increments_by_applied, [appliedId]);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/decisions/applied/:id/increments', async (req, res) => {
+  try {
+    const appliedId = parseAppliedRecordId(req.params.id, res);
+    if (appliedId == null) return;
+    const b = req.body || {};
+    const typeId = normalizeOptionalBigint(b.ar_adr_increment_types_id);
+    const r = await pool.query(queries.adr_increments_insert, [
+      appliedId,
+      b.order_index ?? 1,
+      b.name,
+      typeId,
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/decisions/applied/:appliedId/increments/:id', async (req, res) => {
+  try {
+    const appliedId = parseAppliedRecordId(req.params.appliedId, res);
+    if (appliedId == null) return;
+    const b = req.body || {};
+    const typeId = normalizeOptionalBigint(b.ar_adr_increment_types_id);
+    const r = await pool.query(queries.adr_increments_update, [b.order_index ?? 1, b.name, typeId, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/decisions/applied/:appliedId/increments/:id', async (req, res) => {
+  try {
+    const appliedId = parseAppliedRecordId(req.params.appliedId, res);
+    if (appliedId == null) return;
+    const r = await pool.query(queries.adr_increments_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/increments/:id/systems', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_systems_by_increment, [req.params.id]);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/increments/:id/systems', async (req, res) => {
+  try {
+    const { ar_systems_id, ar_adr_increment_system_statuses_id, comment } = req.body || {};
+    if (!ar_systems_id) return res.status(400).json({ error: 'ar_systems_id required' });
+    const r = await pool.query(queries.adr_increment_systems_insert, [req.params.id, ar_systems_id, ar_adr_increment_system_statuses_id, comment]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.delete('/api/increments/:incrementId/systems/:rowId', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_systems_delete, [req.params.rowId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+/** Глобальный поиск функций ИС (метамодель / граф). */
+app.get('/api/system-functions', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await pool.query(queries.system_functions_select_search, [search || null]);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/system-functions/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_functions_get_by_id, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/ar-systems/:systemId/system-functions', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_functions_by_system, [req.params.systemId]);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/ar-systems/:systemId/system-functions', async (req, res) => {
+  try {
+    const systemId = req.params.systemId;
+    const { name, description } = req.body || {};
+    const n = (name && String(name).trim()) || '';
+    if (!n) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.system_functions_insert, [systemId, n, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Функция с таким названием уже существует для этой системы.' });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+
+/** Массовое удаление функций каталога ИС. Нельзя, если функция выбрана в заключении (см. FK RESTRICT). */
+app.delete('/api/ar-systems/:systemId/system-functions', async (req, res) => {
+  try {
+    const systemId = req.params.systemId;
+    const raw = req.body && req.body.ids;
+    const ids = Array.isArray(raw)
+      ? raw.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+    if (ids.length === 0) return res.status(400).json({ error: 'ids required (non-empty array)' });
+
+    const usageQ = await pool.query(queries.system_functions_increment_usage_for_delete, [systemId, ids]);
+    if (usageQ.rowCount > 0) {
+      const usages = usageQ.rows.map((row) => ({
+        ar_adrs_applied_id: row.ar_adrs_applied_id,
+        adr_code: row.adr_code,
+        adr_task_name: row.adr_task_name,
+        ar_adr_increment_id: row.ar_adr_increment_id,
+        increment_name: row.increment_name,
+        ar_system_functions_id: row.ar_system_functions_id,
+        function_name: row.function_name,
+      }));
+      const adrCodes = [...new Set(usages.map((u) => String(u.adr_code || '').trim()).filter(Boolean))].sort();
+      const adrList =
+        adrCodes.length <= 5 ? adrCodes.join(', ') : `${adrCodes.slice(0, 5).join(', ')}… (+${adrCodes.length - 5})`;
+      return res.status(409).json({
+        error:
+          'Удаление невозможно: выбранные функции используются в архитектурных заключениях. Сначала уберите их в форме соответствующего заключения (раздел систем инкремента).',
+        adr_codes: adrCodes,
+        usages,
+        message: `Обнаружено в ADR: ${adrList}.`,
+      });
+    }
+
+    const r = await pool.query(queries.system_functions_delete_many, [systemId, ids]);
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: 'Функции не найдены или не принадлежат этой системе' });
+    }
+    res.json({ deleted: r.rowCount, ids: r.rows.map((row) => row.id) });
+  } catch (err) {
+    if (err.code === '23503') {
+      return res.status(409).json({
+        error:
+          'Удаление невозможно: функции всё ещё связаны с заключениями (ограничение в БД). Обновите страницу и проверьте выбор функций в ADR.',
+      });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to delete' });
+  }
+});
+
+app.get('/api/adr-increment-systems/:rowId/function-selection', async (req, res) => {
+  try {
+    const rowId = req.params.rowId;
+    const rowQ = await pool.query(queries.adr_increment_system_get_by_id, [rowId]);
+    if (rowQ.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const row = rowQ.rows[0];
+    const sysId = row.ar_systems_id;
+    const [catQ, juncQ] = await Promise.all([
+      pool.query(queries.system_functions_by_system, [sysId]),
+      pool.query(queries.adr_increment_system_functions_ordered, [rowId]),
+    ]);
+    const catalog = catQ.rows;
+    const idToFn = new Map(catalog.map((f) => [Number(f.id), f]));
+    const statusById = new Map(
+      (juncQ.rows || []).map((j) => [Number(j.ar_system_functions_id), j.increment_sysfunc_status_code || null]),
+    );
+    const orderedIds = juncQ.rows.map((j) => Number(j.ar_system_functions_id));
+    const selected_ordered = orderedIds
+      .map((fid) => {
+        const fn = idToFn.get(fid);
+        if (!fn) return null;
+        return { ...fn, increment_sysfunc_status_code: statusById.get(fid) || null };
+      })
+      .filter(Boolean);
+    res.json({
+      ar_adr_increment_system_id: row.id,
+      ar_systems_id: sysId,
+      comment: row.comment || '',
+      catalog,
+      selected_ordered,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.put('/api/adr-increment-systems/:rowId/function-selection', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const rowId = req.params.rowId;
+    let orderedIds =
+      req.body && Array.isArray(req.body.ordered_function_ids)
+        ? req.body.ordered_function_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n))
+        : [];
+    const seen = new Set();
+    orderedIds = orderedIds.filter((id) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    const rowQ = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
+    if (rowQ.rowCount === 0) {
+      client.release();
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const row = rowQ.rows[0];
+    const sysId = row.ar_systems_id;
+    const statusMap =
+      req.body && Array.isArray(req.body.ordered_function_statuses)
+        ? new Map(req.body.ordered_function_statuses.map((e) => [Number(e.ar_system_functions_id), e.increment_sysfunc_status_code || null]))
+        : new Map();
+    await client.query('BEGIN');
+    await client.query(queries.adr_increment_system_functions_delete_by_row, [rowId]);
+    const names = [];
+    for (let i = 0; i < orderedIds.length; i++) {
+      const fid = orderedIds[i];
+      const chk = await client.query(queries.system_functions_by_ids_system, [sysId, [fid]]);
+      if (chk.rowCount === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({ error: `Функция id=${fid} не принадлежит этой системе` });
+      }
+      names.push(chk.rows[0].name);
+      const statusCode = statusMap.get(fid) || null;
+      const statusId = statusCode ? getIncrSysFuncStatusIdByCode(statusCode) : null;
+      await client.query(queries.adr_increment_system_functions_insert_row, [rowId, fid, i, statusId]);
+    }
+    const comment = formatSystemFunctionsComment(names);
+    await client.query(queries.adr_increment_systems_update_comment, [comment, rowId]);
+    await client.query('COMMIT');
+    const out = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
+    client.release();
+    res.json(out.rows[0]);
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) { /* */ }
+    try {
+      client.release();
+    } catch (_) { /* */ }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to save' });
+  }
+});
+
+app.get('/api/increments/:id/relations', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_relations_by_increment, [req.params.id]);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/increments/:id/relations', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await pool.query(queries.adr_increment_relations_insert, [
+      req.params.id,
+      b.from_ar_systems_id,
+      b.to_ar_systems_id,
+      b.ar_adr_increment_relation_statuses_id,
+      b.ar_integration_flows_id || null,
+      b.transferred_data != null ? b.transferred_data : (b.name || null),
+      b.transfer_method != null ? b.transfer_method : (b.description || null),
+      b.periodicity || null,
+      b.ar_integration_flow_event_types_id || null,
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/increments/:incrementId/relations/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await pool.query(queries.adr_increment_relations_update, [
+      b.from_ar_systems_id,
+      b.to_ar_systems_id,
+      b.ar_adr_increment_relation_statuses_id,
+      b.ar_integration_flows_id || null,
+      b.transferred_data != null ? b.transferred_data : (b.name || null),
+      b.transfer_method != null ? b.transfer_method : (b.description || null),
+      b.periodicity || null,
+      b.ar_integration_flow_event_types_id || null,
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/increments/:incrementId/relations/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_relations_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+async function loadIncrementDiagramContext(incrementId) {
+  const inc = await pool.query(queries.adr_increment_get, [incrementId]);
+  if (inc.rowCount === 0) return null;
+  const [sys, rel] = await Promise.all([
+    pool.query(queries.adr_increment_systems_by_increment, [incrementId]),
+    pool.query(queries.adr_increment_relations_by_increment, [incrementId]),
+  ]);
+  return { increment: inc.rows[0], systems: sys.rows, relations: rel.rows };
+}
+
+function solutionNameFromIncrement(inc) {
+  const n = (inc && (inc.name || '').trim()) || '';
+  return n || 'Решение';
+}
+
+app.get('/api/increments/:incrementId/diagrams', async (req, res) => {
+  try {
+    const incrementId = req.params.incrementId;
+    const inc = await pool.query(queries.adr_increment_get, [incrementId]);
+    if (inc.rowCount === 0) return res.status(404).json({ error: 'Increment not found' });
+    const r = await pool.query(queries.adr_increment_diagrams_list_meta, [incrementId]);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/increments/:incrementId/diagrams/:diagramId', async (req, res) => {
+  try {
+    const incrementId = req.params.incrementId;
+    const diagramId = req.params.diagramId;
+    const r = await pool.query(queries.adr_increment_diagrams_get, [diagramId, incrementId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/increments/:incrementId/diagrams', async (req, res) => {
+  try {
+    const incrementId = req.params.incrementId;
+    const ctx = await loadIncrementDiagramContext(incrementId);
+    if (!ctx) return res.status(404).json({ error: 'Increment not found' });
+    const mv = await pool.query(queries.adr_increment_diagrams_max_version, [incrementId]);
+    const nextV = (mv.rows[0].max_v || 0) + 1;
+    const vLabel = `v${nextV}`;
+    const solutionName = solutionNameFromIncrement(ctx.increment);
+    // Новая версия диаграммы: только данные инкремента из БД (buildMxfile), без merge со старыми mxfile.
+    const mxfile = buildMxfile({
+      systems: ctx.systems,
+      relations: ctx.relations,
+      solutionName,
+      versionLabel: vLabel,
+      getParam,
+    });
+    const ins = await pool.query(queries.adr_increment_diagrams_insert, [incrementId, nextV, mxfile, null]);
+    res.status(201).json(ins.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create diagram' });
+  }
+});
+
+app.post('/api/increments/:incrementId/diagrams/:diagramId/merge', async (req, res) => {
+  try {
+    const incrementId = req.params.incrementId;
+    const diagramId = req.params.diagramId;
+    const ctx = await loadIncrementDiagramContext(incrementId);
+    if (!ctx) return res.status(404).json({ error: 'Increment not found' });
+    const cur = await pool.query(queries.adr_increment_diagrams_get, [diagramId, incrementId]);
+    if (cur.rowCount === 0) return res.status(404).json({ error: 'Diagram not found' });
+    const row = cur.rows[0];
+    const solutionName = solutionNameFromIncrement(ctx.increment);
+    const vLabel = `v${row.version_no}`;
+    const merged = mergeMxfileWithData(row.mxfile, ctx.systems, ctx.relations, solutionName, vLabel, getParam);
+    const upd = await pool.query(queries.adr_increment_diagrams_update_mxfile, [merged, null, diagramId, incrementId]);
+    res.json(upd.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Merge failed' });
+  }
+});
+
+app.put('/api/increments/:incrementId/diagrams/:diagramId', async (req, res) => {
+  try {
+    const incrementId = req.params.incrementId;
+    const diagramId = req.params.diagramId;
+    const mxfile = req.body && typeof req.body.mxfile === 'string' ? req.body.mxfile : '';
+    if (!mxfile.trim()) return res.status(400).json({ error: 'mxfile required' });
+    const lastEditedBy = req.body && req.body.last_edited_by != null ? String(req.body.last_edited_by).trim() : '';
+    const r = await pool.query(queries.adr_increment_diagrams_update_mxfile, [mxfile, lastEditedBy || null, diagramId, incrementId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Update failed' });
+  }
+});
+
+app.delete('/api/increments/:incrementId/diagrams/:diagramId', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_diagrams_delete, [req.params.diagramId, req.params.incrementId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+
+// Справочники для инкрементов (системы в решении, интеграции в решении) — используются в форме прикладного решения и в разделе Справочники
+app.get('/api/adr-system-statuses', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = queries.adr_increment_system_statuses_select;
+    const result = await pool.query(q);
+    let rows = result.rows;
+    if (search) rows = rows.filter(r => (r.name || '').toLowerCase().includes(search.toLowerCase()) || (r.description || '').toLowerCase().includes(search.toLowerCase()));
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Статусы систем в решении');
+      res.setHeader('Content-Disposition', 'attachment; filename=adr-system-statuses.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// Справочник статусов функции в заключении (issue #74).
+app.get('/api/adr-system-function-statuses', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_system_function_statuses_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/adr-system-function-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.adr_increment_system_function_statuses_insert, [String(code).trim(), name, description]);
+    await loadRefCodes(pool);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/adr-system-function-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.adr_increment_system_function_statuses_update, [String(code).trim(), name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/adr-system-function-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_system_function_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// Справочник статусов функции в реестре (issue #74).
+app.get('/api/system-function-statuses', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_function_statuses_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/system-function-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.system_function_statuses_insert, [String(code).trim(), name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/system-function-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.system_function_statuses_update, [String(code).trim(), name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/system-function-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_function_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/adr-system-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.adr_increment_system_statuses_insert, [String(code).trim(), name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).json({ error: 'Failed to create' });
+  }
+});
+app.put('/api/adr-system-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name || !code || !String(code).trim()) return res.status(400).json({ error: 'name and code required' });
+    const r = await pool.query(queries.adr_increment_system_statuses_update, [String(code).trim(), name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'code must be unique' });
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/adr-system-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_system_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/adr-relation-statuses', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = queries.adr_increment_relation_statuses_select;
+    const result = await pool.query(q);
+    let rows = result.rows;
+    if (search) {
+      const s = search.toLowerCase();
+      rows = rows.filter(r => (r.name || '').toLowerCase().includes(s) || (r.code || '').toLowerCase().includes(s) || (r.description || '').toLowerCase().includes(s));
+    }
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Статусы интеграций в решении');
+      res.setHeader('Content-Disposition', 'attachment; filename=adr-relation-statuses.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/adr-relation-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!code || !String(code).trim()) return res.status(400).json({ error: 'code required' });
+    const r = await pool.query(queries.adr_increment_relation_statuses_insert, [String(code).trim(), name, description]);
+    await loadRefCodes(pool);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message || 'Failed to create' }); }
+});
+app.put('/api/adr-relation-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!code || !String(code).trim()) return res.status(400).json({ error: 'code required' });
+    const r = await pool.query(queries.adr_increment_relation_statuses_update, [String(code).trim(), name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/adr-relation-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_relation_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Classificators, System assignments ---
+app.get('/api/classificators', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.classificators_select_search : queries.classificators_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Классификаторы'); res.setHeader('Content-Disposition', 'attachment; filename=classificators.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/classificators', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.classificators_insert, [name]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/classificators/:id', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.classificators_update, [name, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/classificators/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.classificators_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/system-assignments', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.system_assignments_select_search : queries.system_assignments_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Назначения систем'); res.setHeader('Content-Disposition', 'attachment; filename=system-assignments.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/system-assignments', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.system_assignments_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/system-assignments/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.system_assignments_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/system-assignments/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_assignments_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Systems–Technologies: метамодель (ar_metamodel_relations), коды SYS_TECH_STACK / MODULE_TECH_STACK (issues #44, #45) ---
+function getSysTechRelationCode() {
+  const v = getParam('SYS_TECH_STACK_RELATION_CODE', 'system_technology');
+  return v && String(v).trim() !== '' ? String(v).trim() : 'system_technology';
+}
+function getModuleTechRelationCode() {
+  const v = getParam('MODULE_TECH_STACK_RELATION_CODE', 'module_technology');
+  return v && String(v).trim() !== '' ? String(v).trim() : 'module_technology';
+}
+
+app.get('/api/systems-technologies', async (req, res) => {
+  try {
+    const systemId = req.query.system_id;
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const sysCode = getSysTechRelationCode();
+    const modCode = getModuleTechRelationCode();
+    let result;
+    if (systemId) {
+      const pr = await pool.query('SELECT parent_ar_systems_id FROM archrep.ar_systems WHERE id = $1', [systemId]);
+      if (pr.rows.length === 0) {
+        result = { rows: [] };
+      } else {
+        const isModule = pr.rows[0].parent_ar_systems_id != null;
+        const fromType = isModule ? 'subsystem' : 'system';
+        const relCode = isModule ? modCode : sysCode;
+        result = await pool.query(queries.systems_tech_metamodel_by_system, [systemId, fromType, relCode]);
+      }
+    } else {
+      result = await pool.query(queries.systems_tech_metamodel_select_all, [sysCode, modCode]);
+    }
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Системы-Технологии');
+      res.setHeader('Content-Disposition', 'attachment; filename=systems-technologies.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.post('/api/systems-technologies', async (req, res) => {
+  try {
+    const { systems_id, technologies_id } = req.body || {};
+    if (!systems_id || !technologies_id) return res.status(400).json({ error: 'systems_id and technologies_id required' });
+    const pr = await pool.query('SELECT parent_ar_systems_id FROM archrep.ar_systems WHERE id = $1', [systems_id]);
+    if (pr.rows.length === 0) return res.status(400).json({ error: 'Система не найдена' });
+    const isModule = pr.rows[0].parent_ar_systems_id != null;
+    const fromType = isModule ? 'subsystem' : 'system';
+    const relCode = isModule ? getModuleTechRelationCode() : getSysTechRelationCode();
+    const dup = await pool.query(queries.metamodel_relations_find_system_tech, [systems_id, fromType, technologies_id, relCode]);
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ error: 'Связь системы с этой технологией уже существует' });
+    }
+    const r = await pool.query(queries.metamodel_relations_insert, [
+      fromType,
+      systems_id,
+      'technology',
+      technologies_id,
+      relCode,
+      '',
+      '',
+      null,
+      null,
+      null,
+    ]);
+    const row = r.rows[0];
+    res.status(201).json({
+      id: row.id,
+      systems_id: row.from_entity_id,
+      technologies_id: row.to_entity_id,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.delete('/api/systems-technologies/:id', async (req, res) => {
+  try {
+    const sysCode = getSysTechRelationCode();
+    const modCode = getModuleTechRelationCode();
+    const cur = await pool.query(queries.metamodel_relations_get, [req.params.id]);
+    if (cur.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const row = cur.rows[0];
+    const okStack =
+      row.to_entity_type === 'technology' &&
+      ((row.from_entity_type === 'system' && row.relation_type === sysCode) ||
+        (row.from_entity_type === 'subsystem' && row.relation_type === modCode));
+    if (!okStack) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const r = await pool.query(queries.metamodel_relations_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+
+// --- Integration flows (реестр интеграций) ---
+app.get('/api/integration-flows', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const systemId = req.query.system_id;
+    const sourceId = req.query.source_id;
+    const targetId = req.query.target_id;
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    let result;
+    if (sourceId && targetId) {
+      // Потоки по паре с учётом направления (issue #74)
+      result = await pool.query(queries.integration_flows_by_pair, [sourceId, targetId]);
+    } else if (systemId) {
+      result = await pool.query(queries.integration_flows_by_system, [systemId]);
+    } else {
+      const q = search ? queries.integration_flows_select_search : queries.integration_flows_select;
+      const params = search ? ['%' + search + '%'] : [];
+      result = await pool.query(q, params);
+    }
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Интеграционные потоки');
+      res.setHeader('Content-Disposition', 'attachment; filename=integration-flows.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Integration flows error:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+app.get('/api/integration-flows/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.integration_flows_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/integration-flows', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.source_ar_systems_id == null || b.target_ar_systems_id == null) return res.status(400).json({ error: 'source_ar_systems_id and target_ar_systems_id required' });
+    const r = await pool.query(queries.integration_flows_insert, [b.source_ar_systems_id, b.target_ar_systems_id, b.ar_integration_flow_event_types_id, b.transferred_data, b.transfer_method, b.periodicity || null, b.ar_integration_flow_statuses_id]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/integration-flows/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.source_ar_systems_id == null || b.target_ar_systems_id == null) return res.status(400).json({ error: 'source_ar_systems_id and target_ar_systems_id required' });
+    const r = await pool.query(queries.integration_flows_update, [b.source_ar_systems_id, b.target_ar_systems_id, b.ar_integration_flow_event_types_id, b.transferred_data, b.transfer_method, b.periodicity || null, b.ar_integration_flow_statuses_id, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/integration-flows/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.integration_flows_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/integration-flow-event-types', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.integration_flow_event_types_select_search : queries.integration_flow_event_types_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Типы событий интеграций'); res.setHeader('Content-Disposition', 'attachment; filename=integration-flow-event-types.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/integration-flow-event-types', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.integration_flow_event_types_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/integration-flow-event-types/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.integration_flow_event_types_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/integration-flow-event-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.integration_flow_event_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/integration-flow-statuses', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.integration_flow_statuses_select_search : queries.integration_flow_statuses_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) { const buf = buildExcelBuffer(rows, 'Статусы интеграционных потоков'); res.setHeader('Content-Disposition', 'attachment; filename=integration-flow-statuses.xlsx'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); return res.send(buf); }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/integration-flow-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!code || !String(code).trim()) return res.status(400).json({ error: 'code required' });
+    const r = await pool.query(queries.integration_flow_statuses_insert, [String(code).trim(), name, description]);
+    await loadRefCodes(pool);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message || 'Failed to create' }); }
+});
+app.put('/api/integration-flow-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!code || !String(code).trim()) return res.status(400).json({ error: 'code required' });
+    const r = await pool.query(queries.integration_flow_statuses_update, [String(code).trim(), name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/integration-flow-statuses/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.integration_flow_statuses_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    await loadRefCodes(pool);
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Architecture debt registry (issue #23) ---
+app.get('/api/ar-gaps', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.gaps_select_search : queries.gaps_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Архитектурный долг');
+      res.setHeader('Content-Disposition', 'attachment; filename=architecture-debt.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-gaps/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.gaps_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/ar-gaps', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const gapPrefix = getParam('GAP_CODE_PREFIX', 'GAP-') || 'GAP-';
+    const r = await pool.query(queries.gaps_insert, [
+      gapPrefix, b.name, b.description || '', b.consequences || '', b.ar_impact_level_types_id, b.remediation_effort || '',
+      b.target_date || '', b.ar_gap_states_id, b.resolved_date || '', b.ar_adr_statuses_id, b.ar_gap_types_id, b.source || '',
+      b.responsible_person || '',
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/ar-gaps/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.gaps_update, [
+      b.name, b.description || '', b.consequences || '', b.ar_impact_level_types_id, b.remediation_effort || '',
+      b.target_date || '', b.ar_gap_states_id, b.resolved_date || '', b.ar_adr_statuses_id, b.ar_gap_types_id, b.source || '',
+      b.responsible_person || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/ar-gaps/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.gaps_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-gaps/:id/relations', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_relations_by_from, ['gap', req.params.id]);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/ar-gaps/:id/relations', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.to_entity_type == null || b.to_entity_id == null || !b.relation_type) return res.status(400).json({ error: 'to_entity_type, to_entity_id, relation_type required' });
+    const r = await pool.query(queries.metamodel_relations_insert, ['gap', parseInt(req.params.id, 10), b.to_entity_type, b.to_entity_id, b.relation_type, b.name || '', b.description || '', b.payload ? JSON.stringify(b.payload) : null, null, null]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+
+// Refs: gap types, impact level types, gap states
+app.get('/api/ar-gap-types', async (req, res) => {
+  try { const r = await pool.query(queries.gap_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-gap-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.gap_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/ar-gap-types', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.gap_types_insert, [name, description || '']); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/ar-gap-types/:id', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.gap_types_update, [name, description || '', req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/ar-gap-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.gap_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-impact-level-types', async (req, res) => {
+  try { const r = await pool.query(queries.impact_level_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-impact-level-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.impact_level_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/ar-impact-level-types', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.impact_level_types_insert, [name, description || '']); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/ar-impact-level-types/:id', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.impact_level_types_update, [name, description || '', req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/ar-impact-level-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.impact_level_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-gap-states', async (req, res) => {
+  try { const r = await pool.query(queries.gap_states_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/ar-gap-states/:id', async (req, res) => {
+  try { const r = await pool.query(queries.gap_states_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/ar-gap-states', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.gap_states_insert, [name, description || '']); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/ar-gap-states/:id', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.gap_states_update, [name, description || '', req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/ar-gap-states/:id', async (req, res) => {
+  try { const r = await pool.query(queries.gap_states_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Web resources registry ---
+function enrichWebResourceRow(row) {
+  const out = applyDisplayName(row, 'web_resource');
+  if (row.system_name != null) {
+    const sysDisp = applyDisplayName({
+      code: row.system_code,
+      name: row.system_name,
+      fullname: row.system_fullname,
+    }, 'system').display_name;
+    if (row.system_parent_id != null && row.parent_system_name) {
+      out.system_display_name = `${row.parent_system_name} → ${sysDisp}`;
+      out.owner_type = 'subsystem';
+    } else {
+      out.system_display_name = sysDisp;
+      out.owner_type = 'system';
+    }
+  }
+  return out;
+}
+
+function webResourceService() {
+  return createWebResourceService(pool, { getParam, queries });
+}
+
+app.get('/api/togaf/web-resources', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.web_resources_select_search : queries.web_resources_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichWebResourceRow);
+    if (excel) {
+      const buf = await buildExportBuffer(pool, queries, rows);
+      res.setHeader('Content-Disposition', 'attachment; filename=web-resources.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.web_resources_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichWebResourceRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resources', async (req, res) => {
+  try {
+    const created = await webResourceService().create(req.body || {});
+    const full = await pool.query(queries.web_resources_get, [created.id]);
+    res.status(201).json(enrichWebResourceRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    await webResourceService().update(req.params.id, req.body || {});
+    const full = await pool.query(queries.web_resources_get, [req.params.id]);
+    res.json(enrichWebResourceRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/web-resources/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.web_resources_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Domains registry (#67) ---
+function enrichDomainRow(row) {
+  return applyDisplayName(row, 'domain');
+}
+
+function enrichCertificateRow(row) {
+  return applyDisplayName(row, 'certificate');
+}
+
+async function assertDomainCompanyIsOrg(companyId) {
+  if (companyId == null || companyId === '') return;
+  const r = await pool.query(queries.domains_org_unit_is_org, [companyId]);
+  if (r.rowCount === 0) {
+    const err = new Error('Компания должна быть организационной единицей с категорией «Организация» (code=org).');
+    err.status = 400;
+    throw err;
+  }
+}
+
+app.get('/api/togaf/domains', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.domains_select_search : queries.domains_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichDomainRow);
+    if (excel) {
+      const exportRows = rows.map((row) => ({
+        ID: row.id,
+        Домен: row.name,
+        Статус: row.status_name,
+        Регистратор: row.registrar_name,
+        'Дата регистрации': row.registered_at,
+        'Дата окончания': row.expires_at,
+        Назначение: row.purpose,
+        Компания: row.company_name,
+        'Владелец от бизнеса': row.business_owner_name,
+      }));
+      const buf = buildExcelBuffer(exportRows, 'Домены');
+      res.setHeader('Content-Disposition', 'attachment; filename=domains.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.domains_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichDomainRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/domains', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    if (!b.ar_domain_statuses_id) return res.status(400).json({ error: 'ar_domain_statuses_id required' });
+    const domainName = normalizeDomainName(b.name);
+    if (!domainName) return res.status(400).json({ error: 'Некорректное имя домена' });
+    await assertDomainCompanyIsOrg(b.company_ar_organization_units_id);
+    const r = await pool.query(queries.domains_insert, [
+      domainName,
+      b.registrar_ar_partners_id || '',
+      b.registered_at || '',
+      b.expires_at || '',
+      b.ar_domain_statuses_id,
+      b.purpose || '',
+      b.company_ar_organization_units_id || '',
+      b.business_owner_ar_employees_id || '',
+    ]);
+    const full = await pool.query(queries.domains_get, [r.rows[0].id]);
+    res.status(201).json(enrichDomainRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Домен с таким именем уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name) return res.status(400).json({ error: 'name required' });
+    if (!b.ar_domain_statuses_id) return res.status(400).json({ error: 'ar_domain_statuses_id required' });
+    const domainName = normalizeDomainName(b.name);
+    if (!domainName) return res.status(400).json({ error: 'Некорректное имя домена' });
+    await assertDomainCompanyIsOrg(b.company_ar_organization_units_id);
+    const r = await pool.query(queries.domains_update, [
+      domainName,
+      b.registrar_ar_partners_id || '',
+      b.registered_at || '',
+      b.expires_at || '',
+      b.ar_domain_statuses_id,
+      b.purpose || '',
+      b.company_ar_organization_units_id || '',
+      b.business_owner_ar_employees_id || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const full = await pool.query(queries.domains_get, [req.params.id]);
+    res.json(enrichDomainRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Домен с таким именем уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/domains/:id', async (req, res) => {
+  try {
+    const cnt = await pool.query(queries.domains_count_web_resources, [req.params.id]);
+    if ((cnt.rows[0] && cnt.rows[0].c) > 0) {
+      return res.status(409).json({ error: 'Нельзя удалить домен: есть связанные веб-ресурсы. Сначала очистите поле «Домен» на карточках WR.' });
+    }
+    const r = await pool.query(queries.domains_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Certificates registry (#69) ---
+app.get('/api/togaf/certificates', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.certificates_select_search : queries.certificates_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows.map(enrichCertificateRow);
+    if (excel) {
+      const exportRows = rows.map((row) => ({
+        ID: row.id,
+        Код: row.code,
+        Домен: row.domain_name,
+        'Сертификационный центр': row.ca_name,
+        'Дата выпуска': row.issued_at,
+        'Дата окончания': row.expires_at,
+        Wildcard: row.wildcard_flag ? 'Да' : 'Нет',
+        'Ссылка на размещение': row.placement_url,
+        Ответственный: row.responsible_name,
+      }));
+      const buf = buildExcelBuffer(exportRows, 'Сертификаты');
+      res.setHeader('Content-Disposition', 'attachment; filename=certificates.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.certificates_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(enrichCertificateRow(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/certificates', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.ar_domains_id) return res.status(400).json({ error: 'ar_domains_id required' });
+    if (!b.issued_at) return res.status(400).json({ error: 'issued_at required' });
+    if (!b.expires_at) return res.status(400).json({ error: 'expires_at required' });
+    const r = await pool.query(queries.certificates_insert, [
+      b.ar_domains_id,
+      b.ca_ar_partners_id || '',
+      b.issued_at,
+      b.expires_at,
+      !!b.wildcard_flag,
+      b.placement_url || '',
+      b.responsible_ar_employees_id || '',
+    ]);
+    const full = await pool.query(queries.certificates_get, [r.rows[0].id]);
+    res.status(201).json(enrichCertificateRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Сертификат с таким кодом уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to create' });
+  }
+});
+app.put('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.ar_domains_id) return res.status(400).json({ error: 'ar_domains_id required' });
+    if (!b.issued_at) return res.status(400).json({ error: 'issued_at required' });
+    if (!b.expires_at) return res.status(400).json({ error: 'expires_at required' });
+    const r = await pool.query(queries.certificates_update, [
+      b.ar_domains_id,
+      b.ca_ar_partners_id || '',
+      b.issued_at,
+      b.expires_at,
+      !!b.wildcard_flag,
+      b.placement_url || '',
+      b.responsible_ar_employees_id || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const full = await pool.query(queries.certificates_get, [req.params.id]);
+    res.json(enrichCertificateRow(full.rows[0]));
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Сертификат с таким кодом уже существует' });
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update' });
+  }
+});
+app.delete('/api/togaf/certificates/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.certificates_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/domain-statuses', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_select); res.json(applyDisplayName(r.rows, 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/domain-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.domain_statuses_insert, [code, name, description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'domain_status'));
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.domain_statuses_update, [code, name, description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'domain_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/domain-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.domain_statuses_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/web-resource-statuses', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_select); res.json(applyDisplayName(r.rows, 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resource-statuses', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_statuses_insert, [code, name, description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'web_resource_status'));
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_statuses_update, [code, name, description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'web_resource_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/web-resource-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_statuses_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/web-resource-categories', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_categories_select); res.json(applyDisplayName(r.rows, 'web_resource_category')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resource-categories/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_categories_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_category')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resource-categories', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = (b.code || '').trim();
+    const name = (b.name || '').trim();
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_categories_insert, [code, name, b.description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'web_resource_category'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.put('/api/togaf/web-resource-categories/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = (b.code || '').trim();
+    const name = (b.name || '').trim();
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_categories_update, [code, name, b.description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'web_resource_category'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/web-resource-categories/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_categories_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/web-resource-stage-types', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_stage_types_select); res.json(applyDisplayName(r.rows, 'web_resource_stage_type')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_stage_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_stage_type')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/web-resource-stage-types', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = (b.code || '').trim();
+    const name = (b.name || '').trim();
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_stage_types_insert, [code, name, b.description || '']);
+    res.status(201).json(applyDisplayName(r.rows[0], 'web_resource_stage_type'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.put('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = (b.code || '').trim();
+    const name = (b.name || '').trim();
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.web_resource_stage_types_update, [code, name, b.description || '', req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(applyDisplayName(r.rows[0], 'web_resource_stage_type'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.web_resource_stage_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Settings parameters (issue #27) ---
+function maskSecretParam(row) {
+  if (row && row.is_secret && row.value) {
+    return { ...row, value: '********' };
+  }
+  return row;
+}
+app.get('/api/settings-parameters', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const q = search ? queries.settings_parameters_select_search : queries.settings_parameters_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    res.json(r.rows.map(maskSecretParam));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/settings-parameters/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.settings_parameters_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(maskSecretParam(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/settings-parameters', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.code || !b.code.trim()) return res.status(400).json({ error: 'code required' });
+    const code = String(b.code || '').trim();
+    const valueType = (b.value_type || 'string').toLowerCase();
+    const value = valueType === 'json' || valueType === 'string_list' ? (typeof b.value === 'string' ? b.value : JSON.stringify(b.value == null ? '' : b.value)) : String(b.value ?? '');
+    if (code.startsWith('DISP_')) {
+      const vr = validateTemplateValue(code, value);
+      if (!vr.ok) return res.status(400).json({ error: vr.error });
+    }
+    const r = await pool.query(queries.settings_parameters_insert, [code, b.description || '', value, b.value_type || 'string', b.group || '', b.is_secret === true, b.read_only === true]);
+    res.status(201).json(maskSecretParam(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/settings-parameters/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const rGet = await pool.query(queries.settings_parameters_get, [req.params.id]);
+    if (rGet.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    if (rGet.rows[0].read_only) return res.status(400).json({ error: 'Parameter is read-only' });
+    const valueType = (b.value_type || rGet.rows[0].value_type || 'string').toLowerCase();
+    const value = valueType === 'json' || valueType === 'string_list' ? (typeof b.value === 'string' ? b.value : JSON.stringify(b.value == null ? '' : b.value)) : String(b.value ?? '');
+    const code = String(rGet.rows[0].code || '');
+    if (code.startsWith('DISP_')) {
+      const vr = validateTemplateValue(code, value);
+      if (!vr.ok) return res.status(400).json({ error: vr.error });
+    }
+    const r = await pool.query(queries.settings_parameters_update, [req.params.id, b.description ?? rGet.rows[0].description, value, b.value_type ?? rGet.rows[0].value_type, b.group != null ? b.group : rGet.rows[0].group, b.is_secret !== undefined ? b.is_secret : rGet.rows[0].is_secret, b.read_only !== undefined ? b.read_only : rGet.rows[0].read_only]);
+    res.json(maskSecretParam(r.rows[0]));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/settings-parameters/:id', async (req, res) => {
+  try {
+    const rGet = await pool.query(queries.settings_parameters_get, [req.params.id]);
+    if (rGet.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    if (rGet.rows[0].read_only) return res.status(400).json({ error: 'Cannot delete read-only parameter' });
+    const r = await pool.query(queries.settings_parameters_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- TOGAF Metamodel (task #14) ---
+app.get('/api/togaf/entity-types', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_entity_types_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/entity-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_entity_types_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+const DISP_PARAM_CODE_RE = /^DISP_[A-Z0-9_]+$/;
+
+/**
+ * Проверка disp_param_name каталога типов метамодели (issue #81):
+ * формат DISP_* + наличие параметра в ar_settings_parameters со строковым типом.
+ * Пустое значение допустимо (поиск/подписи используют fallback {name}).
+ */
+async function resolveDispParamName(value) {
+  const raw = value != null ? String(value).trim() : '';
+  if (!raw) return { value: null };
+  if (!DISP_PARAM_CODE_RE.test(raw)) {
+    return { error: 'disp_param_name: ожидается код параметра вида DISP_*' };
+  }
+  const chk = await pool.query(queries.settings_parameters_check_string, [raw]);
+  if (chk.rowCount === 0) {
+    return { error: `disp_param_name: параметр ${raw} не найден в ar_settings_parameters (value_type=string)` };
+  }
+  return { value: raw };
+}
+
+app.post('/api/togaf/entity-types', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
+    const disp = await resolveDispParamName(b.disp_param_name);
+    if (disp.error) return res.status(400).json({ error: disp.error });
+    const r = await pool.query(queries.metamodel_entity_types_insert, [
+      b.code, b.name, b.table_name || '', disp.value, b.description || '', !!b.import_allowed,
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/entity-types/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
+    const disp = await resolveDispParamName(b.disp_param_name);
+    if (disp.error) return res.status(400).json({ error: disp.error });
+    const r = await pool.query(queries.metamodel_entity_types_update, [
+      b.code, b.name, b.table_name || '', disp.value, b.description || '', !!b.import_allowed, req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/entity-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_entity_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/relation-types', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_relation_types_select);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/relation-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_relation_types_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/relation-types', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
+    if (b.from_entity_type_id == null || b.to_entity_type_id == null) return res.status(400).json({ error: 'from_entity_type_id and to_entity_type_id required' });
+    const r = await pool.query(queries.metamodel_relation_types_insert, [b.code, b.name, b.description || '', b.from_entity_type_id, b.to_entity_type_id, !!b.managed]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/relation-types/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.code || !b.name) return res.status(400).json({ error: 'code and name required' });
+    if (b.from_entity_type_id == null || b.to_entity_type_id == null) return res.status(400).json({ error: 'from_entity_type_id and to_entity_type_id required' });
+    const r = await pool.query(queries.metamodel_relation_types_update, [b.code, b.name, b.description || '', b.from_entity_type_id, b.to_entity_type_id, !!b.managed, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/relation-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_relation_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+/** Типы связей метамодели, создаваемые только проекцией из ar_integration_flows (issues #33, #56). */
+const INTEGRATION_FLOW_METAMODEL_RELATION_TYPES = new Set([
+  'integration_flow',
+  'integration_flow_system_module',
+  'integration_flow_module_system',
+  'integration_flow_module_module',
+])
+/** Проекции из реестра веб-ресурсов (FK ИС/модуль и FK домена). */
+const WEB_RESOURCE_PROJECTION_RELATION_TYPES = new Set([
+  'system_web_resource',
+  'subsystem_web_resource',
+  'web_resource_domain',
+])
+function isMetamodelIntegrationFlowProjection(row) {
+  return row && row.reference_to_baserow != null && INTEGRATION_FLOW_METAMODEL_RELATION_TYPES.has(row.relation_type)
+}
+function isWebResourceMetamodelProjection(row) {
+  if (!row || !WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(row.relation_type)) return false
+  const payload = row.payload
+  const isFkPayload = payload && typeof payload === 'object' && payload.projection === 'fk'
+  if (row.relation_type === 'web_resource_domain') {
+    return isFkPayload || (row.from_entity_type === 'web_resource' && row.to_entity_type === 'domain')
+  }
+  if (isFkPayload) return true
+  return row.to_entity_type === 'web_resource'
+}
+function isManagedMetamodelProjection(row) {
+  if (!row) return false
+  // managed из справочника типов связей (issue #81): покрывает все проекции и «карточные» связи
+  // (включая legacy-строки без reference_to_baserow/payload).
+  if (row.relation_type_managed === true) return true
+  return isMetamodelIntegrationFlowProjection(row) || isWebResourceMetamodelProjection(row)
+}
+
+app.get('/api/togaf/relations', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const withLabels = req.query.with_labels === '1' || req.query.with_labels === 'true';
+    const q = search ? queries.metamodel_relations_select_search : queries.metamodel_relations_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    res.json(withLabels ? await enrichRelationRows(pool, r.rows) : r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/relations/:id', async (req, res) => {
+  try {
+    const withLabels = req.query.with_labels === '1' || req.query.with_labels === 'true';
+    const r = await pool.query(queries.metamodel_relations_get, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(withLabels ? await enrichRelationRow(pool, r.rows[0]) : r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+/** Массовая пересборка проекций integration_flow из ar_integration_flows (issue #33). См. issue #35 для UI. */
+app.post('/api/togaf/metamodel/rebuild-integration-flow-projections', async (req, res) => {
+  try {
+    await pool.query('SELECT archrep.rebuild_integration_flow_metamodel_relations()');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'rebuild failed' });
+  }
+});
+
+/** Разовое наполнение доменов из URL веб-ресурсов (#67). */
+app.post('/api/togaf/metamodel/rebuild-domains-from-web-resources', async (req, res) => {
+  try {
+    const { rebuildDomainsFromWebResources } = require('./domainRebuild');
+    const summary = await rebuildDomainsFromWebResources(pool, { queries });
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'rebuild failed' });
+  }
+});
+
+// --- Data import (issue #64, docs/data-import-service.md) ---
+app.get('/api/import/entities', async (req, res) => {
+  try {
+    const r = await pool.query(queries.metamodel_entity_types_importable);
+    const supported = new Set(listSupportedEntityCodes());
+    res.json(r.rows
+      .filter((row) => supported.has(row.code))
+      .map((row) => ({
+        code: row.code,
+        name: row.name,
+        entity_type_id: row.id,
+        import_allowed: row.import_allowed,
+      })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/import/template', async (req, res) => {
+  try {
+    const entity = String(req.query.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    const buf = await buildTemplate(entity, pool, queries);
+    res.setHeader('Content-Disposition', `attachment; filename=import-template-${entity}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buf);
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'template failed' });
+  }
+});
+
+app.get('/api/import/export', async (req, res) => {
+  try {
+    const entity = String(req.query.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    const buf = await buildExport(entity, pool, queries, {
+      web_resource: enrichWebResourceRow,
+    });
+    res.setHeader('Content-Disposition', `attachment; filename=import-export-${entity}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buf);
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'export failed' });
+  }
+});
+
+async function handleImportRun(req, res, apply) {
+  try {
+    const b = req.body || {};
+    const entity = String(b.entity || '').trim();
+    if (!getImportEntity(entity)) {
+      return res.status(400).json({ error: `Поддерживается entity из: ${listSupportedEntityCodes().join(', ')}` });
+    }
+    if (!b.fileBase64) return res.status(400).json({ error: 'fileBase64 required' });
+    const onExists = ['skip', 'update', 'fail'].includes(b.onExists) ? b.onExists : 'update';
+    const protocolMode = b.protocolMode === 'errors' ? 'errors' : 'all';
+    const buffer = Buffer.from(String(b.fileBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+    const result = await runImport(entity, {
+      buffer,
+      apply,
+      onExists,
+      protocolMode,
+      pool,
+      queries,
+      getParam,
+    });
+    res.json({
+      summary: result.summary,
+      protocolBase64: result.protocolBuffer.toString('base64'),
+      filename: apply ? 'import-protocol.xlsx' : 'import-validate-protocol.xlsx',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message || 'import failed' });
+  }
+}
+
+app.post('/api/import/validate', (req, res) => handleImportRun(req, res, false));
+app.post('/api/import/apply', (req, res) => handleImportRun(req, res, true));
+app.post('/api/togaf/relations', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.from_entity_type == null || b.from_entity_id == null || b.to_entity_type == null || b.to_entity_id == null || !b.relation_type) return res.status(400).json({ error: 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, relation_type required' });
+    const rt = String(b.relation_type).trim()
+    if (INTEGRATION_FLOW_METAMODEL_RELATION_TYPES.has(rt)) {
+      return res.status(400).json({
+        error: 'Проекции интеграционных потоков (integration_flow*) создаются только из реестра ar_integration_flows (триггер БД).',
+      });
+    }
+    if (WEB_RESOURCE_PROJECTION_RELATION_TYPES.has(rt)) {
+      return res.status(400).json({
+        error: 'Связи веб-ресурса с ИС/модулем («Опубликован») или доменом («Размещен») создаются только из реестра веб-ресурсов (поля на карточке).',
+      });
+    }
+    if (await isManagedRelationType(pool, { code: rt, from: b.from_entity_type, to: b.to_entity_type })) {
+      return res.status(400).json({
+        error: 'Связь этого типа создаётся и поддерживается автоматически (триггер БД или карточка источника). Выберите другой тип связи.',
+      });
+    }
+    const r = await pool.query(queries.metamodel_relations_insert, [b.from_entity_type, b.from_entity_id, b.to_entity_type, b.to_entity_id, b.relation_type, b.name, b.description, b.payload ? JSON.stringify(b.payload) : null, b.displayed_name != null ? b.displayed_name : null, b.reference_to_baserow != null ? b.reference_to_baserow : null]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/relations/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.from_entity_type == null || b.from_entity_id == null || b.to_entity_type == null || b.to_entity_id == null || !b.relation_type) return res.status(400).json({ error: 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, relation_type required' });
+    const cur = await pool.query(queries.metamodel_relations_get, [req.params.id]);
+    if (cur.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const row = cur.rows[0];
+    if (isManagedMetamodelProjection(row)) {
+      return res.status(400).json({
+        error: isWebResourceMetamodelProjection(row)
+          ? 'Проекция веб-ресурса управляется из реестра веб-ресурсов (поля ИС/модуль или Домен на карточке).'
+          : row.relation_type_managed === true
+            ? 'Связь этого типа создаётся и поддерживается автоматически (триггер БД или карточка источника).'
+            : 'Проекция интеграционного потока управляется из реестра потоков. Пересборка: POST /api/togaf/metamodel/rebuild-integration-flow-projections',
+      });
+    }
+    const nextType = String(b.relation_type).trim();
+    if (await isManagedRelationType(pool, { code: nextType, from: b.from_entity_type, to: b.to_entity_type })) {
+      return res.status(400).json({
+        error: 'Нельзя назначить автоматически поддерживаемый тип связи: такие рёбра создаются триггером или карточкой источника.',
+      });
+    }
+    const disp = b.displayed_name !== undefined ? b.displayed_name : row.displayed_name;
+    const refBase = b.reference_to_baserow !== undefined ? b.reference_to_baserow : row.reference_to_baserow;
+    const r = await pool.query(queries.metamodel_relations_update, [b.from_entity_type, b.from_entity_id, b.to_entity_type, b.to_entity_id, b.relation_type, b.name, b.description, b.payload ? JSON.stringify(b.payload) : null, disp, refBase, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/relations/:id', async (req, res) => {
+  try {
+    const cur = await pool.query(queries.metamodel_relations_get, [req.params.id]);
+    if (cur.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const row = cur.rows[0];
+    if (isManagedMetamodelProjection(row)) {
+      return res.status(400).json({
+        error: isWebResourceMetamodelProjection(row)
+          ? 'Проекция веб-ресурса удаляется при удалении записи реестра или смене ИС/модуля на карточке.'
+          : row.relation_type_managed === true
+            ? 'Связь этого типа поддерживается автоматически: удаляйте её из карточки источника (ИС, партнёр, функция, сертификат, веб-ресурс или поток).'
+            : 'Проекция интеграционного потока удаляется при удалении потока или через пересборку метамодели.',
+      });
+    }
+    const r = await pool.query(queries.metamodel_relations_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// TOGAF refs: organization unit categories, actor types, business service statuses
+app.get('/api/togaf/refs/organization-unit-categories', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_organization_unit_categories_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/refs/organization-unit-categories/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_organization_unit_categories_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/refs/organization-unit-categories', async (req, res) => {
+  try { const { code, name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_organization_unit_categories_insert, [code, name, description]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/refs/organization-unit-categories/:id', async (req, res) => {
+  try { const { code, name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_organization_unit_categories_update, [code, name, description, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/refs/organization-unit-categories/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_organization_unit_categories_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/refs/actor-types', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_actor_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/refs/actor-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_actor_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/refs/actor-types', async (req, res) => {
+  try { const { code, name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actor_types_insert, [code, name, description]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/refs/actor-types/:id', async (req, res) => {
+  try { const { code, name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actor_types_update, [code, name, description, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/refs/actor-types/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_actor_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/refs/business-service-statuses', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_service_statuses_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/refs/business-service-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_service_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/refs/business-service-statuses', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_service_statuses_insert, [name, description]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/refs/business-service-statuses/:id', async (req, res) => {
+  try { const { name, description } = req.body || {}; if (!name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_service_statuses_update, [name, description, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/refs/business-service-statuses/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_service_statuses_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// TOGAF business entities: organization units, actors, business services, business functions
+app.get('/api/togaf/organization-units', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const category = (req.query.category || '').trim();
+    if (category === 'org' && !search) {
+      const r = await pool.query(queries.organization_units_select_org_only);
+      return res.json(applyDisplayName(r.rows, 'org_unit'));
+    }
+    const q = search ? queries.togaf_organization_units_select_search : queries.togaf_organization_units_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    let rows = r.rows;
+    if (category === 'org') {
+      rows = rows.filter((row) => row.category_code === 'org');
+    }
+    res.json(applyDisplayName(rows, 'org_unit'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/organization-units/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_organization_units_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/organization-units', async (req, res) => {
+  try {
+    const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.togaf_organization_units_insert, [b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/organization-units/:id', async (req, res) => {
+  try {
+    const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.togaf_organization_units_update, [b.name, b.fullname, b.parent_id, b.description, b.leader, b.organization_unit_categories_id, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/organization-units/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_organization_units_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/actors', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const q = search ? queries.togaf_actors_select_search : queries.togaf_actors_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/actors/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_actors_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/actors', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actors_insert, [b.name, b.description, b.organization_unit_id, b.actor_type_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/actors/:id', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_actors_update, [b.name, b.description, b.organization_unit_id, b.actor_type_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/actors/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_actors_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/business-services', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const q = search ? queries.togaf_business_services_select_search : queries.togaf_business_services_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/business-services/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_services_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/business-services', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_insert, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/business-services/:id', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_services_update, [b.name, b.fullname, b.description, b.ar_organization_units_id, b.ar_business_service_statuses_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/business-services/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_services_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+app.get('/api/togaf/business-functions', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.togaf_business_functions_select_search : queries.togaf_business_functions_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Бизнес-способности');
+      res.setHeader('Content-Disposition', 'attachment; filename=business-functions.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.get('/api/togaf/business-functions/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_functions_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/togaf/business-functions', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_functions_insert, [b.name, b.description, b.parent_id, b.ar_organization_units_id]); res.status(201).json(r.rows[0]); } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/togaf/business-functions/:id', async (req, res) => {
+  try { const b = req.body || {}; if (!b.name) return res.status(400).json({ error: 'name required' }); const r = await pool.query(queries.togaf_business_functions_update, [b.name, b.description, b.parent_id, b.ar_organization_units_id, req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/togaf/business-functions/:id', async (req, res) => {
+  try { const r = await pool.query(queries.togaf_business_functions_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+(async () => {
+  const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;
+  mountFrontendStatic();
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+
+  try {
+    await loadParams(pool);
+    try {
+      await loadRefCodes(pool);
+    } catch (e) {
+      console.warn('refCodes load failed (run migration archrep_issue31_adr_ref_codes.sql?):', e.message);
+    }
+    try {
+      assertAuthConfig();
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+    await bootstrapAuth(pool);
+    try {
+      jobRunner.start();
+    } catch (err) {
+      console.warn('[job runner] start failed:', err.message);
+    }
+    console.log('AUTH_ENABLED:', isAuthEnabled());
+  } catch (err) {
+    console.error('Startup init failed:', err);
+  }
+})().catch((err) => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
+});

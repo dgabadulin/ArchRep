@@ -1,0 +1,49 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Env (secrets)
+.env
+.env.*
+!.env.example
+
+# PostgreSQL dumps / large exports
+*.dump
+dump-*.sql
+DB/dump-*.sql
+!DB/schema/demo/dump-archrep.sql
+
+# Docker
+.dockerenv
+docker-compose.override.yml
+volumes/
+
+# Логи
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# utils
+hotlist.cmd
+
+# Локальный деплой с учётными данными (не для репозитория)
+deploy_local.bat
+deploy_demo.bat
+deploy_demo_full.bat
+deploy_demo_api.bat
+
+# Временные файлы / экспорты графа
+temp/
+
+# Архив исходников, который создаёт deploy.bat (пакуется на месте, передаётся по scp)
+deploy_stage.tar.gz
+
+# Артефакт сборки frontend-v3 (vite build → ../frontend-v3-dist)
+frontend-v3-dist/
+
+# Draw.io — локальный бэкап редактора (не коммитить)
+.$*.drawio.bkp

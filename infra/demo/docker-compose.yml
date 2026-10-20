@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ar-postgres-demo
+    restart: unless-stopped
+    env_file:
+      - env.demo
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata_demo:/var/lib/postgresql/data
+    networks:
+      - ar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  ar-api:
+    build:
+      context: ../..
+      dockerfile: infra/common/dockerfile
+    image: ar-api-image:demo
+    container_name: ar-api-demo-container
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - env.demo
+    environment:
+      NODE_ENV: production
+      SERVER_PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${DB_NAME}
+    networks:
+      - ar-network
+
+  drawio:
+    image: jgraph/drawio:latest
+    container_name: ar-drawio-demo
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - ar-network
+
+volumes:
+  pgdata_demo:
+
+networks:
+  ar-network:
+    driver: bridge

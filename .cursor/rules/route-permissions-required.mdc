@@ -1,0 +1,37 @@
+---
+description: Новый/изменённый/удалённый API-маршрут — синхронизировать routePermissions.js и RBAC
+globs:
+  - backend/index.js
+  - backend/**/*.js
+alwaysApply: false
+---
+
+# API-маршрут ↔ RBAC: `routePermissions.js` + `ar_permissions`
+
+В проекте действует принцип **deny by default** для `/api/*` (кроме `PUBLIC_PATHS`):
+если для маршрута **нет правила** в `backend/auth/routePermissions.js`, middleware
+возвращает **403 «Недостаточно привилегий»** (в теле — `<no-permission-mapping>`)
+**для всех, включая SYSTEM_ADMIN**.
+
+## Добавление функциональности (новый маршрут)
+
+1. Добавить правило в `RULES` (`routePermissions.js`) — хелпер `crud` / `listLookup` / `refLookup` / `refCrud` или явный `{ methods, pattern, permissions | anyOf }`.
+2. Если нужен новый код права — в `backend/auth/permissionsCatalog.js`: `ALL_PERMISSIONS` + матрица ролей.
+3. Перезапустить API: `bootstrapAuth.ensureRolesAndPermissions` вставит право в таблицу **`ar_permissions`** и связи **`ar_role_permissions`** из каталога.
+4. Проверить: `npm run check:routes`.
+
+## Изменение функциональности
+
+Меняется **путь/метод/права/владелец-роутер** → обновить правило в `routePermissions.js`
+(и, если меняются коды прав, `permissionsCatalog.js`). **Код маршрута и правило RBAC — один коммит.**
+Меняется только тело обработчика (та же сигнатура пути/метода) → RBAC не трогаем.
+
+## Удаление функциональности
+
+1. Убрать маршрут и его правило (`routePermissions.js`); при необходимости — коды из `permissionsCatalog.js`.
+2. ⚠️ **`bootstrapAuth` НЕ удаляет** — `ar_permissions`/`ar_role_permissions` чистятся **явно**
+   (`DELETE … ar_role_permissions`, затем `UPDATE ar_permissions SET is_active=false` / `DELETE`) + перезапуск API.
+3. Проверить: `npm run check:routes`.
+
+Не закрывать задачу, пока маршрут не покрыт правилом и `npm run check:routes` не проходит.
+Подробный чек-лист: **`docs/adding-new-api-endpoint.md`**.

@@ -1,0 +1,31 @@
+# Исключаем из контекста Docker (ускоряет сборку и уменьшает образ)
+# ВАЖНО: шаблоны привязаны к корню контекста, поэтому вложенные каталоги нужно
+# исключать явно (`node_modules` НЕ исключает `frontend-v3/node_modules` — именно
+# из-за этого в контекст попадали Windows-зависимости фронта: 145 МБ и падение
+# сборки на `node_modules/.bin/vite` → «Permission denied»).
+# Указываем обе формы: `/x` и `**/x` — покрывает и корень, и любую вложенность.
+node_modules
+**/node_modules
+.vite
+**/.vite
+dist
+**/dist
+# Артефакт сборки фронта (собирается внутри образа, в контексте не нужен)
+frontend-v3-dist
+.git
+.gitignore
+*.md
+.env*
+!.env.example
+hotlist.cmd
+DB/dump-*.sql
+*.log
+.cursor
+.kilo
+docs/prompts
+deploy_stage
+# Архив исходников, который готовит deploy.bat (в образе не нужен)
+deploy_stage.tar.gz
+temp
+views
+logs

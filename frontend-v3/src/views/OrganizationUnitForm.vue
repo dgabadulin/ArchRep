@@ -1,0 +1,186 @@
+<template>
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ formTitle }}</h1>
+      <router-link :to="listRouteLocation" class="btn">Назад</router-link>
+    </div>
+    <form v-if="form" class="form" @submit.prevent="submit">
+      <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>organization_unit:write</code>.</p>
+      <fieldset class="form-fieldset" :disabled="!canWrite">
+      <div class="form-row">
+        <label>Наименование *</label>
+        <input v-model="form.name" required />
+      </div>
+      <div class="form-row">
+        <label>Полное наименование</label>
+        <input v-model="form.fullname" />
+      </div>
+      <div class="form-row">
+        <label>Родитель</label>
+        <select v-model="form.parent_id">
+          <option :value="null">—</option>
+          <option v-for="ou in organizationUnits" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Категория</label>
+        <select v-model="form.organization_unit_categories_id">
+          <option :value="null">—</option>
+          <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.display_name || c.name }}</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Руководитель</label>
+        <input v-model="form.leader" />
+      </div>
+      <div class="form-row">
+        <label>Описание</label>
+        <textarea v-model="form.description" rows="3"></textarea>
+      </div>
+      </fieldset>
+      <div class="form-actions">
+        <button v-if="canWrite" type="submit" class="btn btn-primary">Сохранить</button>
+        <router-link :to="listRouteLocation" class="btn">{{ canWrite ? 'Отмена' : 'К списку' }}</router-link>
+      </div>
+    </form>
+    <div v-else-if="loading" class="msg">Загрузка...</div>
+    <div v-else class="msg error">{{ error || 'Не найдено' }}</div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { togafApi } from '../api'
+import { useFormListReturn } from '../composables/useFormListReturn'
+import { usePermissions } from '../composables/usePermissions'
+
+const route = useRoute()
+const router = useRouter()
+const { listRouteLocation } = useFormListReturn('/organization-units')
+const { canWrite } = usePermissions('organization_unit')
+const id = computed(() => route.params.id)
+const isEdit = computed(() => !!id.value && id.value !== 'new')
+const formTitle = computed(() => {
+  if (!isEdit.value) return 'Новая орг. единица'
+  return canWrite.value ? 'Редактирование орг. единицы' : 'Просмотр орг. единицы'
+})
+const form = ref(null)
+const loading = ref(true)
+const error = ref('')
+const organizationUnits = ref([])
+const categories = ref([])
+
+async function loadRefs() {
+  organizationUnits.value = await togafApi.organizationUnits()
+  categories.value = await togafApi.refs.organizationUnitCategories()
+}
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  await loadRefs()
+  if (isEdit.value) {
+    try {
+      const row = await togafApi.organizationUnit(id.value)
+      form.value = {
+        name: row.name,
+        fullname: row.fullname || '',
+        parent_id: row.parent_id,
+        organization_unit_categories_id: row.organization_unit_categories_id,
+        leader: row.leader || '',
+        description: row.description || '',
+      }
+    } catch (e) {
+      error.value = e.message
+      form.value = null
+    }
+  } else {
+    form.value = { name: '', fullname: '', parent_id: null, organization_unit_categories_id: null, leader: '', description: '' }
+  }
+  loading.value = false
+}
+
+async function submit() {
+  if (!canWrite.value) return
+  const payload = {
+    name: form.value.name,
+    fullname: form.value.fullname || undefined,
+    parent_id: form.value.parent_id || undefined,
+    organization_unit_categories_id: form.value.organization_unit_categories_id || undefined,
+    leader: form.value.leader || undefined,
+    description: form.value.description || undefined,
+  }
+  try {
+    if (isEdit.value) {
+      await togafApi.updateOrganizationUnit(id.value, payload)
+    } else {
+      await togafApi.createOrganizationUnit(payload)
+    }
+    router.push(listRouteLocation.value)
+  } catch (e) {
+    error.value = e.message || 'Ошибка сохранения'
+  }
+}
+
+onMounted(load)
+watch(id, load)
+</script>
+
+<style scoped>
+.form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readonly-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--ar-accent-soft);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ar-muted);
+}
+.form {
+  max-width: 500px;
+  background: var(--ar-surface);
+  padding: 1.25rem;
+  border-radius: var(--ar-radius-lg);
+  border: 1px solid var(--ar-border);
+  box-shadow: var(--ar-shadow-card);
+}
+.form-row {
+  margin-bottom: 1rem;
+}
+.form-row label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ar-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-row input,
+.form-row select,
+.form-row textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-surface);
+}
+.form-actions {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+}
+.msg {
+  padding: 1rem;
+}
+.msg.error {
+  color: var(--ar-danger);
+}
+</style>

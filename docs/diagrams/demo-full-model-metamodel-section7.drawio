@@ -1,0 +1,345 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.6 Chrome/138.0.7204.100 Electron/37.2.3 Safari/537.36" version="28.0.6">
+  <diagram id="metamodel-full" name="Метамодель §3.1–3.2">
+    <mxGraphModel dx="1097" dy="768" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1500" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Метамодель demo: сущности §1 (зелёные узлы) + связи §3.1 (зелёные рёбра) и §3.2 (оранжевые рёбра)&#xa;Подписи — «Имя (name)» из §3.1 / §3.2 и exports/1.csv (при блокировке — 1-with-partner-fk-rows.csv); к партнёру — проекция по FK, см. §3.2 md" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="40" y="12" width="1880" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="leg" value="Легенда (demo-full-model-entities-matrix.md §130):&#xa;• Зелёный (#C8E6C9 / #1B5E20) — сущности §1, уже в репозитории; типы связей §3.1 и соответствующие рёбра.&#xa;• Оранжевый (#F4511E) — типы связей §3.2 (в т.ч. ИС/модуль/технология → партнёр, №12–18): добавить в словарь и в ar_metamodel_relations; для партнёра строки должны воспроизводить FK (ar_systems: vendor_ar_partners_id, supplier_ar_partners_id, supporter_ar_partners_id; ar_technologies.vendor_ar_partners_id) — см. §3.2.&#xa;• Серый пунктир — вспомогательно: реестр integration_flow и проекция на ИС (типы §3.1 на схеме — зелёные петли/рёбра)." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#F9A825;align=left;spacingLeft=10;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1340" width="1880" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="n-principle" value="Принцип&#xa;&lt;font color=&quot;#555555&quot;&gt;principle&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="80" y="100" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-adrp" value="ADRP — прикладной принцип&#xa;&lt;font color=&quot;#555555&quot;&gt;adr_principle · ar_adrs_principle&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="410" y="190" width="240" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n-adra" value="Архитектурное заключение&#xa;&lt;font color=&quot;#555555&quot;&gt;adr_applied · ar_adrs_applied&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="400" y="92" width="260" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="n-gap" value="Архитектурный долг&#xa;&lt;font color=&quot;#555555&quot;&gt;gap · ar_gaps&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="840" y="100" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-intf" value="Интеграционный поток&#xa;&lt;font color=&quot;#555555&quot;&gt;integration_flow · ar_integration_flows&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="1570" y="830" width="280" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n-actor" value="Заинтересованное лицо&#xa;&lt;font color=&quot;#555555&quot;&gt;actor&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="276" width="220" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-ou" value="Организационная единица&#xa;&lt;font color=&quot;#555555&quot;&gt;organization_unit&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="430" width="220" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-emp" value="Сотрудник&#xa;&lt;font color=&quot;#555555&quot;&gt;employee · ar_employees&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="620" width="220" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-bf" value="Бизнес-способность&#xa;&lt;font color=&quot;#555555&quot;&gt;business_function&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="400" y="340" width="240" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n-bs" value="Бизнес-сервис (продукт)&#xa;&lt;font color=&quot;#555555&quot;&gt;business_service&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="410" y="440" width="260" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n-sys" value="Информационная система&#xa;&lt;font color=&quot;#555555&quot;&gt;system&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="820" y="474" width="240" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-sub" value="Модуль системы&#xa;&lt;font color=&quot;#555555&quot;&gt;subsystem&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="820" y="594" width="240" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="n-sf" value="Функция ИС&#xa;&lt;font color=&quot;#555555&quot;&gt;system_function&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="840" y="254" width="220" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n-par" value="Партнёр&#xa;&lt;font color=&quot;#555555&quot;&gt;partner · ar_partners&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="1450" y="260" width="220" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="n-tech" value="Технология&#xa;&lt;font color=&quot;#555555&quot;&gt;technology&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="820" y="794" width="240" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-gap-sys" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0.5;exitY=1;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-gap" target="n-sys" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1100" y="156" />
+              <mxPoint x="1100" y="474" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-gap-sys-l" value="Относится к" style="edgeLabel;html=1;align=center;fontSize=9;" parent="eg-gap-sys" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-2" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sys-sub" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sys" target="n-sub" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-sys-sub-l" value="Модуль системы&#xa;Интеграционный поток (Система → Модуль)" style="edgeLabel;html=1;align=center;fontSize=8;whiteSpace=wrap;" parent="eg-sys-sub" vertex="1" connectable="0">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-adra-gap" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-adra" target="n-gap" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-adra-gap-l" value="Фиксирует арх.долг" style="edgeLabel;html=1;align=center;fontSize=9;" parent="eg-adra-gap" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sys-loop" style="endArrow=classic;html=1;strokeColor=#b85450;strokeWidth=2;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.3;entryX=1;entryY=0.7;fillColor=#f8cecc;" parent="1" source="n-sys" target="n-sys" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1120" y="494" />
+              <mxPoint x="1120" y="534" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sys-loop-l" value="Интеграционный поток" style="edgeLabel;html=1;align=center;fontSize=9;" parent="eg-sys-loop" vertex="1" connectable="0">
+          <mxGeometry x="0.2" relative="1" as="geometry">
+            <mxPoint x="40" y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sys-tech" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sys" target="n-tech" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-sys-tech-l" value="Использует" style="edgeLabel;html=1;align=center;fontSize=9;" parent="eg-sys-tech" vertex="1" connectable="0">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-tech" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.85;entryY=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sub" target="n-tech" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="940" y="754" />
+              <mxPoint x="1024" y="754" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-tech-l" value="Использует" style="edgeLabel;html=1;align=center;fontSize=9;" parent="eg-sub-tech" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-sys" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0;exitY=0.25;entryX=0;entryY=0.75;" parent="1" source="n-sub" target="n-sys" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-sub-sys-l" value="Интеграционный поток (Модуль → Система)" style="edgeLabel;html=1;align=center;fontSize=8;whiteSpace=wrap;" parent="eg-sub-sys" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="-28" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-loop" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0;exitY=0.75;entryX=0.081;entryY=1.022;entryDx=0;entryDy=0;entryPerimeter=0;edgeStyle=elbowEdgeStyle;" parent="1" source="n-sub" target="n-sub" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="654" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-loop-l" value="Интеграционный поток (Модуль → Модуль)" style="edgeLabel;html=1;align=center;fontSize=8;whiteSpace=wrap;" parent="eg-sub-loop" vertex="1" connectable="0">
+          <mxGeometry x="-0.3" relative="1" as="geometry">
+            <mxPoint x="-50" y="8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sys-emp" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0;exitY=0.55;entryX=1;entryY=0.35;" parent="1" source="n-sys" target="n-emp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-sys-emp-l" value="ИТ-лид ИС&#xa;Бизнес-лид ИС" style="edgeLabel;html=1;align=center;fontSize=8;whiteSpace=wrap;" parent="eg-sys-emp" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="-20" y="-14" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eg-sub-emp" style="endArrow=classic;html=1;strokeColor=#1B5E20;strokeWidth=2;exitX=0;exitY=0.5;entryX=1;entryY=0.65;" parent="1" source="n-sub" target="n-emp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eg-sub-emp-l" value="ИТ-лид модуля&#xa;Бизнес-лид модуля" style="edgeLabel;html=1;align=center;fontSize=8;whiteSpace=wrap;" parent="eg-sub-emp" vertex="1" connectable="0">
+          <mxGeometry x="-0.05" relative="1" as="geometry">
+            <mxPoint y="10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-ou-bs" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" parent="1" source="n-ou" target="n-bs" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-ou-bs-l" value="Отвечает за" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-ou-bs" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-ou-bf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.25;entryX=0;entryY=1;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-ou" target="n-bf" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="270" y="460" />
+              <mxPoint x="400" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-ou-bf-l" value="Отвечает за" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-ou-bf" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-act-bf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-actor" target="n-bf" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-act-bf-l" value="Отвечает за" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-act-bf" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-bf-bs" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="n-bf" target="n-bs" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-bf-bs-l" value="Поддерживает сервис" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-bf-bs" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-bs" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0;exitY=0.65;entryX=1;entryY=0.35;" parent="1" source="n-sys" target="n-bs" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-sys-bs-l" value="Обеспечивает продукт" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-sys-bs" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-bf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0;exitY=0.35;entryX=1;entryY=0.75;" parent="1" source="n-sys" target="n-bf" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-sys-bf-l" value="Реализует бизнес-функцию" style="edgeLabel;html=1;align=center;fontSize=8;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sys-bf" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-sf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.5;entryX=1;entryY=0.5;edgeStyle=orthogonalEdgeStyle;entryDx=0;entryDy=0;" parent="1" source="n-sys" target="n-sf" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-sys-sf-l" value="Содержит функцию ИС" style="edgeLabel;html=1;align=center;fontSize=8;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sys-sf" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sf-bf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0.336;exitY=0.953;entryX=1;entryY=0.25;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="n-sf" target="n-bf" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-sf-bf-l" value="Реализует бизнес-функцию" style="edgeLabel;html=1;align=center;fontSize=8;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sf-bf" vertex="1" connectable="0">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-16" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sf-bs" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" parent="1" source="n-sf" target="n-bs" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-sf-bs-l" value="Обеспечивает продукт" style="edgeLabel;html=1;align=center;fontSize=8;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sf-bs" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="-40" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-act-sf" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.25;entryX=0;entryY=0.75;" parent="1" source="n-actor" target="n-sf" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-act-sf-l" value="Использует функцию ИС" style="edgeLabel;html=1;align=center;fontSize=8;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-act-sf" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-adra-adrp" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitDx=0;exitDy=0;" parent="1" source="n-adra" target="n-adrp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo-adra-adrp-l" value="Соблюдает принцип" style="edgeLabel;html=1;align=center;fontSize=9;fontColor=#BF360C;" parent="eo-adra-adrp" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="-6" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-v" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.28;entryX=0;entryY=0.22;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sys" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1150" y="490" />
+              <mxPoint x="1150" y="276" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-v-l" value="Вендор (system_partner_vendor)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sys-par-v" vertex="1" connectable="0">
+          <mxGeometry x="-0.15" relative="1" as="geometry">
+            <mxPoint x="4" y="-14" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-i" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.48;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sys" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="502" />
+              <mxPoint x="1180" y="295" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-i-l" value="Интегратор (system_partner_implementer)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sys-par-i" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-s" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.72;entryX=0;entryY=0.72;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sys" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1210" y="514" />
+              <mxPoint x="1210" y="312" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sys-par-s-l" value="Поддерживает (system_partner_supporter)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sys-par-s" vertex="1" connectable="0">
+          <mxGeometry x="-0.05" relative="1" as="geometry">
+            <mxPoint x="6" y="8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-v" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.28;entryX=0;entryY=0.35;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sub" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1240" y="610" />
+              <mxPoint x="1240" y="285" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-v-l" value="Вендор (subsystem_partner_vendor)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sub-par-v" vertex="1" connectable="0">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint x="10" y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-i" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.55;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sub" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1270" y="622" />
+              <mxPoint x="1270" y="302" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-i-l" value="Интегратор (subsystem_partner_implementer)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sub-par-i" vertex="1" connectable="0">
+          <mxGeometry x="-0.15" relative="1" as="geometry">
+            <mxPoint y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-s" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=1;exitY=0.72;entryX=0;entryY=0.68;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-sub" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1300" y="634" />
+              <mxPoint x="1300" y="319" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-sub-par-s-l" value="Поддерживает (subsystem_partner_supporter)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-sub-par-s" vertex="1" connectable="0">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="8" y="12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-tech-par-v" style="endArrow=classic;html=1;strokeColor=#F4511E;strokeWidth=2;exitX=0.75;exitY=0;entryX=0.55;entryY=1;edgeStyle=orthogonalEdgeStyle;" parent="1" source="n-tech" target="n-par" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1000" y="720" />
+              <mxPoint x="1451" y="720" />
+              <mxPoint x="1451" y="332" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eo-tech-par-v-l" value="Вендор (technology_partner_vendor)&#xa;проекция FK" style="edgeLabel;html=1;align=center;fontSize=7;fontColor=#BF360C;whiteSpace=wrap;" parent="eo-tech-par-v" vertex="1" connectable="0">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint x="24" y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

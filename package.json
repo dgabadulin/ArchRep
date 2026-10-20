@@ -1,0 +1,43 @@
+{
+  "name": "archrep",
+  "version": "1.0.0",
+  "description": "Архитектурный репозиторий (ИСАР): BFF + PostgreSQL + Vue 3 для корпоративных и системных архитекторов.",
+  "main": "backend/index.js",
+  "scripts": {
+    "start": "node backend/index.js",
+    "build:v3": "cd frontend-v3 && npm run build",
+    "deploy": "infra\\prod\\deploy.bat",
+    "db:migrate": "node-pg-migrate up --config-file pgmrc.json --migrations-dir DB/migrations",
+    "db:migrate:down": "node-pg-migrate down --config-file pgmrc.json --migrations-dir DB/migrations",
+    "db:migrate:create": "node-pg-migrate create --config-file pgmrc.json --migrations-dir DB/migrations",
+    "check:routes": "node scripts/check-route-permissions.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "enterprise-architecture",
+    "togaf",
+    "architectural-repository",
+    "isar",
+    "bff"
+  ],
+  "author": "Денис Габадулин <dgabadulin> (https://github.com/dgabadulin)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dgabadulin/ArchRep.git"
+  },
+  "dependencies": {
+    "dagre": "^0.8.5",
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "exceljs": "^4.4.0",
+    "nodemailer": "^6.10.0",
+    "pg": "^8.13.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "node-pg-migrate": "^8.0.3"
+  }
+}
