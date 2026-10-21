@@ -14,7 +14,7 @@
     "vue-router": "^4.2.0",
     "v-network-graph": "^0.9.22",
     "lucide-vue-next": "^0.500.0",
-    "marked": "^15.0.0",
+    "marked": "^18.1.1",
     "echarts": "^5.5.0",
     "vue-echarts": "^7.0.0",
     "xlsx": "^0.18.5"
