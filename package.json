@@ -38,6 +38,6 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "node-pg-migrate": "^8.0.3"
+    "node-pg-migrate": "^9.0.0"
   }
 }
