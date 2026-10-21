@@ -244,6 +244,7 @@ Effective permissions = объединение permissions всех назнач
 | `domain:read` / `write` / `delete` / `export` | Реестр доменов (#67) |
 | `partner:read` / `write` / `delete` / `export` | Контрагенты |
 | `employee:read` / `write` / `delete` / `export` | Сотрудники (каталог) |
+| `infrastructure:read` | Каталог инфраструктуры из Netbox (read-only, #92) |
 
 ### 4.4. Technology
 
@@ -374,6 +375,8 @@ Effective permissions = объединение permissions всех назнач
 | | **Технологии** |
 | 18 | Каталог технологий | `/technologies` | `technology:read` | `technology:write` | `technology:delete` | |
 | 19 | Тех.радар | `/tech-radar` | `tech_radar:read` | — | — | |
+| | **Инфраструктура** | | | | | |
+| 19a | Каталог инфраструктуры | `/infrastructure` | `infrastructure:read` | — | — | read-only, [#92](https://github.com/dgabadulin/ArchRep/issues/92) |
 | | **Аналитика** |
 | 20 | Анализ зависимостей | `/analytics` | `analytics:read` | — | — | |
 | 21–22 | Дашборды | `/dashboards`, `/dashboards/catalog` | `dashboard:read` | — | — | |
@@ -447,6 +450,8 @@ Effective permissions = объединение permissions всех назнач
 | `/api/togaf/business-functions` | `business_function:*` |
 | `/api/togaf/relations` | `metamodel_relation:*` |
 | `/api/togaf/entity-types`, `relation-types` | `metamodel_catalog:*` |
+| `GET /api/infrastructure` | `infrastructure:read` (read-only, #92) |
+| `/api/togaf/refs/infrastructure-object-types` | `references:*` |
 | `POST .../rebuild-integration-flow-projections` | `metamodel:rebuild` |
 | `GET /api/dashboard/home-stats` | `dashboard:read` |
 

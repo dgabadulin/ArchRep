@@ -1227,4 +1227,171 @@ module.exports = {
       AND c.expires_at >= CURRENT_DATE
       AND c.expires_at <= CURRENT_DATE + $1::int
     ORDER BY c.expires_at, c.code`,
+
+  // --- Инфраструктура (Netbox, read-only) ---
+  infrastructure_object_types_select: `SELECT id, code, name, description FROM archrep.ar_infrastructure_object_types ORDER BY id`,
+  infrastructure_object_types_select_search: `
+    SELECT id, code, name, description
+    FROM archrep.ar_infrastructure_object_types
+    WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1
+    ORDER BY id`,
+  infrastructure_object_types_get: `SELECT id, code, name, description FROM archrep.ar_infrastructure_object_types WHERE id = $1`,
+  infrastructure_object_types_insert: `INSERT INTO archrep.ar_infrastructure_object_types (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
+  infrastructure_object_types_update: `UPDATE archrep.ar_infrastructure_object_types SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
+  infrastructure_object_types_delete: `DELETE FROM archrep.ar_infrastructure_object_types WHERE id = $1`,
+
+  infrastructure_objects_select: `
+    SELECT o.id, o.source, o.external_id, o.ar_infrastructure_object_types_id,
+           o.name, o.description, o.primary_ip, o.status, o.site, o.cluster, o.platform, o.tenant,
+           o.vcpus, o.memory_gb, o.disk_gb, o.netbox_updated_at, o.synced_at,
+           COALESCE((
+             SELECT jsonb_agg(tag->>'name')
+             FROM jsonb_array_elements(COALESCE(o.payload->'tags', '[]'::jsonb)) AS tag
+             WHERE tag->>'name' IS NOT NULL
+           ), '[]'::jsonb) AS tag_names,
+           t.code AS type_code, t.name AS type_name,
+           COALESCE((
+             SELECT string_agg(DISTINCT s.name, ', ' ORDER BY s.name)
+             FROM archrep.ar_metamodel_relations r
+             JOIN archrep.ar_systems s ON s.id = r.from_entity_id
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ), '') AS system_names,
+           (
+             SELECT COUNT(*)::int
+             FROM archrep.ar_metamodel_relations r
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ) AS system_count
+    FROM archrep.ar_infrastructure_objects o
+    JOIN archrep.ar_infrastructure_object_types t ON t.id = o.ar_infrastructure_object_types_id
+    ORDER BY o.name`,
+
+  infrastructure_objects_select_search: `
+    SELECT o.id, o.source, o.external_id, o.ar_infrastructure_object_types_id,
+           o.name, o.description, o.primary_ip, o.status, o.site, o.cluster, o.platform, o.tenant,
+           o.vcpus, o.memory_gb, o.disk_gb, o.netbox_updated_at, o.synced_at,
+           COALESCE((
+             SELECT jsonb_agg(tag->>'name')
+             FROM jsonb_array_elements(COALESCE(o.payload->'tags', '[]'::jsonb)) AS tag
+             WHERE tag->>'name' IS NOT NULL
+           ), '[]'::jsonb) AS tag_names,
+           t.code AS type_code, t.name AS type_name,
+           COALESCE((
+             SELECT string_agg(DISTINCT s.name, ', ' ORDER BY s.name)
+             FROM archrep.ar_metamodel_relations r
+             JOIN archrep.ar_systems s ON s.id = r.from_entity_id
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ), '') AS system_names,
+           (
+             SELECT COUNT(*)::int
+             FROM archrep.ar_metamodel_relations r
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ) AS system_count
+    FROM archrep.ar_infrastructure_objects o
+    JOIN archrep.ar_infrastructure_object_types t ON t.id = o.ar_infrastructure_object_types_id
+    WHERE o.name ILIKE $1
+       OR COALESCE(o.description, '') ILIKE $1
+       OR COALESCE(o.primary_ip, '') ILIKE $1
+       OR COALESCE(o.status, '') ILIKE $1
+       OR COALESCE(o.site, '') ILIKE $1
+       OR COALESCE(o.cluster, '') ILIKE $1
+       OR COALESCE(o.platform, '') ILIKE $1
+       OR COALESCE(o.tenant, '') ILIKE $1
+       OR t.name ILIKE $1
+       OR t.code ILIKE $1
+       OR EXISTS (
+         SELECT 1
+         FROM archrep.ar_metamodel_relations r
+         JOIN archrep.ar_systems s ON s.id = r.from_entity_id
+         WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+           AND r.from_entity_type IN ('system', 'subsystem')
+           AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           AND (s.name ILIKE $1 OR s.code ILIKE $1)
+       )
+    ORDER BY o.name`,
+
+  infrastructure_objects_get: `
+    SELECT o.id, o.source, o.external_id, o.ar_infrastructure_object_types_id,
+           o.name, o.description, o.primary_ip, o.status, o.site, o.cluster, o.platform, o.tenant,
+           o.vcpus, o.memory_gb, o.disk_gb, o.netbox_updated_at, o.synced_at,
+           COALESCE((
+             SELECT jsonb_agg(tag->>'name')
+             FROM jsonb_array_elements(COALESCE(o.payload->'tags', '[]'::jsonb)) AS tag
+             WHERE tag->>'name' IS NOT NULL
+           ), '[]'::jsonb) AS tag_names,
+           t.code AS type_code, t.name AS type_name,
+           COALESCE((
+             SELECT string_agg(DISTINCT s.name, ', ' ORDER BY s.name)
+             FROM archrep.ar_metamodel_relations r
+             JOIN archrep.ar_systems s ON s.id = r.from_entity_id
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ), '') AS system_names,
+           (
+             SELECT COUNT(*)::int
+             FROM archrep.ar_metamodel_relations r
+             WHERE r.to_entity_type = 'infrastructure_object' AND r.to_entity_id = o.id
+               AND r.from_entity_type IN ('system', 'subsystem')
+               AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+           ) AS system_count
+    FROM archrep.ar_infrastructure_objects o
+    JOIN archrep.ar_infrastructure_object_types t ON t.id = o.ar_infrastructure_object_types_id
+    WHERE o.id = $1`,
+
+
+  infrastructure_objects_label_select: `
+    SELECT o.id, o.name, o.primary_ip, o.status, o.site, t.name AS type_name
+    FROM archrep.ar_infrastructure_objects o
+    JOIN archrep.ar_infrastructure_object_types t ON t.id = o.ar_infrastructure_object_types_id
+    ORDER BY o.name`,
+  infrastructure_objects_upsert: `
+    INSERT INTO archrep.ar_infrastructure_objects (
+      source, external_id, ar_infrastructure_object_types_id, name, description, primary_ip,
+      status, site, cluster, platform, tenant, vcpus, memory_gb, disk_gb,
+      netbox_updated_at, synced_at, payload
+    ) VALUES (
+      $1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''), NULLIF($7,''), NULLIF($8,''),
+      NULLIF($9,''), NULLIF($10,''), NULLIF($11,''), $12, $13, $14, $15, $16, $17::jsonb
+    )
+    ON CONFLICT (source, ar_infrastructure_object_types_id, external_id)
+    DO UPDATE SET
+      name = EXCLUDED.name,
+      description = EXCLUDED.description,
+      primary_ip = EXCLUDED.primary_ip,
+      status = EXCLUDED.status,
+      site = EXCLUDED.site,
+      cluster = EXCLUDED.cluster,
+      platform = EXCLUDED.platform,
+      tenant = EXCLUDED.tenant,
+      vcpus = EXCLUDED.vcpus,
+      memory_gb = EXCLUDED.memory_gb,
+      disk_gb = EXCLUDED.disk_gb,
+      netbox_updated_at = EXCLUDED.netbox_updated_at,
+      synced_at = EXCLUDED.synced_at,
+      payload = EXCLUDED.payload
+    RETURNING id, (xmax = 0) AS inserted`,
+  infrastructure_objects_delete_stale: `
+    DELETE FROM archrep.ar_infrastructure_objects
+    WHERE source = $1
+      AND ar_infrastructure_object_types_id = $2
+      AND synced_at < $3`,
+  infrastructure_systems_map_select: `
+    SELECT id, code, parent_ar_systems_id
+    FROM archrep.ar_systems
+    ORDER BY id`,
+  metamodel_relations_delete_infrastructure_object: `
+    DELETE FROM archrep.ar_metamodel_relations
+    WHERE to_entity_type = 'infrastructure_object'
+      AND to_entity_id = $1
+      AND relation_type IN ('system_infrastructure', 'subsystem_infrastructure')`,
+
+
 };

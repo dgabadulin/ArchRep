@@ -281,6 +281,18 @@ export const api = {
   updateDomainStatus: (id, body) => request(`/api/togaf/domain-statuses/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteDomainStatus: (id) => request(`/api/togaf/domain-statuses/${id}`, { method: 'DELETE' }),
 
+  // Инфраструктура (Netbox, read-only)
+  getInfrastructure: (params) => request('/api/infrastructure' + buildQuery(params)),
+  getInfrastructureItem: (id) => request(`/api/infrastructure/${id}`),
+  getInfrastructureObjectTypes: (params) =>
+    request('/api/togaf/refs/infrastructure-object-types' + buildQuery(params)),
+  createInfrastructureObjectType: (body) =>
+    request('/api/togaf/refs/infrastructure-object-types', { method: 'POST', body: JSON.stringify(body) }),
+  updateInfrastructureObjectType: (id, body) =>
+    request(`/api/togaf/refs/infrastructure-object-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteInfrastructureObjectType: (id) =>
+    request(`/api/togaf/refs/infrastructure-object-types/${id}`, { method: 'DELETE' }),
+
   getGapStates: () => request('/api/ar-gap-states'),
   createGapState: (body) => request('/api/ar-gap-states', { method: 'POST', body: JSON.stringify(body) }),
   updateGapState: (id, body) => request(`/api/ar-gap-states/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

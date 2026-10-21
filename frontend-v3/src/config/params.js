@@ -15,7 +15,7 @@ const DEFAULTS = {
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'subsystem', 'technology', 'infrastructure_object', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   GRAPH_COLLAPSED_SYSTEM_ICON: 'MonitorDot',
   ADR_CODE_MAXLEN: 15,

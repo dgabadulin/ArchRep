@@ -19,6 +19,7 @@ const RELATION_END_SOURCES = {
   subsystem: { select: 'systems_select', entity: 'subsystem' },
   system_child: { select: 'systems_select', entity: 'system_child' },
   technology: { select: 'technologies_select', entity: 'technology' },
+  infrastructure_object: { select: 'infrastructure_objects_label_select', entity: 'infrastructure_object' },
   organization_unit: { select: 'togaf_organization_units_select', entity: 'org_unit' },
   actor: { select: 'togaf_actors_select', entity: 'actor' },
   business_service: { select: 'togaf_business_services_select', entity: 'business_service' },

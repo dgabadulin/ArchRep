@@ -178,6 +178,9 @@ const RULES = [
   listLookup('/api/togaf/certificates', 'certificate:export', ['certificate:read', 'domain:read', 'partner:read', 'employee:read']),
   ...crud('/api/togaf/certificates', 'certificate'),
 
+  // Каталог инфраструктуры (Netbox) — только чтение; синхронизация запускается заданием (jobs:execute)
+  { methods: ['GET'], pattern: re('/api/infrastructure'), permissions: ['infrastructure:read'] },
+
   listLookup('/api/partners', 'partner:export', PARTNER_FK_READS),
   ...crud('/api/partners', 'partner'),
   listLookup('/api/ar-employees', 'employee:export', EMPLOYEE_FK_READS),

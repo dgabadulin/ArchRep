@@ -42,6 +42,7 @@ const { createAiRouter } = require('./ai/aiRoutes');
 const { PUBLIC_DEFAULTS: AI_PUBLIC_CONFIG_DEFAULTS, aiPublicEnvOverrides } = require('./ai/aiConfig');
 const { bootstrapAuth } = require('./auth/bootstrapAuth');
 const { normalizeDomainName } = require('./domainFromUrl');
+const { netboxObjectWebUrl, parseSystemCodes } = require('./netboxClient');
 
 // Параметры ADR: только коды справочников (issue #31).
 // Значения — коды из ar_integration_flow_statuses (issue #91): FLOW_STATUS_1 «Планируется к реализации»,
@@ -185,6 +186,7 @@ const DISPLAY_NAME_PATHS = [
   [/^\/api\/togaf\/business-functions(?:\/\d+)?$/, 'business_function'],
   [/^\/api\/togaf\/entity-types(?:\/\d+)?$/, 'meta_entity_type'],
   [/^\/api\/togaf\/relation-types(?:\/\d+)?$/, 'meta_relation_type'],
+  [/^\/api\/infrastructure(?:\/\d+)?$/, 'infrastructure_object'],
 ];
 
 app.use((req, res, next) => {
@@ -309,7 +311,7 @@ const PUBLIC_CONFIG_DEFAULTS = {
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
   GRAPH_EDGE_FONTSZ: 10,
   GRAPH_VIEWBOX_MIN: 500,
-  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'certificate', 'subsystem', 'technology', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
+  GRAPH_ENTITY_ORDER: ['system', 'web_resource', 'domain', 'certificate', 'subsystem', 'technology', 'infrastructure_object', 'organization_unit', 'actor', 'employee', 'business_service', 'business_function', 'principle'],
   GRAPH_ENTITY_ICONS: null,
   /** Значение из ar_settings_parameters; если строки нет — подставляется ниже (как у GRAPH_ENTITY_ICONS). */
   GRAPH_COLLAPSED_SYSTEM_ICON: null,
@@ -360,6 +362,7 @@ app.get('/api/config', (req, res) => {
       web_resource: { label: 'Веб-ресурс', icon: 'Globe', listLabel: 'Веб-ресурсы' },
       domain: { label: 'Домен', icon: 'AppWindow', listLabel: 'Домены' },
       certificate: { label: 'Сертификат', icon: 'Shield', listLabel: 'Сертификаты' },
+      infrastructure_object: { label: 'Сервер инфраструктуры', icon: 'Server', listLabel: 'Инфраструктура' },
     };
   }
   if (out.GRAPH_COLLAPSED_SYSTEM_ICON == null || String(out.GRAPH_COLLAPSED_SYSTEM_ICON).trim() === '') {
@@ -3104,6 +3107,144 @@ app.put('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
 });
 app.delete('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.web_resource_stage_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- Инфраструктура (Netbox, read-only) ---
+function infrastructureTagPrefix() {
+  return String(getParam('NETBOX_TAG_PREFIX', 'IS:') || 'IS:').trim();
+}
+
+/** Строка каталога для UI: без тяжёлых полей, с кодами тегов и ссылкой на Netbox. */
+function decorateInfrastructureRow(row) {
+  if (!row) return row;
+  const { tag_names: tagNames, ...rest } = row;
+  const baseUrl = String(getParam('NETBOX_URL', '') || process.env.NETBOX_URL || '').trim();
+  return {
+    ...rest,
+    tag_codes: parseSystemCodes(tagNames, infrastructureTagPrefix()),
+    netbox_url: netboxObjectWebUrl(row, baseUrl),
+  };
+}
+
+app.get('/api/infrastructure', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const q = search ? queries.infrastructure_objects_select_search : queries.infrastructure_objects_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    res.json(r.rows.map(decorateInfrastructureRow));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/infrastructure/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.infrastructure_objects_get, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(decorateInfrastructureRow(r.rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Справочник типов объектов инфраструктуры (вкладка «Справочники»)
+app.get('/api/togaf/refs/infrastructure-object-types', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const q = search
+      ? queries.infrastructure_object_types_select_search
+      : queries.infrastructure_object_types_select;
+    const r = await pool.query(q, search ? ['%' + search + '%'] : []);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/togaf/refs/infrastructure-object-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.infrastructure_object_types_get, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/togaf/refs/infrastructure-object-types', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!String(code || '').trim() || !String(name || '').trim()) {
+      return res.status(400).json({ error: 'code and name required' });
+    }
+    const r = await pool.query(queries.infrastructure_object_types_insert, [
+      String(code).trim(),
+      String(name).trim(),
+      description || '',
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Тип с таким кодом уже существует' });
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create' });
+  }
+});
+
+// Коды системных типов — контракт с синхронизацией Netbox (kind → endpoint).
+const INFRASTRUCTURE_RESERVED_TYPE_CODES = new Set(['virtual_server', 'physical_server']);
+
+app.put('/api/togaf/refs/infrastructure-object-types/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!String(code || '').trim() || !String(name || '').trim()) {
+      return res.status(400).json({ error: 'code and name required' });
+    }
+    const current = await pool.query(queries.infrastructure_object_types_get, [req.params.id]);
+    if (current.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const nextCode = String(code).trim();
+    if (
+      INFRASTRUCTURE_RESERVED_TYPE_CODES.has(current.rows[0].code) &&
+      nextCode !== current.rows[0].code
+    ) {
+      return res.status(400).json({ error: 'Код системного типа менять нельзя' });
+    }
+    const r = await pool.query(queries.infrastructure_object_types_update, [
+      nextCode,
+      String(name).trim(),
+      description || '',
+      req.params.id,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Тип с таким кодом уже существует' });
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/togaf/refs/infrastructure-object-types/:id', async (req, res) => {
+  try {
+    const current = await pool.query(queries.infrastructure_object_types_get, [req.params.id]);
+    if (current.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    if (INFRASTRUCTURE_RESERVED_TYPE_CODES.has(current.rows[0].code)) {
+      return res.status(409).json({ error: 'Системный тип удалить нельзя' });
+    }
+    const r = await pool.query(queries.infrastructure_object_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Тип используется в каталоге инфраструктуры' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // --- Settings parameters (issue #27) ---

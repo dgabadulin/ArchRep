@@ -543,6 +543,28 @@
         </table>
         <p v-if="metamodelRelationTypes.length === 0" class="empty">Нет записей</p>
       </template>
+      <!-- Типы объектов инфраструктуры -->
+      <template v-else-if="activeTab === 'infrastructureObjectTypes'">
+        <div class="table-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openInfrastructureObjectTypeForm()">Добавить</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in infrastructureObjectTypes" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td><code>{{ r.code }}</code></td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openInfrastructureObjectTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteInfrastructureObjectType(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="infrastructureObjectTypes.length === 0" class="empty">Нет записей</p>
+      </template>
     </div>
 
     <!-- Modals: simple prompt for add/edit -->
@@ -854,6 +876,20 @@
         </div>
       </div>
     </div>
+    <div v-if="infrastructureObjectTypeForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ infrastructureObjectTypeForm.id ? 'Изменить тип объекта инфраструктуры' : 'Новый тип объекта инфраструктуры' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
+        <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="infrastructureObjectTypeForm.code" placeholder="напр. virtual_server" :disabled="!!infrastructureObjectTypeForm.id && isReservedInfrastructureTypeCode(infrastructureObjectTypeForm.code)" /></div>
+        <div class="form-row"><label>Наименование <span class="req">*</span></label><input v-model="infrastructureObjectTypeForm.name" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="infrastructureObjectTypeForm.description" /></div>
+        </fieldset>
+        <div class="modal-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveInfrastructureObjectType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="infrastructureObjectTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="relationTypeForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ relationTypeForm.id ? 'Изменить тип связи' : 'Новый тип связи метамодели' }}</h3>
@@ -937,6 +973,7 @@ const tabs = [
   { id: 'webResourceStageTypes', label: 'Типы стенда веб-ресурсов' },
   { id: 'domainStatuses', label: 'Статусы доменов' },
   { id: 'businessServiceStatuses', label: 'Статусы бизнес-сервисов' },
+  { id: 'infrastructureObjectTypes', label: 'Типы объектов инфраструктуры' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
 ]
@@ -990,6 +1027,8 @@ const impactLevelTypeForm = ref(null)
 const gapStateForm = ref(null)
 const metamodelEntityTypes = ref([])
 const metamodelRelationTypes = ref([])
+const infrastructureObjectTypes = ref([])
+const infrastructureObjectTypeForm = ref(null)
 
 async function loadTab() {
   loading.value = true
@@ -1017,6 +1056,7 @@ async function loadTab() {
     else if (activeTab.value === 'webResourceStageTypes') webResourceStageTypes.value = await api.getWebResourceStageTypes()
     else if (activeTab.value === 'domainStatuses') domainStatuses.value = await api.getDomainStatuses()
     else if (activeTab.value === 'businessServiceStatuses') businessServiceStatuses.value = await togafApi.refs.businessServiceStatuses()
+    else if (activeTab.value === 'infrastructureObjectTypes') infrastructureObjectTypes.value = await api.getInfrastructureObjectTypes(q)
     else if (activeTab.value === 'metamodelEntityTypes') metamodelEntityTypes.value = await togafApi.entityTypes()
     else if (activeTab.value === 'metamodelRelationTypes') {
       const [types, entityTypes] = await Promise.all([togafApi.relationTypes(), togafApi.entityTypes()])
@@ -1045,7 +1085,7 @@ async function exportExcel() {
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
     else if (activeTab.value === 'integrationFlowStatuses') blob = await api.getIntegrationFlowStatuses(q)
-    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'domainStatuses', 'businessServiceStatuses', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
+    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'domainStatuses', 'businessServiceStatuses', 'infrastructureObjectTypes', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
     if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
   } finally {
     excelLoading.value = false
@@ -1180,6 +1220,38 @@ async function deleteDomainStatus(id) {
   } catch (e) { alert(e.message || 'Ошибка') }
 }
 function openBusinessServiceStatusForm(r) { businessServiceStatusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
+function isReservedInfrastructureTypeCode(code) {
+  return ['virtual_server', 'physical_server'].includes(String(code || '').trim())
+}
+function openInfrastructureObjectTypeForm(r) {
+  infrastructureObjectTypeForm.value = r
+    ? { id: r.id, code: r.code, name: r.name, description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
+async function saveInfrastructureObjectType() {
+  if (!infrastructureObjectTypeForm.value?.code?.trim() || !infrastructureObjectTypeForm.value?.name?.trim()) return
+  try {
+    const payload = {
+      code: infrastructureObjectTypeForm.value.code.trim(),
+      name: infrastructureObjectTypeForm.value.name.trim(),
+      description: infrastructureObjectTypeForm.value.description,
+    }
+    if (infrastructureObjectTypeForm.value.id) {
+      await api.updateInfrastructureObjectType(infrastructureObjectTypeForm.value.id, payload)
+    } else {
+      await api.createInfrastructureObjectType(payload)
+    }
+    infrastructureObjectTypeForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
+async function deleteInfrastructureObjectType(id) {
+  if (!confirm('Удалить тип объекта инфраструктуры?')) return
+  try {
+    await api.deleteInfrastructureObjectType(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
 function openEntityTypeForm(r) {
   entityTypeForm.value = r
     ? { id: r.id, code: r.code, name: r.name, table_name: r.table_name ?? '', disp_param_name: r.disp_param_name ?? '', description: r.description ?? '', import_allowed: !!r.import_allowed }

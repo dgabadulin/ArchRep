@@ -32,6 +32,10 @@ const entityFetchers = {
   employee: (id) => api.getEmployee(String(id)),
   partner: (id) => api.getPartner(String(id)),
   system_function: (id) => api.getSystemFunction(String(id)),
+  infrastructure_object: async (id) => {
+    const d = await api.getInfrastructureItem(String(id))
+    return { ...d, name: d.display_name || d.name || '—' }
+  },
   adr_principle: async (id) => {
     const d = await api.getDecisionPrinciple(String(id))
     return { ...d, name: d.name || d.code || '—' }
@@ -59,6 +63,7 @@ const listFetchers = {
   employee: (params) => api.getEmployees(params),
   partner: (params) => api.getPartners(params),
   system_function: (params) => api.getSystemFunctionsGlobal(params),
+  infrastructure_object: (params) => api.getInfrastructure(params),
   adr_principle: (params) => api.getDecisionsPrinciple(params),
   applied: (params) => api.getDecisionsApplied(params),
   integration_flow: (params) => api.getIntegrationFlows(params),

@@ -68,6 +68,7 @@ const routes = [
       { path: 'technologies/new', name: 'technology-new', component: () => import('../views/TechnologyForm.vue'), meta: { title: 'Новая технология', requiredPermissions: ['technology:write'] } },
       { path: 'technologies/:id/edit', name: 'technology-edit', component: () => import('../views/TechnologyForm.vue'), meta: { title: 'Редактирование технологии', requiredPermissions: ['technology:read'] } },
       { path: 'tech-radar', name: 'tech-radar', component: () => import('../views/TechRadarView.vue'), meta: { title: 'Тех.радар', requiredPermissions: ['tech_radar:read'] } },
+      { path: 'infrastructure', name: 'infrastructure', component: () => import('../views/InfrastructureList.vue'), meta: { title: 'Каталог инфраструктуры', requiredPermissions: ['infrastructure:read'] } },
       { path: 'analytics', name: 'analytics', component: () => import('../views/AnalyticsView.vue'), meta: { title: 'Анализ зависимостей', requiredPermissions: ['analytics:read'] } },
       { path: 'dashboards', name: 'dashboards', component: () => import('../views/DashboardsIndex.vue'), meta: { title: 'Дашборды', requiredPermissions: ['dashboard:read'] } },
       { path: 'dashboards/catalog', name: 'dashboards-catalog', component: () => import('../views/DashboardsCatalog.vue'), meta: { title: 'Справочник дашбордов', requiredPermissions: ['dashboard:read'] } },

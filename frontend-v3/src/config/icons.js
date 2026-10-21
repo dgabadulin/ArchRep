@@ -33,6 +33,7 @@ export const menuIconNames = {
   book: 'BookOpen',
   target: 'Target',
   shield: 'Shield',
+  server: 'Server',
 }
 
 export function getMenuIconName(name) {

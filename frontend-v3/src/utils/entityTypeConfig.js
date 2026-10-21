@@ -87,6 +87,11 @@ export const entityTypeConfig = {
     icon: 'Layers',
     listLabel: 'Функции ИС',
   },
+  infrastructure_object: {
+    label: 'Сервер инфраструктуры',
+    icon: 'Server',
+    listLabel: 'Инфраструктура',
+  },
   adr_principle: {
     label: 'ADRP (принцип)',
     icon: 'BookOpen',

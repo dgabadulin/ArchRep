@@ -82,6 +82,13 @@ export const AI_ACTION_TARGETS = {
     viewRoute: { name: 'technology-edit' },
     prefill: true,
   },
+  infrastructure_object: {
+    label: 'Сервер инфраструктуры',
+    readPermission: 'infrastructure:read',
+    listRoute: { name: 'infrastructure' },
+    listPath: '/infrastructure',
+    prefill: false,
+  },
   integration_flow: {
     label: 'Интеграционный поток',
     readPermission: 'integration_flow:read',

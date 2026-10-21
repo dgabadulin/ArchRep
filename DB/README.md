@@ -291,3 +291,42 @@ SELECT archrep.metamodel_entity_search_text('system', 1);
 новый тип-конец требует записи там, ветки в этой функции и в `RELATION_END_META` (`backend/ai/tools.js`) —
 см. `docs/adding-new-entity-type.md`. Полное описание — `docs/metamodel-relations-display-names.md`.
 
+
+---
+
+## Каталог инфраструктуры из Netbox (issue #92)
+
+Read-only реестр серверов (ВМ и физических) + задание синхронизации `infrastructure_sync`.
+Полное описание — `docs/infrastructure-registry-netbox.md`.
+
+**Прод (идемпотентно):**
+
+```bash
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_20261021120000_infrastructure_registry.sql
+psql -h %PGHOST% -p %PGPORT% -U %PGUSER% -d %PGDATABASE% -f DB/scripts/migrate_20261021130000_infrastructure_relation_labels.sql
+```
+
+**Демо:** `npm run db:migrate` (миграции `20261021120000_infrastructure_registry`,
+`20261021130000_infrastructure_relation_labels`).
+
+Создаёт:
+
+- справочник `archrep.ar_infrastructure_object_types` (`virtual_server`, `physical_server`);
+- реестр `archrep.ar_infrastructure_objects` (комментарии к таблице и всем столбцам — в DDL);
+- тип сущности `infrastructure_object`, типы связей `system_infrastructure` / `subsystem_infrastructure`
+  (`managed = true`);
+- параметры `NETBOX_*` и `DISP_INFRA_TEMPLATE`;
+- право `infrastructure:read`;
+- задание `infrastructure_sync` (`enabled = false`, интервал 86400 с);
+- триггеры очистки связей при удалении сервера/ИС и при смене родителя ИС;
+- ветку `infrastructure_object` в `archrep.metamodel_entity_search_text`;
+- запись типа в `GRAPH_ENTITY_ORDER` / `GRAPH_ENTITY_ICONS`.
+
+`20261021130000_infrastructure_relation_labels` — корректирующая миграция: очищает ранее записанный
+`displayed_name` у связей инфраструктуры (если `20261021120000` уже накатывалась). Подпись ребра
+на графе и в реестре берётся из `ar_metamodel_relation_types.name` — «Размещена на». Порядок выката:
+сначала backend с исправлением, затем эта миграция; не запускайте старую версию задания между ними.
+
+Перед запуском задания задайте параметр `NETBOX_URL` и переменную окружения `NETBOX_TOKEN` (токен в БД
+не хранится), затем перезапустите API и включите задание в «Управлении заданиями».
+

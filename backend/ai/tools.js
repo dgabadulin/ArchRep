@@ -933,6 +933,34 @@ const ENTITY_TYPES = {
     // Экранного реестра нет (функции правятся внутри формы системы) — только поиск и карточка.
     prefillFields: [],
   },
+  /**
+   * Каталог инфраструктуры из Netbox (read-only): формы нет, предзаполнение не поддерживается.
+   * Связи «ИС → сервер» создаются заданием infrastructure_sync по тегам IS:<код>.
+   */
+  infrastructure_object: {
+    label: 'Сервер инфраструктуры',
+    plural: 'Каталог инфраструктуры',
+    readPermission: 'infrastructure:read',
+    select: 'infrastructure_objects_select',
+    search: 'infrastructure_objects_select_search',
+    get: 'infrastructure_objects_get',
+    labelOf: (r) => r.name || `#${r.id}`,
+    brief: (r) =>
+      pick(r, [
+        'id',
+        'name',
+        'type_name',
+        'system_names',
+        'status',
+        'site',
+        'primary_ip',
+        'vcpus',
+        'memory_gb',
+        'disk_gb',
+      ]),
+    listPath: '/infrastructure',
+    prefillFields: [],
+  },
 };
 
 const ENTITY_TYPE_CODES = Object.keys(ENTITY_TYPES);
@@ -1081,6 +1109,7 @@ const RELATION_END_META = {
   employee: { get: 'employees_get', readPermission: 'employee:read' },
   partner: { get: 'partners_get', readPermission: 'partner:read' },
   system_function: { get: 'system_functions_get_by_id', readPermission: 'system_function:read' },
+  infrastructure_object: { get: 'infrastructure_objects_get', readPermission: 'infrastructure:read' },
   organization_unit: { get: 'togaf_organization_units_get', readPermission: 'organization_unit:read' },
   business_service: { get: 'togaf_business_services_get', readPermission: 'business_service:read' },
   business_function: { get: 'togaf_business_functions_get', readPermission: 'business_function:read' },

@@ -42,6 +42,13 @@ export const menuItems = [
     ],
   },
   {
+    label: 'Инфраструктура',
+    icon: 'server',
+    children: [
+      { label: 'Каталог инфраструктуры', path: '/infrastructure', icon: 'server', requiredPermission: 'infrastructure:read' },
+    ],
+  },
+  {
     label: 'Аналитика',
     icon: 'chart',
     children: [
