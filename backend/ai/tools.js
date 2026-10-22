@@ -1370,6 +1370,41 @@ function toolDefinitions() {
     {
       type: 'function',
       function: {
+        name: 'rank_relations',
+        description:
+          'Рейтинг сущностей по количеству связей — топ «где больше всего» (сервер с наибольшим числом систем, ' +
+          'система с максимумом функций и т.п.). ОДИН вызов вместо перебора сущностей через get_relations. ' +
+          'groupBy — по какому концу связи считать (to — входящие, from — исходящие), entityType — тип считаемой ' +
+          'сущности, relationTypes — коды типов связей для фильтра (см. list_relation_types); возвращает count, ' +
+          'totalGroups и totalRelations.',
+        parameters: {
+          type: 'object',
+          properties: {
+            groupBy: {
+              type: 'string',
+              enum: ['to', 'from'],
+              description: 'to — входящие связи (по умолчанию), from — исходящие.',
+            },
+            entityType: {
+              type: 'string',
+              enum: relationEndEnum,
+              description: 'Код типа сущности, по которой строится рейтинг (например infrastructure_object).',
+            },
+            relationTypes: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Коды типов связей для фильтра (см. list_relation_types), например ' +
+                '[system_infrastructure, subsystem_infrastructure]. Без фильтра считаются все типы.',
+            },
+            limit: { type: 'integer', description: 'Сколько строк рейтинга вернуть (1–20, по умолчанию 10).' },
+          },
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
         name: 'list_relation_types',
         description:
           'Справочник типов связей метамодели: код, название, описание, допустимые типы концов. Используй, чтобы ' +
@@ -1752,6 +1787,73 @@ function createToolRunner({ pool, queries, permissions }) {
     };
   }
 
+  /**
+   * `rank_relations` — рейтинг сущностей по числу связей (docs/ai-architect.md §6.2).
+   *
+   * Закрывает вопрос «где больше всего»: без него модель перебирает сущности через `get_relations`
+   * (десятки вызовов) и упирается в лимит шагов, как это было на вопросе «сервер с наибольшим числом систем».
+   * Агрегат считается в SQL (`metamodel_relations_rank_to` / `_from`), подписи — теми же карточками реестров,
+   * что и у `get_relations` (`RELATION_END_META`), поэтому модель не видит данных, которых нет у пользователя.
+   */
+  async function runRankRelations(args) {
+    if (!can('metamodel_relation:read')) {
+      return { ok: false, error: 'Нет доступа к связям метамодели (metamodel_relation:read).' };
+    }
+    // `groupBy` только выбирает готовый запрос из белого списка (SQL из аргументов не собирается).
+    const side = String(args.groupBy == null ? 'to' : args.groupBy).trim().toLowerCase() === 'from' ? 'from' : 'to';
+    const limit = clampInt(args.limit, 1, 20, 10);
+    const entityType = String(args.entityType == null ? '' : args.entityType).trim() || null;
+    // Принимаем и массив `relationTypes`, и одиночный `relationType`: модели присылают оба варианта.
+    const rawTypes = Array.isArray(args.relationTypes)
+      ? args.relationTypes
+      : args.relationTypes != null
+        ? [args.relationTypes]
+        : Array.isArray(args.relationType)
+          ? args.relationType
+          : args.relationType != null
+            ? [args.relationType]
+            : [];
+    const relationTypes = [...new Set(rawTypes.map((t) => String(t == null ? '' : t).trim()).filter(Boolean))];
+    const rows = await readRows(side === 'from' ? 'metamodel_relations_rank_from' : 'metamodel_relations_rank_to', [
+      entityType,
+      relationTypes.length ? relationTypes : null,
+      limit,
+    ]);
+    const items = [];
+    // SQL уже ограничивает выборку (`LIMIT $3`); slice — страховка контракта «не больше limit строк»,
+    // чтобы ответ не зависел от того, применил ли драйвер/заглушка LIMIT.
+    for (const row of rows.slice(0, limit)) {
+      const id = Number.parseInt(row.entity_id, 10);
+      items.push({
+        entityType: row.entity_type,
+        id: Number.isFinite(id) ? id : row.entity_id,
+        label: await resolveEntityLabel(row.entity_type, id),
+        count: Number(row.cnt) || 0,
+      });
+    }
+    const totalGroups = rows.length ? Number(rows[0].total_groups) || 0 : 0;
+    const totalRelations = rows.length ? Number(rows[0].total_relations) || 0 : 0;
+    return {
+      ok: true,
+      result: {
+        groupBy: side,
+        ...(entityType ? { entityType } : {}),
+        ...(relationTypes.length ? { relationTypes } : {}),
+        totalGroups,
+        totalRelations,
+        shown: items.length,
+        items,
+        ...(totalGroups > items.length ? { truncated: true } : {}),
+        hint:
+          'count — сколько связей у сущности, рейтинг отсортирован по убыванию; label = null — нет права чтения ' +
+          'реестра этого типа (id остаётся).' +
+          (totalRelations
+            ? ''
+            : ' Связей не найдено: проверьте коды типов связей (list_relation_types) и типы сущностей (list_entity_types).'),
+      },
+    };
+  }
+
   /** `list_relation_types` — справочник типов связей: коды для фильтра `relationType`. */
   async function runListRelationTypes(args) {
     if (!can('metamodel_catalog:read')) {
@@ -1883,6 +1985,8 @@ function createToolRunner({ pool, queries, permissions }) {
           return await runGetRelations(a);
         case 'search_relations':
           return await runSearchRelations(a);
+        case 'rank_relations':
+          return await runRankRelations(a);
         case 'list_relation_types':
           return await runListRelationTypes(a);
         case 'list_entity_types':

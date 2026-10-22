@@ -194,6 +194,7 @@ app.use('/api/ai', createAiRouter(pool, queries));
 | `open_view` | `entityType`, `search?`, `focusEntityType?`, `focusIds?` | `<type>:read` (реестр) или право экрана | формирует UI-действие «открыть реестр» с фильтром `?search=`, экран `analytics`/`dashboards`/`tech_radar`, либо `analytics` с фокусом графа (`?entity=&ids=`, §7) |
 | `get_relations` | `entityType`, `id`, `direction?` (`from`/`to`/`both`), `relationType?`, `limit?` | `metamodel_relation:read` | `metamodel_relations_by_from` / `metamodel_relations_by_to`; подписи концов — карточки реестров (`RELATION_END_META`) |
 | `search_relations` | `query`, `limit?` | `metamodel_relation:read` | `metamodel_relations_select_search` |
+| `rank_relations` | `groupBy` (`from`/`to`), `entityType?`, `relationTypes?`, `limit?` | `metamodel_relation:read` | `metamodel_relations_rank_to` / `metamodel_relations_rank_from`: `GROUP BY` конца связи + `ORDER BY count DESC`, плюс `totalGroups`/`totalRelations`; подписи концов — `RELATION_END_META` |
 | `list_relation_types` | `search?`, `limit?` | `metamodel_catalog:read` | `metamodel_relation_types_select` |
 | `list_entity_types` | `limit?` | `metamodel_catalog:read` | `metamodel_entity_types_select` |
 | `list_adr_increment_statuses` | `search?`, `limit?` | `adr_applied:read` | `adr_increment_types_select`, `adr_increment_system_statuses_select`, `adr_increment_system_function_statuses_select`, `adr_increment_relation_statuses_select` |
@@ -205,6 +206,14 @@ app.use('/api/ai', createAiRouter(pool, queries));
 зависимостей» фронт строит из связей метамодели (`GET /api/togaf/relations`, `frontend-v3/src/api/graphApi.js`),
 поэтому источник ответов ИИ про зависимости — `get_relations`. Полный перечень реестров, доступных агенту (права,
 пути, формы, предзаполнение), — §6.5.
+
+**Рейтинги («где больше всего»).** Вопросы вида «сервер с наибольшим числом систем», «система с максимумом
+функций» решаются инструментом `rank_relations`: агрегат считается в SQL (`GROUP BY` по концу связи,
+`ORDER BY count DESC`), поэтому один вызов заменяет перебор сущностей через `get_relations`. Ответ содержит
+`count` по каждой сущности, `totalGroups` (сколько сущностей в рейтинге) и `totalRelations` (сколько связей
+всего), а подписи берутся из `RELATION_END_META` с проверкой права чтения реестра. Фильтр `relationTypes`
+принимает массив: например, для серверов нужно передавать `system_infrastructure` **и** `subsystem_infrastructure`,
+иначе модули в подсчёт не попадут.
 
 **Контур инкремента заключения.** Карточка ADR (`adrs_applied_get`) показывает только шапку, поэтому контур
 отдаётся отдельно: `get_entity` (`entityType=adr_applied`) дополняет карточку полем `incrementContour`
@@ -254,6 +263,12 @@ app.use('/api/ai', createAiRouter(pool, queries));
   расширяет и данных модели не отдаёт.
 - Подменять анализ зависимостей реестром интеграционных потоков: `ar_integration_flows` — проекция связей в
   `ar_metamodel_relations` (issue #56), то есть подмножество, а не полный набор зависимостей.
+- Отвечать на «где больше всего» перебором сущностей: для рейтингов (сервер с максимумом систем, система с
+  максимумом функций) есть `rank_relations` — один агрегат вместо десятков `get_relations`, которые упираются
+  в лимит шагов (`AI_MAX_ITERATIONS`). Фильтр по нескольким типам связи передаётся массивом `relationTypes`.
+- Предлагать экран как источник данных («в Дашбордах обычно есть разрезы»): экраны данных агенту **не отдают**
+  (`SCREEN_TARGETS` — только переход), источник ответа — инструменты; если нужного разреза инструментами нет —
+  сказать прямо, чего не хватает.
 - Утверждать, что экрана или реестра не существует: перечень реестров и экранов задаётся промптом
   (`ENTITY_TYPES` + `SCREEN_TARGETS`), и отсутствие данных — это отсутствие связей в модели.
 
@@ -546,6 +561,7 @@ Dual-миграция: `DB/scripts/migrate_20261001120000_ai_architect.sql` (pro
 | LLM недоступен/таймаут | SSE `event: error` с понятным текстом; история сохраняется |
 | Модель не поддерживает `tools` | JSON-fallback (§6.1) |
 | Превышен `AI_MAX_ITERATIONS` | Ответ с пометкой «достигнут лимит шагов»; действия не выполняются |
+| Нужен разрез, которого нет инструментом | Ответ по ближайшему инструменту + явно «чего не хватает»; рейтинги («где больше всего») — `rank_relations`, а не перебор сущностей через `get_relations` |
 
 ---
 

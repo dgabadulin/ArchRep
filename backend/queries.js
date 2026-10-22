@@ -611,6 +611,45 @@ module.exports = {
      AND rrt.from_entity_type_id = rfe.id
      AND rrt.to_entity_type_id = rte.id
     WHERE r.id = $1`,
+  /**
+   * Рейтинг сущностей по числу связей (инструмент `rank_relations`): топ «где больше всего».
+   *
+   * `$1` — тип сущности, по которой считаем (NULL — любой), `$2` — коды типов связей (NULL — любые),
+   * `$3` — LIMIT. Группировка по `(тип, id)`, потому что id разных таблиц пересекаются.
+   * `total_groups`/`total_relations` считаются по всему результату (до LIMIT) — модель получает и топ,
+   * и общий объём, не досчитывая его перебором.
+   */
+  metamodel_relations_rank_to: `
+    WITH ranked AS (
+      SELECT r.to_entity_type AS entity_type, r.to_entity_id AS entity_id, COUNT(*)::int AS cnt
+      FROM archrep.ar_metamodel_relations r
+      WHERE ($1::text IS NULL OR r.to_entity_type = $1)
+        AND ($2::text[] IS NULL OR r.relation_type = ANY($2::text[]))
+      GROUP BY r.to_entity_type, r.to_entity_id
+    )
+    SELECT entity_type, entity_id, cnt,
+           (SELECT COUNT(*)::int FROM ranked) AS total_groups,
+           (SELECT COALESCE(SUM(cnt), 0)::int FROM ranked) AS total_relations
+    FROM ranked
+    ORDER BY cnt DESC, entity_id
+    LIMIT $3`,
+
+  /** То же для исходящих связей (`groupBy=from`). */
+  metamodel_relations_rank_from: `
+    WITH ranked AS (
+      SELECT r.from_entity_type AS entity_type, r.from_entity_id AS entity_id, COUNT(*)::int AS cnt
+      FROM archrep.ar_metamodel_relations r
+      WHERE ($1::text IS NULL OR r.from_entity_type = $1)
+        AND ($2::text[] IS NULL OR r.relation_type = ANY($2::text[]))
+      GROUP BY r.from_entity_type, r.from_entity_id
+    )
+    SELECT entity_type, entity_id, cnt,
+           (SELECT COUNT(*)::int FROM ranked) AS total_groups,
+           (SELECT COALESCE(SUM(cnt), 0)::int FROM ranked) AS total_relations
+    FROM ranked
+    ORDER BY cnt DESC, entity_id
+    LIMIT $3`,
+
   metamodel_relations_insert: `INSERT INTO archrep.ar_metamodel_relations (from_entity_type, from_entity_id, to_entity_type, to_entity_id, relation_type, name, description, payload, displayed_name, reference_to_baserow) VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), NULLIF($7,''), $8::jsonb, NULLIF($9,''), $10) RETURNING *`,
   metamodel_relations_update: `UPDATE archrep.ar_metamodel_relations SET from_entity_type=$1, from_entity_id=$2, to_entity_type=$3, to_entity_id=$4, relation_type=$5, name=NULLIF($6,''), description=NULLIF($7,''), payload=$8::jsonb, displayed_name=NULLIF($9,''), reference_to_baserow=$10, updated_at=current_timestamp WHERE id=$11 RETURNING *`,
   metamodel_relations_delete: `DELETE FROM archrep.ar_metamodel_relations WHERE id = $1`,

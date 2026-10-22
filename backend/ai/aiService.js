@@ -49,6 +49,19 @@ function summarizeToolResult(name, res) {
     }
     case 'search_relations':
       return `Поиск связей «${r.query}»: всего ${r.total == null ? 0 : r.total}, показано ${(r.items || []).length}`;
+    case 'rank_relations': {
+      // Верхушка рейтинга — сразу в сводке: иначе модель повторяет те же вызовы, чтобы «увидеть» топ.
+      const types = (r.relationTypes || []).join(', ');
+      const top = (r.items || [])
+        .slice(0, 3)
+        .map((i) => `${i.label || `${i.entityType} #${i.id}`} — ${i.count}`)
+        .join('; ');
+      const scope = `${r.entityType ? ` по «${r.entityType}»` : ''}${types ? ` (${types})` : ''}`;
+      return (
+        `Рейтинг связей${scope}: сущностей ${r.totalGroups == null ? 0 : r.totalGroups}, ` +
+        `связей ${r.totalRelations == null ? 0 : r.totalRelations}${top ? ` — ${top}` : ''}`
+      );
+    }
     case 'list_relation_types':
       return `Типы связей метамодели: всего ${r.total == null ? 0 : r.total}, показано ${(r.items || []).length}`;
     case 'list_entity_types':
