@@ -72,7 +72,7 @@ export function compareSortValues(a, b, sortType = 'text') {
     const nb = Number(b)
     if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
   }
-  return String(a).localeCompare(String(b), 'ru', { numeric: true })
+  return String(a).localeCompare(String(b), undefined, { numeric: true })
 }
 
 /**
@@ -103,7 +103,9 @@ export function sortByColumn(rows, { key, order = 'asc', sortType = 'text', getV
       const bEmpty = isSortValueEmpty(vb)
       if (aEmpty || bEmpty) {
         if (aEmpty && bEmpty) return x.index - y.index
-        return aEmpty ? 1 : -1
+        // Пустые значения считаем «больше» любого непустого:
+        // при asc они в конце, при desc — в начале (критерий приёмки issue #75).
+        return (aEmpty ? 1 : -1) * dir
       }
       const cmp = compareSortValues(va, vb, sortType)
       if (cmp !== 0) return cmp * dir
