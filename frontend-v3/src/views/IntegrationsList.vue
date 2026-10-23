@@ -114,7 +114,7 @@ const columns = applyRegistryFilters([
   { key: 'transferred_data', label: 'Передаваемые данные', defaultVisible: true },
   { key: 'transfer_method', label: 'Способ передачи', defaultVisible: true },
   { key: 'status_name', label: 'Статус потока', defaultVisible: true },
-  { key: 'created_at', label: 'Создано', defaultVisible: false },
+  { key: 'created_at', label: 'Создано', defaultVisible: false, sortType: 'datetime' },
   { key: 'actions', label: '', defaultVisible: true },
 ])
 

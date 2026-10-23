@@ -108,7 +108,7 @@ const columns = applyRegistryFilters([
   { key: 'stage_type_name', label: 'Тип стенда', defaultVisible: true },
   { key: 'system_display_name', label: 'Информационная система или модуль', defaultVisible: true },
   { key: 'publication_request_number', label: 'Номер заявки на публикацию', defaultVisible: true },
-  { key: 'publication_date', label: 'Дата публикации', defaultVisible: true },
+  { key: 'publication_date', label: 'Дата публикации', defaultVisible: true, sortType: 'date' },
   { key: 'status_name', label: 'Статус', defaultVisible: true },
   { key: 'actions', label: '', defaultVisible: true },
 ])

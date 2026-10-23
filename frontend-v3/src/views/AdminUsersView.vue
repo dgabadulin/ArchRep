@@ -132,6 +132,7 @@ import { authStore } from '../auth/authStore'
 import { usePermissions } from '../composables/usePermissions'
 import { downloadBlob } from '../utils/downloadBlob'
 import { getVisibleColumns, setVisibleColumns, getSortPref, setSortPref } from '../utils/tableColumns'
+import { sortByColumn } from '../utils/tableSort'
 
 const { canWrite, canDelete, canExport } = usePermissions('users')
 const canAssign = computed(() => authStore.hasPermission('roles:assign'))
@@ -179,19 +180,16 @@ const filtered = computed(() => {
   })
 })
 
-const sortedFiltered = computed(() => {
-  const list = [...filtered.value]
-  const key = sortKey.value
-  const order = sortOrder.value
-  list.sort((a, b) => {
-    const va = cellValue(a, key)
-    const vb = cellValue(b, key)
-    if (va === vb) return 0
-    const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
-    return order === 'asc' ? cmp : -cmp
-  })
-  return list
-})
+const USER_SORT_TYPES = { last_login_at: 'datetime' }
+
+const sortedFiltered = computed(() =>
+  sortByColumn(filtered.value, {
+    key: sortKey.value,
+    order: sortOrder.value,
+    sortType: USER_SORT_TYPES[sortKey.value] || 'text',
+    getValue: (row, key) => (USER_SORT_TYPES[key] ? row[key] : cellValue(row, key)),
+  }),
+)
 
 function colLabel(key) {
   return userColumns.find((c) => c.key === key)?.label || key

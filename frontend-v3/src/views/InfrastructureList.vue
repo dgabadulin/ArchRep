@@ -93,8 +93,8 @@ const columns = applyRegistryFilters([
   { key: 'vcpus', label: 'vCPU', defaultVisible: true },
   { key: 'memory_gb', label: 'RAM, ГБ', defaultVisible: true },
   { key: 'disk_gb', label: 'Диск, ГБ', defaultVisible: true },
-  { key: 'netbox_updated_at', label: 'Изменён в Netbox', defaultVisible: false },
-  { key: 'synced_at', label: 'Синхронизирован', defaultVisible: true },
+  { key: 'netbox_updated_at', label: 'Изменён в Netbox', defaultVisible: false, sortType: 'datetime' },
+  { key: 'synced_at', label: 'Синхронизирован', defaultVisible: true, sortType: 'datetime' },
 ])
 
 const list = ref([])
