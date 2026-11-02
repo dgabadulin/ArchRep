@@ -2,12 +2,9 @@
   <div class="login-page">
     <form class="card login-card" @submit.prevent="submit">
       <div class="login-brand">
-        <img src="/logo.png" alt="" class="logo" />
-        <div>
-          <div class="brand-name">ИСАР</div>
-          <h1>Вход</h1>
-        </div>
+        <img src="/logo.svg" alt="ИСАР" class="logo" />
       </div>
+      <h1>Вход</h1>
       <p class="lead">
         {{
           keycloakEnabled
@@ -149,22 +146,13 @@ async function submit() {
 .login-brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
 }
 .logo {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  border-radius: 50%;
-  border: 2px solid var(--ar-border);
-  background: var(--ar-table-head-bg);
-  padding: 2px;
-}
-.brand-name {
-  font-size: 0.8rem;
-  color: var(--ar-muted);
-  font-weight: 600;
+  display: block;
+  height: 56px;
+  width: auto;
+  max-width: 100%;
 }
 h1 {
   margin: 0;

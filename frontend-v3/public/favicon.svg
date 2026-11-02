@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31.14 31.14" role="img" aria-label="ИСАР">
+  <title>ИСАР</title>
+  <g transform="translate(0 0.84)"><line stroke-linecap="round" fill="none" stroke="#00ABA7" stroke-width="1.54" x1="4.61" y1="24.71" x2="26.39" y2="24.71"/> <line stroke-linecap="round" fill="none" stroke="#00ABA7" stroke-width="1.54" x1="26.39" y1="24.71" x2="4.61" y2="3.98"/> <line stroke-linecap="round" fill="none" stroke="#00ABA7" stroke-width="1.54" x1="26.39" y1="24.71" x2="26.39" y2="3.98"/> <circle fill="#00ABA7" cx="3.35" cy="24.71" r="3.35"/> <circle fill="#00ABA7" cx="3.35" cy="3.35" r="3.35"/> <circle fill="#00ABA7" cx="26.39" cy="3.35" r="3.35"/> <circle fill="#00ABA7" cx="26.39" cy="24.71" r="4.75"/></g>
+</svg>

@@ -3,7 +3,7 @@
     <aside v-if="!minimalLayout" class="sidebar">
       <div class="sidebar-header">
         <router-link to="/" class="logo" title="ИСАР">
-          <img src="/logo.png" alt="ИСАР" class="logo-img" />
+          <img src="/logo.svg" alt="ИСАР" class="logo-img" />
         </router-link>
       </div>
       <nav class="sidebar-nav">
@@ -176,30 +176,28 @@ function toggleGroup(label) {
 }
 .sidebar-header {
   flex-shrink: 0;
-  padding: 0.85rem 1.1rem;
+  padding: 0.5rem 1.1rem;
   border-bottom: 1px solid var(--ar-border);
   display: flex;
+  align-items: center;
   justify-content: center;
 }
 .logo {
   display: flex;
   align-items: center;
-  justify-content: center;
   text-decoration: none;
 }
-.logo:hover .logo-img {
-  border-color: var(--ar-accent);
-}
 .logo-img {
-  width: 40px;
-  height: 40px;
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 100%;
   object-fit: contain;
   flex-shrink: 0;
-  border-radius: 50%;
-  border: 2px solid var(--ar-border);
-  background: #2a2d3e;
-  padding: 2px;
-  transition: border-color 0.12s;
+  transition: opacity 0.12s;
+}
+.logo:hover .logo-img {
+  opacity: 0.75;
 }
 .layout-body {
   flex: 1;
