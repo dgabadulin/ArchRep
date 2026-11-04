@@ -50,6 +50,18 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
 
 Повлиять на версию: пустой коммит с футером `Release-As: 2.0.0` (для «забыли `!`» или hotfix).
 
+### 3.1. Автоматизация по триггерам
+
+Фразы «коммит, пуш», «релиз», «задеплой» — явное разрешение выполнить действия без переспрашивания:
+
+| Триггер | Действия |
+|---|---|
+| «коммит», «пуш» | тесты + `check:routes` → `git add -A` → conventional commit → `git push` (при reject: fetch + backup-ветка + rebase) |
+| «релиз», «новая версия» | найти/смержить релизный PR Release Please → подтвердить тег; если PR нет — предложить версию и дождаться «ок» |
+| «задеплой», «на прод» | проверить тег и чистоту → `deploy_local.bat` → отчёт `[precheck]` / `/api/version` |
+
+Правило зафиксировано в `.clinerules` (Cline) и `.cursor/rules/git-release-automation.mdc` (Cursor).
+
 ## 4. Деплой: строгий гейт (deploy_local.bat == прод)
 
 `infra/prod/deploy.bat` перед упаковкой вызывает `infra/prod/deploy-precheck.ps1`:
