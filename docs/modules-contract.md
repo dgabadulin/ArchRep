@@ -221,11 +221,12 @@ URL/`postMessage`. Паттерн уже отработан на внешних 
 | `backend/modules/index.js` | `registerModules(app, ctx)`: поиск модулей, `enabled`, лицензия, монтаж маршрутов, реестр в памяти |
 | `backend/modules/manifest.js` | чтение/валидация `module.json`, legacy-адаптер, `resolveModulePackage()`, `discoverModuleCodes()` |
 | `backend/modules/semver.js` | проверка `requiresCore` без внешних зависимостей (`>=1.0`, `^1.2`, `~1.2`, `1.x`, `\|\|`) |
-| `backend/modules/license.js` | `verifyLicense(key, { instanceId })` — Ed25519, срок, `instance_id`, trial; кэш статуса |
-| `backend/modules/registry.js` | `archrep.isar_modules`: чтение/upsert, fail-open при отсутствии миграции |
+| `backend/modules/license.js` | `verifyLicense(key, { instanceId, installRef })` — ключ **v1**: `v`, `license_id`, `kid`, `product`, `installation` (uuid/derived/any + `strict`), `nbf`/`exp`/`grace_days`; публичные ключи по `kid`; кэш по `sha256(ключа)` |
+| `backend/modules/registry.js` | `archrep.isar_modules`: чтение/upsert (включая `license_id/kid/binding/checked_at`), fail-open при отсутствии миграции |
 | `backend/modules/adapters/legacy.js` | монтаж `handlers` + подмена `/manifest` статусом ядра, вызов `register({app, ctx, coreApi})` |
 | `backend/adrIncrements.js` | нормализация `increments[]` (`client_ref`/`from_ref` → имена ядра), merge шапки, валидация mxfile |
 | `DB/scripts/migrate_20261103120000_isar_modules.sql` + `DB/migrations/20261103120000_isar_modules.js` | таблица + параметры группы «Модули» |
+| `DB/scripts/migrate_20261105120000_isar_modules_license_meta.sql` + `DB/migrations/20261105120000_isar_modules_license_meta.js` | колонки метаданных лицензии (`license_id`, `license_kid`, `license_binding`, `license_checked_at`) |
 | `backend/auth/routePermissions.js`, `permissionsCatalog.js` | правила `/api/drawio-pro/*`, право `drawio_pro:manage` |
 | `scripts/check-route-permissions.js` | учитывает `endpoints[]`/`routes[]` и `permissions[]` манифестов |
 | `backend/modules/__tests__/*.test.js` | loader / license / manifest / payload / RBAC (`npm run test:modules`) |
@@ -253,9 +254,11 @@ loadParams(pool) → registerModules(app, { db, getParam, logger })
 | `ENABLED_MODULES` | аварийный override: перечисленные коды включаются, остальные выключаются |
 | `SYS_MODULE_<code>_ENABLED` | точечный env-override для одного модуля |
 | `SYS_MODULE_<code>_LICENSE` | ключ лицензии (**только env**, в БД/фронт не попадает) |
-| `SYS_MODULE_LICENSE_PUBLIC_KEY` | публичный ключ Ed25519 (PEM или base64 от PEM) |
+| `SYS_MODULE_LICENSE_PUBKEYS` | публичные ключи по `kid`: JSON `{"<kid>":"<base64 PEM>"}` (ротация) |
+| `SYS_MODULE_LICENSE_PUBLIC_KEY` | одиночный публичный ключ Ed25519 (PEM или base64 от PEM) — fallback для любого `kid` |
 | `SYS_MODULE_LICENSE_ALLOW_UNVERIFIED` | `true` — dev-режим без проверки подписи (не для prod) |
-| `SYS_INSTANCE_ID` | идентификатор инсталляции для привязки ключа (по умолчанию host + имя БД) |
+| `SYS_INSTANCE_ID` | идентификатор инсталляции: обязателен для `installation.mode:"uuid"` (fallback `<host>:<db>` — только для диагностики) |
+| `SYS_INSTALL_REF` | переопределение отпечатка инсталляции для `installation.mode:"derived"` |
 | `MODULES_DIR` | альтернативный каталог модулей (по умолчанию `<repo>/modules`) |
 
 **Проверка после старта:**
@@ -281,9 +284,20 @@ CREATE TABLE archrep.isar_modules (
   licensed boolean NOT NULL DEFAULT false,
   license_expires_at timestamptz,
   installed_at timestamptz NOT NULL DEFAULT now(),
-  settings_json jsonb
+  settings_json jsonb,
+  -- метаданные лицензии (v1 ключей, docs/module-license-key.md);
+  -- миграция DB/scripts/migrate_20261105120000_isar_modules_license_meta.sql
+  license_id text,                     -- идентификатор ключа (сверка с реестром лицензий)
+  license_kid text,                    -- kid ключа (выбор публичного ключа при ротации)
+  license_binding text,                -- any | uuid:match | uuid:mismatch | derived:match | … (:strict)
+  license_checked_at timestamptz       -- когда ядро последний раз проверяло ключ
 );
 ```
+
+Синхронизация: ядро пишет строку при каждом старте (`registry.syncModuleRecord()`), источник
+статуса — фактически загруженный модуль. **Ключ лицензии и публичный ключ в БД не пишутся** —
+в `isar_modules` попадают только `licensed`, `license_expires_at`, `license_id`, `license_kid`,
+`license_binding`, `license_checked_at` (см. §10).
 
 ## 6. Backend-контракт
 
@@ -399,12 +413,21 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 
 ## 10. Лицензирование
 
-- **Ключ не уходит во фронт.** Публично отдаётся только статус: `{ enabled, edition, expires_at }`.
+- **Ключ не уходит во фронт.** Публично отдаётся только статус: `{ enabled, licensed, edition, expires_at }`.
 - Ключ хранится **только в env** — `SYS_MODULE_<code>_LICENSE` (в БД не размещаем).
-- Формат: подписанный файл/JWT (Ed25519); привязка к инсталляции (`instance_id`), срок, лимит, trial.
+- Формат ключа — **v1**, единый источник правды: [`docs/module-license-key.md`](./module-license-key.md)
+  (контейнер `<base64url(payload)>.<base64url(Ed25519-подпись)>`; поля `v`, `license_id`, `kid`,
+  `product`, `edition`, `features`, `limits`, `installation{mode,uuid,ref,strict}`, `iat/nbf/exp`,
+  `grace_days`, `trial`).
+- Публичные ключи — в env ядра: `SYS_MODULE_LICENSE_PUBKEYS` (JSON `{"<kid>":"<base64 PEM>"}`),
+  fallback — одиночный `SYS_MODULE_LICENSE_PUBLIC_KEY`.
+- Привязка к инсталляции: `installation.mode` = `uuid` (сравнение с `SYS_INSTANCE_ID`) |
+  `derived` (отпечаток `<host>:<port>:<db>`, `strict` — обязательность совпадения) | `any` (без привязки).
 - Гейт: без лицензии — маршруты `403/402`, меню и точки расширения скрыты, права не выдаются.
 
-> Детали (генерация и хранение ключей, инструмент подписи, формат файла/ключа) — **отдельная спецификация**.
+> Инструмент выпуска/ротации ключей и реестр лицензий — на стороне модуля
+> (`isar-diagram-editor/tools/license`, см. `docs/license-issuance.md` в репозитории модуля).
+> Генерация и хранение **приватного** ключа — зона вендора, в ядро не входит.
 
 ## 11. Совместимость и версии
 
@@ -491,7 +514,7 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 | 3 | Способы доставки | сохраняются **оба**: build-time (§4.1) и контейнер (§4.2); выбор — по типу модуля. |
 | 4 | Паспорт модуля (манифест) | принимается **как в §3**. |
 | 5 | Обновление модуля | **без правок кода ядра**; build-time → пересборка образа ядра; контейнер → `docker pull` без пересборки (**принимаются оба варианта**). |
-| 6 | Лицензия | **офлайн** (подписанный ключ/файл), **без привязки** к инсталляции, **trial — да**; ключ — **только в env**; детали — отдельная спецификация. |
+| 6 | Лицензия | **офлайн** (подписанный ключ v1, Ed25519), **привязка к инсталляции — да**: `installation.mode` = `uuid` (по `SYS_INSTANCE_ID`) \| `derived` (отпечаток инсталляции) \| `any` (без привязки); **trial — да**; ключ — **только в env**; формат — [`docs/module-license-key.md`](./module-license-key.md). |
 | 7 | Способ загрузки фронта | **build-time** — целевой (см. §7.2). |
 | 8 | UI «родной» vs iframe | **зависит от типа модуля**: `external` → iframe/отдельный экран; `frontend`/`hybrid` → «родной» UI. |
 | 9 | Совместимость | ключевое поле — **`requiresCore`** (ядро центрально, модуль подстраивается); «откат» не нужен — модуль **отключается в параметрах**. |
@@ -508,17 +531,23 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 #### Ключи лицензий
 - **Решение:** хранить **только в env** — `SYS_MODULE_<code>_LICENSE` (в БД не размещаем).
 - **Решение (2026-11-02): проверка остаётся офлайн.** Онлайн-активация / лицензионный сервер
-  **не вводятся**. Подпись Ed25519 (публичный ключ в ядре), поля `instance_id`, `exp`, `edition`,
-  `trial`, `limit`; ключ читается при старте, в `/api/config` и `/api/<code>/manifest` уходит
-  только статус.
+  **не вводятся**. Подпись Ed25519 (публичные ключи — в env ядра по `kid`), ключ читается при
+  старте, в `/api/config` и `/api/<code>/manifest` уходит только статус.
+- **Формат ключа — ЗАКРЫТО (2026-11-04):** v1, единый источник правды
+  [`docs/module-license-key.md`](./module-license-key.md). Реализация ядра —
+  `backend/modules/license.js` (`verifyLicense()`), ключи выпускает инструмент модуля
+  (`isar-diagram-editor/tools/license`). Обратная совместимость со старым payload не поддерживается
+  (внедрений не было): `payload.instance_id` → `installation.uuid`, `payload.limit` → `limits`.
 - **Принятые ограничения офлайн-модели** (осознанно, см. `docs/modules-admin-guide.md` §4.1):
-  ключ вместе с `instance_id` можно скопировать на другой сервер — лицензия там заработает;
-  счётчика инсталляций нет; `exp` проверяется по часам сервера.
+  ключ вместе с `SYS_INSTANCE_ID` можно скопировать на другой сервер — лицензия там заработает;
+  счётчика инсталляций нет; `exp` проверяется по часам сервера; отзыв ключа не действует
+  автоматически (CRL — кандидат на v2).
   Компенсация — организационная: ключ выпускается под конкретный `instance_id`
   (генерируется `npm run modules:status -- --new-instance-id`), фиксируется в заявке/акте,
   копирование считается нарушением лицензии; на стендах — синхронизация времени (NTP).
-- **Отдельная спека (остаётся):** формат ключа, инструмент вендора для выпуска/ротации,
-  порядок перевыпуска при смене инсталляции.
+- **Отдельная спека (остаётся):** генерация/хранение **приватного** ключа вендора, порядок ротации
+  `kid` и перевыпуска при смене инсталляции (сейчас — на стороне модуля,
+  `docs/license-issuance.md` в репозитории модуля).
 
 ### 16.4. Версионирование — решено
 
@@ -569,8 +598,10 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 | 17 | Событие `saved` не уведомляет форму заключения | форма перечитывает данные при возврате фокуса (модуль открывается в новой вкладке) | ядро |
 | 18 | `/api/drawio-pro/*` не покрыт RBAC | правила `GET`/`POST` + право `drawio_pro:manage` в каталоге, `check:routes` учитывает манифесты | ядро |
 | 19 | «Включён, но не лицензирован» — неопределённое поведение UI | **решение:** поверхность и меню **скрыты**, API отвечает 402 с причиной, причина в `manifest.reason` и логе | ядро |
-| 20 | Формат лицензионного ключа не определён | контейнер `<base64url(payload)>.<base64url(signature)>` (Ed25519) как временный; `verifyLicense(key, { instanceId })` — стабильный интерфейс для будущей спеки | ядро (интерфейс), спека §16.3 |
+| 20 | Формат лицензионного ключа не определён | **закрыто:** ключ **v1** — `<base64url(payload)>.<base64url(Ed25519)>`, поля `v/license_id/kid/product/edition/features/limits/installation/iat/nbf/exp/grace_days/trial`; `verifyLicense(key, { instanceId, installRef })` — стабильный интерфейс (см. `docs/module-license-key.md`) | ядро |
 | 21 | Legacy-манифест не объявляет лицензию → платный модуль считался бы бесплатным | legacy-адаптер **fail-closed**: без явного `license` → `{ required: true, product: <code> }`; после перехода на `module.json` действует явное значение | ядро (адаптер), модуль (`module.json` с `license`) |
+| 22 | Ядро не понимало ключи v1, которые выпускает `tools/license` модуля (`v`/`kid`/`nbf`/`grace_days`/`installation`) | **переход на v1 (2026-11-04):** `backend/modules/license.js` реализует формат модуля 1:1 (включая `install_ref` = `sha256("<host>:<port>:<db>")[:22]`), выбор публичного ключа по `kid` (`SYS_MODULE_LICENSE_PUBKEYS` → `'*'` → одиночный `SYS_MODULE_LICENSE_PUBLIC_KEY`), `nbf`/`grace_days`, `installation.mode` + `strict`; обратная совместимость со старым payload не поддерживается (внедрений не было) | ядро |
+| 23 | В `isar_modules` не было метаданных лицензии | добавлены `license_id`, `license_kid`, `license_binding`, `license_checked_at` (миграция `DB/scripts/migrate_20261105120000_isar_modules_license_meta.sql`); сам ключ и публичный ключ в БД не пишутся | ядро |
 
 ### 16.7. Решения по открытым вопросам (часть E задачи)
 

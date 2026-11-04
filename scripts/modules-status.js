@@ -25,7 +25,16 @@ const {
 } = require('../backend/modules/manifest');
 const { normalizeEndpoints } = require('../backend/modules/adapters/legacy');
 const { satisfies } = require('../backend/modules/semver');
-const { getLicenseStatus, licenseEnvKey, defaultInstanceId } = require('../backend/modules/license');
+const {
+  getLicenseStatus,
+  licenseEnvKey,
+  defaultInstanceId,
+  resolveInstallRef,
+  installRefParams,
+  normalizePublicKeys,
+  parseToken,
+  VERSION: LICENSE_VERSION,
+} = require('../backend/modules/license');
 const { loadModuleRecords } = require('../backend/modules/registry');
 const { resolveEnabled, readCoreVersion, parseEnabledList } = require('../backend/modules/index');
 const { resolveRequiredPermissions } = require('../backend/auth/routePermissions');
@@ -86,11 +95,31 @@ async function main() {
   line('══════════════════════════════════════════════════════════════════');
   line(' Подключаемые модули ИСАР — диагностика');
   line(` Ядро: ${coreVersion} (${path.basename(ROOT)})`);
-  line(` instance_id: ${defaultInstanceId()}  ← требуется при выпуске лицензии`);
-  if (!env.SYS_INSTANCE_ID) {
-    line(' ⚠ SYS_INSTANCE_ID не задан — значение вычислено как <hostname>:<DB_NAME>.');
-    line('   На двух серверах с одинаковыми hostname и DB_NAME оно совпадёт, и один ключ');
-    line('   подойдёт обоим. Задайте уникальный: npm run modules:status -- --new-instance-id');
+  line(` instance_id: ${defaultInstanceId()}  ← требуется при выпуске лицензии (mode:"uuid")`);
+  const instanceExplicit = Boolean(env.SYS_INSTANCE_ID && String(env.SYS_INSTANCE_ID).trim());
+  const refParams = installRefParams(env);
+  const installRef = resolveInstallRef(env);
+  line(` install_ref: ${installRef}  ← отпечаток ${refParams.host}:${refParams.port}:${refParams.db}` +
+    `${env.SYS_INSTALL_REF ? ' (переопределён SYS_INSTALL_REF)' : ''}`);
+  if (!instanceExplicit) {
+    line(' ⚠ SYS_INSTANCE_ID не задан — для ключей с installation.mode="uuid" ядро откажет в лицензии.');
+    line('   На двух серверах с одинаковыми hostname и DB_NAME значение совпадёт, и один ключ подойдёт обоим.');
+    line('   Задайте уникальный: npm run modules:status -- --new-instance-id');
+    warning('license', 'SYS_INSTANCE_ID не задан — ключи с привязкой mode:"uuid" не будут приняты');
+  }
+  const keyring = normalizePublicKeys(env);
+  const keyringSize = Object.keys(keyring.keys).length;
+  line(` Ключи подписи: ${keyringSize ? `PUBKEYS (${keyringSize}: ${Object.keys(keyring.keys).join(', ')})` : 'PUBKEYS не заданы'}` +
+    `${keyring.single ? ' + SYS_MODULE_LICENSE_PUBLIC_KEY (fallback)' : ''}`);
+  for (const w of keyring.warnings) line(` ⚠ ${w}`);
+  if (!keyringSize && !keyring.single) {
+    warning('license', 'публичный ключ не задан (SYS_MODULE_LICENSE_PUBKEYS / SYS_MODULE_LICENSE_PUBLIC_KEY) — ' +
+      'лицензия не будет подтверждена');
+  }
+  const allowUnverified = String(env.SYS_MODULE_LICENSE_ALLOW_UNVERIFIED || '').toLowerCase() === 'true';
+  if (allowUnverified) {
+    line(' ⚠ SYS_MODULE_LICENSE_ALLOW_UNVERIFIED=true — подпись НЕ проверяется (только dev; на prod недопустимо)');
+    warning('license', 'включён режим ALLOW_UNVERIFIED — подпись ключа не проверяется (только dev)');
   }
   line('══════════════════════════════════════════════════════════════════');
 
@@ -172,10 +201,33 @@ async function main() {
     const enabledRes = resolveEnabled({ code, dbRow, getParam, env });
     line(` enabled: ${enabledRes.enabled} (источник: ${enabledRes.source})`);
 
-    const lic = getLicenseStatus({ code, manifest });
+    const lic = getLicenseStatus({ code, manifest, env });
     const expires = lic.expires_at ? `, до ${String(lic.expires_at).slice(0, 10)}` : '';
     line(` Лицензия: ${lic.licensed ? `активна (edition=${lic.edition || '—'}${expires})` : `НЕ активна — ${lic.reason}`}`);
     line(` Ключ: ${maskKeyPresence(code)}`);
+    if (lic.licensed) {
+      line(` license_id: ${lic.license_id || '—'}; kid: ${lic.kid || '—'}`);
+      const b = lic.binding || {};
+      const match = b.match === true ? 'match' : (b.match === false ? 'mismatch' : '—');
+      line(` binding: ${b.mode || '—'} (${match}${b.strict ? ', strict' : ''})`);
+    }
+    for (const w of lic.warnings || []) {
+      line(` ⚠ ${w}`);
+      warning(code, w);
+    }
+    const rawKey = env[licenseEnvKey(code)];
+    if (rawKey) {
+      try {
+        const keyPayload = parseToken(rawKey).payload;
+        if (Number(keyPayload.v) !== LICENSE_VERSION) {
+          line(` ⚠ ключ не в формате v${LICENSE_VERSION} (нет поля v) — перевыпустите: docs/module-license-key.md`);
+          warning(code, `ключ лицензии не в формате v${LICENSE_VERSION} — перевыпустите ключ`);
+        }
+      } catch (err) {
+        line(` ⚠ ключ не читается: ${err.message}`);
+        warning(code, `ключ лицензии не читается (${err.message})`);
+      }
+    }
     if (enabledRes.enabled && !lic.licensed) {
       problem(code, 'включён без активной лицензии (маршруты → 402, UI скрыт)');
     }
@@ -205,6 +257,13 @@ async function main() {
       const exp = dbRow.license_expires_at ? String(dbRow.license_expires_at).slice(0, 10) : '—';
       line(` isar_modules: enabled=${dbRow.enabled}, licensed=${dbRow.licensed}, ` +
         `version=${dbRow.version}, expires=${exp}`);
+      if (dbRow.license_id || dbRow.license_kid || dbRow.license_binding) {
+        const checked = dbRow.license_checked_at
+          ? String(dbRow.license_checked_at).replace('T', ' ').slice(0, 19)
+          : '—';
+        line(`   лицензия в реестре: license_id=${dbRow.license_id || '—'}, kid=${dbRow.license_kid || '—'}, ` +
+          `binding=${dbRow.license_binding || '—'}, проверено=${checked}`);
+      }
     } else if (db.ok) {
       line(' isar_modules: строки ещё нет (появится после первого старта API с этим модулем)');
     }

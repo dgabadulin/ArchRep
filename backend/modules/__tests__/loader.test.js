@@ -253,7 +253,24 @@ test('лицензия из env SYS_MODULE_demo_mod_LICENSE → licensed=true, �
   const { root } = makeRoot({
     moduleJson: { ...DEMO_MODULE_JSON, license: { required: true, product: 'demo-mod' } },
   });
-  const payload = Buffer.from(JSON.stringify({ product: 'demo-mod', instance_id: '*' }), 'utf8').toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    v: 1,
+    license_id: 'LIC-2026-000042',
+    kid: 'demo-kid',
+    product: 'demo-mod',
+    edition: 'standard',
+    installation: { mode: 'any' },
+    nbf: '2020-01-01T00:00:00.000Z',
+    exp: '2099-01-01T00:00:00.000Z',
+    grace_days: 0,
+    trial: false,
+  }), 'utf8').toString('base64url');
+  const licenseEnv = {
+    ENABLED_MODULES: 'demo-mod',
+    SYS_MODULE_demo_mod_LICENSE: `${payload}.x`,
+    // подпись не проверяется: публичный ключ в тесте не нужен (dev-режим)
+    SYS_MODULE_LICENSE_ALLOW_UNVERIFIED: 'true',
+  };
   const prevKey = process.env.SYS_MODULE_demo_mod_LICENSE;
   const prevAllow = process.env.SYS_MODULE_LICENSE_ALLOW_UNVERIFIED;
   process.env.SYS_MODULE_demo_mod_LICENSE = `${payload}.x`;
@@ -264,7 +281,7 @@ test('лицензия из env SYS_MODULE_demo_mod_LICENSE → licensed=true, �
       db: fakePool(),
       logger: silentLogger,
       rootDir: root,
-      env: { ENABLED_MODULES: 'demo-mod' },
+      env: licenseEnv,
     });
     assert.equal(getPublicModulesConfig()['demo-mod'].licensed, true);
 

@@ -32,7 +32,8 @@ npm i @isar/drawio-pro@0.1.0
 ```env
 ENABLED_MODULES=drawio-pro
 SYS_MODULE_drawio_pro_LICENSE=<payload>.<signature>
-SYS_MODULE_LICENSE_PUBLIC_KEY=<PEM Ed25519>
+SYS_MODULE_LICENSE_PUBKEYS={"isar-2026-01":"<base64 PEM>"}
+SYS_INSTANCE_ID=<uuid инсталляции>
 # только для тестовых стендов, без проверки подписи:
 # SYS_MODULE_LICENSE_ALLOW_UNVERIFIED=true
 ```
@@ -50,6 +51,7 @@ npm run check:routes      # маршруты и права из манифест
 
 Полная процедура для администратора: **`docs/modules-admin-guide.md`**.
 Короткий чеклист (11 пунктов): **`docs/modules-connect-checklist.md`**.
+Формат ключа лицензии (v1) и правила проверки: **`docs/module-license-key.md`**.
 
 Если пакет не установлен, сборка фронта не падает: `vite.config.js` подставляет
 `frontend-v3/src/modules/stubs/drawio-pro`, а точка расширения скрыта (нет статуса в `/api/config`).

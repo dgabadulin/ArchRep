@@ -87,6 +87,21 @@ function asBoolean(value) {
 }
 
 /**
+ * Компактное описание привязки лицензии для реестра/диагностики:
+ * `any` | `uuid:match` | `uuid:mismatch` | `derived:match` | `derived:mismatch` (+ `:strict`).
+ * @param {{mode?:string|null, strict?:boolean, match?:boolean|null}|null|undefined} binding
+ * @returns {string|null}
+ */
+function describeBinding(binding) {
+  if (!binding || !binding.mode) return null;
+  const parts = [binding.mode];
+  if (binding.match === true) parts.push('match');
+  else if (binding.match === false) parts.push('mismatch');
+  if (binding.strict) parts.push('strict');
+  return parts.join(':');
+}
+
+/**
  * Итоговый `enabled`: env → БД → параметр БД → false.
  * @param {{code:string, dbRow?:object, getParam?:Function, env?:object}} opts
  */
@@ -307,6 +322,9 @@ async function registerOne(opts) {
       enabled: rec.enabled,
       licensed: rec.licensed,
       expiresAt: rec.expiresAt,
+      licenseId: rec.licenseId,
+      licenseKid: rec.licenseKid,
+      licenseBinding: rec.licenseBinding,
     }, { logger });
   };
 
@@ -362,11 +380,18 @@ async function registerOne(opts) {
   rec.enabled = enabledRes.enabled;
   rec.enabledSource = enabledRes.source;
 
-  const lic = getLicenseStatus({ code, manifest: read.manifest });
+  const lic = getLicenseStatus({ code, manifest: read.manifest, env });
   rec.licensed = Boolean(lic.licensed);
   rec.edition = lic.edition || null;
   rec.expiresAt = lic.expires_at || null;
   rec.licenseReason = lic.reason || null;
+  rec.licenseId = lic.license_id || null;
+  rec.licenseKid = lic.kid || null;
+  rec.licenseBinding = describeBinding(lic.binding);
+  rec.licenseWarnings = Array.isArray(lic.warnings) ? lic.warnings : [];
+  for (const warning of rec.licenseWarnings) {
+    log.warn(`лицензия: ${warning}`);
+  }
   if (!rec.licensed) {
     logger.warn(`[modules] ${code}: лицензия не активна — ${lic.reason} (маршруты → 402, UI скрыт)`);
   }

@@ -45,19 +45,21 @@ test('pendingFrom: миграции новее версии схемы', () => {
 });
 
 test('readSchemaState: маркер ar_schema_info имеет приоритет', async () => {
+  // последняя миграция репозитория — маркер «схема актуальна» (список миграций растёт)
+  const latest = readMigrationPrefixes().map((m) => m.prefix).sort().pop();
   const calls = [];
   const pool = {
     async query(sql) {
       calls.push(sql);
       if (/ar_schema_info/.test(sql)) {
-        return { rows: [{ version: '20261104120000', applied_at: '2026-11-04T10:00:00Z' }] };
+        return { rows: [{ version: latest, applied_at: '2026-11-04T10:00:00Z' }] };
       }
       throw new Error('unexpected query');
     },
   };
   const state = await readSchemaState(pool);
   assert.equal(state.source, 'schema_info');
-  assert.equal(state.schema_version, '20261104120000');
+  assert.equal(state.schema_version, latest);
   assert.deepEqual(state.pending, []);
   assert.equal(calls.length, 1);
 });
