@@ -45,6 +45,10 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
    для MAJOR — раздел «Что сделать администратору»; затем merge.
 5. После merge Release Please ставит тег `vX.Y.Z` и создаёт GitHub Release;
    workflow `release-notes.yml` прикладывает к релизу `release-notes.md` (front-matter + секция CHANGELOG).
+   В `release-please-config.json` зафиксировано `"include-v-in-tag": true` и
+   `"include-component-in-tag": false` — иначе Release Please в manifest-режиме делает тег
+   `archrep-vX.Y.Z`, который **не совпадает** с `git describe --exact-match` у гейта деплоя
+   (`$version = $tag -replace '^v',''`), и ищет предыдущий релиз не по тому имени (→ «шумный» CHANGELOG).
 6. Деплой — только этого тега (§4).
 7. Сайт (`archrep-site`) забирает `release-notes.md` → страница «Новости» + RSS.
 
