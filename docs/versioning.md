@@ -122,12 +122,12 @@ ON CONFLICT (code) DO UPDATE
 ## 6. Публичный API
 
 ```http
-GET /api/health   → { "ok": true, "version": "3.0.1" }
+GET /api/health   → { "ok": true, "version": "3.1.0" }
 GET /api/version  → {
-  "product": "ИСАР", "version": "3.0.1", "channel": "stable",
+  "product": "ИСАР", "version": "3.1.0", "channel": "stable",
   "commit": "826a27b", "build_time": "2026-11-02T20:00:00Z",
   "contract_version": "1.0",
-  "db": { "source": "schema_info", "schema_version": "20261104120000",
+  "db": { "source": "schema_info", "schema_version": "20261105120000",
           "applied_at": "…", "pending": [], "warn_mode": "admin" },
   "modules": { "drawio-pro": { "version": "0.1.0", "enabled": true, "licensed": true } }
 }
