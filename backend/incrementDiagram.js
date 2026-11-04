@@ -6,6 +6,12 @@
 
 const { resolveDrawioStyles } = require('./drawioStyles');
 const {
+  DEFAULT_SYSFUNC_MARKERS,
+  resolveSysFuncMarkers,
+  sysFuncMarker,
+  formatSysFuncLines,
+} = require('./sysFuncMarkers');
+const {
   extractEdgeGeometryMap,
   layoutNodes,
   computeEdgeRoutes,
@@ -76,7 +82,7 @@ function wrapLines(text, maxChars) {
   return lines;
 }
 
-function estimateNodeSize(system, nodeStyle) {
+function estimateNodeSize(system, nodeStyle, sysFuncMarkers) {
   const title = String(system.system_name || system.system_code || 'Система').trim() || 'Система';
   const comment = (system.comment != null && String(system.comment).trim()) ? String(system.comment) : '';
   const maxTextWidth = Number(nodeStyle.maxTextWidth) || 280;
@@ -90,7 +96,17 @@ function estimateNodeSize(system, nodeStyle) {
 
   const approxChar = (fs) => Math.max(4, fs * 0.55);
   const maxChars = Math.max(12, Math.floor(maxTextWidth / approxChar(bodyFontSize)));
-  const bodyLines = wrapLines(comment, maxChars);
+  // Тело узла — функции системы в решении с маркером по статусу (issue #93);
+  // `comment` — fallback для легаси-строк, где связи с функциями ещё не заполнены.
+  const fnLines = Array.isArray(system.functions) && system.functions.length
+    ? formatSysFuncLines(system.functions, sysFuncMarkers)
+    : [];
+  const legacyLines = fnLines.length
+    ? []
+    : comment.split(/\r?\n/).map(legacyFunctionLine).filter(Boolean);
+  const bodyLines = fnLines.length
+    ? fnLines.reduce((acc, line) => acc.concat(wrapLines(line, maxChars)), [])
+    : legacyLines.reduce((acc, line) => acc.concat(wrapLines(line, maxChars)), []);
 
   const titleW = title.length * approxChar(titleFontSize);
   let bodyMaxW = 0;
@@ -149,6 +165,18 @@ function escStyle(s) {
 const PAGE_LANDSCAPE_W = 1169;
 const PAGE_LANDSCAPE_H = 827;
 
+/**
+ * Строка «Функции» из денормализованного `comment` (легаси-строка без связей с функциями).
+ * Статуса функции в такой строке нет, поэтому маркер приводится к «?» (issue #93).
+ * @param {string} line
+ * @returns {string}
+ */
+function legacyFunctionLine(line) {
+  const t = String(line || '').trim();
+  if (!t) return '';
+  return `?${t.replace(/^[-+\u2022\u2713?]\s*/, '')}`;
+}
+
 /** Подписи и раскладка ячеек — из эталонного drawio (v4). Заливки/линии — из nodeStatusColor / edgeStatusColor. */
 function legendHtmlSpan(text) {
   return escapeXml(`<span style="color: rgb(33, 33, 33); text-align: left;">${text}</span>`);
@@ -164,15 +192,32 @@ function legendHtmlTwoLines(line1, line2) {
  * Легенда в правом нижнем углу (как в «Целевое решение (с интеграцией в ИТ ландшафт) v4.drawio»).
  * Только при генерации mxfile на сервере; цвета из DRAWIO_NODE_STYLE / DRAWIO_EDGE_STYLE.
  */
-function buildLegendMxCells(parentId, nodeStyle, edgeStyle) {
+function buildLegendMxCells(parentId, nodeStyle, edgeStyle, sysFuncMarkers) {
   const nodeColors = (nodeStyle && nodeStyle.nodeStatusColor) || {};
   const edgeColors = (edgeStyle && edgeStyle.edgeStatusColor) || {};
+  const markers = sysFuncMarkers || DEFAULT_SYSFUNC_MARKERS;
   const sw = 2;
 
+  // Блок «Функции» (issue #93): строки легенды по статусам функций + легаси-статус.
+  const fnRows = [
+    { code: 'ADR_INCR_SYSFUNC_CREATING', lab: 'Новая функция в решении' },
+    { code: 'ADR_INCR_SYSFUNC_MODIFYING', lab: 'Изменяемая функция' },
+    { code: 'ADR_INCR_SYSFUNC_IN_USE', lab: 'Используемая функция' },
+    { code: 'ADR_INCR_SYSFUNC_DECOMMISSIONING', lab: 'Выводимая из эксплуатации' },
+    { code: '', lab: 'Функция без статуса' },
+  ];
+  const fnRowH = 19;
+  const fnBlockH = 10 + 16 + fnRows.length * fnRowH;
+
   const frameX = 910;
-  const frameY = 510;
   const frameW = 245;
-  const frameH = 309;
+  // Легенда прижата к низу листа (нижнее поле 8px); новый блок наращивает рамку вверх (issue #93).
+  const frameBottom = PAGE_LANDSCAPE_H - 8;
+  const baseFrameH = 309;
+  // Блоки выше вставки «Функции:» сдвигаются вверх, «Прочее:» остаётся на месте.
+  const topShift = -fnBlockH;
+  const frameH = baseFrameH + fnBlockH;
+  const frameY = frameBottom - frameH;
 
   const parts = [];
   let idn = 0;
@@ -186,13 +231,13 @@ function buildLegendMxCells(parentId, nodeStyle, edgeStyle) {
 
   parts.push(
     `<mxCell id="${nid()}" value="${escapeXml('ОБОЗНАЧЕНИЯ:')}" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;fontColor=#212121;" vertex="1" parent="${parentId}">` +
-      `<mxGeometry x="922" y="522" width="223" height="22" as="geometry"/>` +
+      `<mxGeometry x="922" y="${522 + topShift}" width="223" height="22" as="geometry"/>` +
       `</mxCell>`,
   );
 
   parts.push(
     `<mxCell id="${nid()}" value="${escapeXml('Системы/модули:')}" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=10;fontColor=#424242;" vertex="1" parent="${parentId}">` +
-      `<mxGeometry x="922" y="543" width="213" height="16" as="geometry"/>` +
+      `<mxGeometry x="922" y="${543 + topShift}" width="213" height="16" as="geometry"/>` +
       `</mxCell>`,
   );
 
@@ -200,10 +245,10 @@ function buildLegendMxCells(parentId, nodeStyle, edgeStyle) {
     `rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontSize=9;fillColor=${escStyle(fill)};strokeColor=#000000;arcSize=19;`;
 
   const boxes = [
-    { fillKey: 'ADR_INCR_SYS_IN_USE', x: 922, y: 569, value: legendHtmlSpan('Существующая система/модуль') },
-    { fillKey: 'ADR_INCR_SYS_CREATING', x: 1035, y: 569, value: legendHtmlTwoLines('Создаваемая', 'система/модуль') },
-    { fillKey: 'ADR_INCR_SYS_MODIFYING', x: 922, y: 614, value: legendHtmlTwoLines('Изменяемая', 'система/модуль') },
-    { fillKey: 'ADR_INCR_SYS_OTHER_SOLUTION', x: 1035, y: 614, value: legendHtmlTwoLines('Реализуемая в рамках смежной задачи', 'система/модуль') },
+    { fillKey: 'ADR_INCR_SYS_IN_USE', x: 922, y: 569 + topShift, value: legendHtmlSpan('Существующая система/модуль') },
+    { fillKey: 'ADR_INCR_SYS_CREATING', x: 1035, y: 569 + topShift, value: legendHtmlTwoLines('Создаваемая', 'система/модуль') },
+    { fillKey: 'ADR_INCR_SYS_MODIFYING', x: 922, y: 614 + topShift, value: legendHtmlTwoLines('Изменяемая', 'система/модуль') },
+    { fillKey: 'ADR_INCR_SYS_OTHER_SOLUTION', x: 1035, y: 614 + topShift, value: legendHtmlTwoLines('Реализуемая в рамках смежной задачи', 'система/модуль') },
   ];
   for (const b of boxes) {
     const fill = nodeColors[b.fillKey] || '#E0E0E0';
@@ -216,15 +261,15 @@ function buildLegendMxCells(parentId, nodeStyle, edgeStyle) {
 
   parts.push(
     `<mxCell id="${nid()}" value="${escapeXml('Интеграции:')}" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=10;fontColor=#424242;" vertex="1" parent="${parentId}">` +
-      `<mxGeometry x="922" y="659" width="223" height="16" as="geometry"/>` +
+      `<mxGeometry x="922" y="${659 + topShift}" width="223" height="16" as="geometry"/>` +
       `</mxCell>`,
   );
 
   const intRows = [
-    { code: 'ADR_INCR_REL_CREATING', sy: 683, ly: 671, lab: 'Создаётся' },
-    { code: 'ADR_INCR_REL_MODIFYING', sy: 700.86, ly: 688, lab: 'Модифицируется' },
-    { code: 'ADR_INCR_REL_IN_USE', sy: 719, ly: 705, lab: 'Используется' },
-    { code: 'ADR_INCR_REL_REMOVING', sy: 738, ly: 726, lab: 'Удаляется' },
+    { code: 'ADR_INCR_REL_CREATING', sy: 683 + topShift, ly: 671 + topShift, lab: 'Создаётся' },
+    { code: 'ADR_INCR_REL_MODIFYING', sy: 700.86 + topShift, ly: 688 + topShift, lab: 'Модифицируется' },
+    { code: 'ADR_INCR_REL_IN_USE', sy: 719 + topShift, ly: 705 + topShift, lab: 'Используется' },
+    { code: 'ADR_INCR_REL_REMOVING', sy: 738 + topShift, ly: 726 + topShift, lab: 'Удаляется' },
   ];
   for (const row of intRows) {
     const stroke = edgeColors[row.code] || '#616161';
@@ -241,6 +286,27 @@ function buildLegendMxCells(parentId, nodeStyle, edgeStyle) {
         `</mxCell>`,
     );
   }
+
+  // Блок «Функции» (issue #93): маркеры перед названиями функций в теле узла.
+  const fnLabelY = 757 + topShift + 10;
+  parts.push(
+    `<mxCell id="${nid()}" value="${escapeXml('Функции:')}" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=10;fontColor=#424242;" vertex="1" parent="${parentId}">` +
+      `<mxGeometry x="922" y="${fnLabelY}" width="213" height="16" as="geometry"/>` +
+      `</mxCell>`,
+  );
+  fnRows.forEach((row, i) => {
+    const sy = fnLabelY + 22 + i * fnRowH;
+    parts.push(
+      `<mxCell id="${nid()}" value="${escapeXml(sysFuncMarker(row.code, markers))}" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#212121;" vertex="1" parent="${parentId}">` +
+        `<mxGeometry x="922" y="${sy - 12}" width="20" height="18" as="geometry"/>` +
+        `</mxCell>`,
+    );
+    parts.push(
+      `<mxCell id="${nid()}" value="${escapeXml(row.lab)}" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=9;fontColor=#212121;whiteSpace=wrap;" vertex="1" parent="${parentId}">` +
+        `<mxGeometry x="948" y="${sy - 14}" width="197" height="24" as="geometry"/>` +
+        `</mxCell>`,
+    );
+  });
 
   const remCol = edgeColors.ADR_INCR_REL_REMOVING || '#C62828';
   parts.push(
@@ -282,6 +348,8 @@ function buildMxfile(opts) {
   const nodeStyle = drawio.node;
   const edgeStyle = drawio.edge;
   const layout = drawio.layout;
+  /** Маркеры функций в теле узла и в легенде — параметр DRAWIO_SYSFUNC_MARKERS (issue #93). */
+  const sysFuncMarkers = resolveSysFuncMarkers(getParam);
 
   const parent = '1';
   const cells = [];
@@ -294,7 +362,7 @@ function buildMxfile(opts) {
     String(a.system_name || a.system_code || '').localeCompare(String(b.system_name || b.system_code || ''), 'ru'),
   );
 
-  const sizes = sortedSystems.map((s) => ({ sys: s, ...estimateNodeSize(s, nodeStyle) }));
+  const sizes = sortedSystems.map((s) => ({ sys: s, ...estimateNodeSize(s, nodeStyle, sysFuncMarkers) }));
   let maxW = 140;
   let maxH = 72;
   for (const z of sizes) {
@@ -377,7 +445,7 @@ function buildMxfile(opts) {
     );
   });
 
-  cells.push(buildLegendMxCells(parent, nodeStyle, edgeStyle));
+  cells.push(buildLegendMxCells(parent, nodeStyle, edgeStyle, sysFuncMarkers));
 
   const inner = cells.join('');
   const diagramName = escapeXml(`${solutionName} ${versionLabel}`);

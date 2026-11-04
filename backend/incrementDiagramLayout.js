@@ -223,27 +223,212 @@ function portOnSide(box, side, frac, isExit) {
   }
 }
 
+/** Ключ неупорядоченной пары узлов: A→B и B→A — один пучок (issue #93). */
+function pairKey(a, b) {
+  const sa = String(a);
+  const sb = String(b);
+  return sa <= sb ? `${sa}\u0000${sb}` : `${sb}\u0000${sa}`;
+}
+
+/** Прямоугольник, расширенный на зазор: линия не идёт вплотную к чужому узлу. */
+function inflateBox(box, d) {
+  const g = Number(d) || 0;
+  return { x: box.x - g, y: box.y - g, width: box.width + 2 * g, height: box.height + 2 * g };
+}
+
+/** Координата грани узла по оси движения (x для east/west, y для north/south). */
+function sideCoord(box, side) {
+  switch (side) {
+    case 'east':
+      return box.x + box.width;
+    case 'west':
+      return box.x;
+    case 'south':
+      return box.y + box.height;
+    case 'north':
+    default:
+      return box.y;
+  }
+}
+
 /**
- * Ортогональный маршрут снаружи bbox: выход/вход с ближайших граней, излом между ними.
+ * Пересечение орто-отрезка с прямоугольником. Отрезки всегда горизонтальные или
+ * вертикальные, поэтому достаточно пересечения bbox.
  */
-function orthogonalRouteNearestSide(fromBox, toBox, exitFrac, entryFrac, offset, layoutDirection = 'LR') {
-  const { exitSide, entrySide } = pickSides(fromBox, toBox, layoutDirection);
-  const exit = portOnSide(fromBox, exitSide, exitFrac, true);
-  const entry = portOnSide(toBox, entrySide, entryFrac, false);
+function segmentHitsBox(p1, p2, box) {
+  const minX = Math.min(p1.x, p2.x);
+  const maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y);
+  const maxY = Math.max(p1.y, p2.y);
+  if (maxX <= box.x || minX >= box.x + box.width) return false;
+  if (maxY <= box.y || minY >= box.y + box.height) return false;
+  return true;
+}
 
-  const isHoriz = exitSide === 'east' || exitSide === 'west';
-  const points = [];
+function routeCrossings(points, obstacles) {
+  let n = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    for (const ob of obstacles) {
+      if (segmentHitsBox(points[i], points[i + 1], ob)) n++;
+    }
+  }
+  return n;
+}
 
-  if (isHoriz) {
-    const midX = (exit.x + entry.x) / 2;
-    const sy = exit.y + offset;
-    const ty = entry.y + offset;
-    points.push({ x: midX, y: sy }, { x: midX, y: ty });
-  } else {
-    const midY = (exit.y + entry.y) / 2 + offset;
-    points.push({ x: exit.x, y: midY }, { x: entry.x, y: midY });
+function routeLength(points) {
+  let len = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    len += Math.abs(points[i + 1].x - points[i].x) + Math.abs(points[i + 1].y - points[i].y);
+  }
+  return len;
+}
+
+function clamp(v, lo, hi) {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo > hi) return v;
+  return Math.min(Math.max(v, lo), hi);
+}
+
+/** Приоритет маршрута: меньше пересечений → меньше изломов → ближе к своей полосе → короче. */
+function isBetterRoute(a, b) {
+  if (!b) return true;
+  if (a.crossings !== b.crossings) return a.crossings < b.crossings;
+  if (a.points.length !== b.points.length) return a.points.length < b.points.length;
+  if (Math.abs(a.laneDelta - b.laneDelta) > 0.5) return a.laneDelta < b.laneDelta;
+  return a.length < b.length - 0.5;
+}
+
+/**
+ * Кандидаты маршрута для горизонтального выхода/входа (LR):
+ * 1) вертикальный коридор между узлами — своя полоса `lane` плюс обходы по x снаружи чужих узлов;
+ * 2) обход «сверху/снизу» — горизонтальная полоса вне блокирующих узлов.
+ */
+function buildHorizontalCandidates(exit, entry, exitSide, entrySide, preferred, obstacles, opts, consider) {
+  const gutter = Number(opts.gutter) || 12;
+  const stub = Number(opts.stub) || gutter;
+  const bounds = opts.bounds || {};
+  const outDir = exitSide === 'east' ? 1 : -1;
+  const inDir = entrySide === 'east' ? 1 : -1;
+  const startX = exit.x + outDir * stub;
+  const endX = entry.x + inDir * stub;
+  const lo = Math.min(startX, endX);
+  const hi = Math.max(startX, endX);
+
+  const xs = [preferred, (startX + endX) / 2];
+  for (const ob of obstacles) xs.push(ob.x - gutter, ob.x + ob.width + gutter);
+  const usedX = new Set();
+  for (const raw of xs) {
+    const x = clamp(raw, lo, hi);
+    const key = Math.round(x * 100) / 100;
+    if (usedX.has(key)) continue;
+    usedX.add(key);
+    consider([exit, { x, y: exit.y }, { x, y: entry.y }, entry], Math.abs(x - preferred));
   }
 
+  const ys = [(exit.y + entry.y) / 2];
+  for (const ob of obstacles) ys.push(ob.y - gutter, ob.y + ob.height + gutter);
+  const usedY = new Set();
+  for (const raw of ys) {
+    const y = clamp(raw, bounds.minY, bounds.maxY);
+    const key = Math.round(y * 100) / 100;
+    if (usedY.has(key)) continue;
+    usedY.add(key);
+    consider(
+      [exit, { x: startX, y: exit.y }, { x: startX, y }, { x: endX, y }, { x: endX, y: entry.y }, entry],
+      Math.abs(y - preferred) * 2,
+    );
+  }
+}
+
+/**
+ * Кандидаты маршрута для вертикального выхода/входа (TB/BT):
+ * 1) горизонтальный коридор между узлами — своя полоса `lane` плюс обходы по y снаружи чужих узлов;
+ * 2) обход «слева/справа» — вертикальная полоса вне блокирующих узлов.
+ */
+function buildVerticalCandidates(exit, entry, exitSide, entrySide, preferred, obstacles, opts, consider) {
+  const gutter = Number(opts.gutter) || 12;
+  const stub = Number(opts.stub) || gutter;
+  const bounds = opts.bounds || {};
+  const outDir = exitSide === 'south' ? 1 : -1;
+  const inDir = entrySide === 'south' ? 1 : -1;
+  const startY = exit.y + outDir * stub;
+  const endY = entry.y + inDir * stub;
+  const lo = Math.min(startY, endY);
+  const hi = Math.max(startY, endY);
+
+  const ys = [preferred, (startY + endY) / 2];
+  for (const ob of obstacles) ys.push(ob.y - gutter, ob.y + ob.height + gutter);
+  const usedY = new Set();
+  for (const raw of ys) {
+    const y = clamp(raw, lo, hi);
+    const key = Math.round(y * 100) / 100;
+    if (usedY.has(key)) continue;
+    usedY.add(key);
+    consider([exit, { x: exit.x, y }, { x: entry.x, y }, entry], Math.abs(y - preferred));
+  }
+
+  const midX = (exit.x + entry.x) / 2;
+  const xs = [midX];
+  for (const ob of obstacles) xs.push(ob.x - gutter, ob.x + ob.width + gutter);
+  const usedX = new Set();
+  for (const raw of xs) {
+    const x = clamp(raw, bounds.minX, bounds.maxX);
+    const key = Math.round(x * 100) / 100;
+    if (usedX.has(key)) continue;
+    usedX.add(key);
+    consider(
+      [exit, { x: exit.x, y: startY }, { x, y: startY }, { x, y: endY }, { x: entry.x, y: endY }, entry],
+      Math.abs(x - midX) * 2,
+    );
+  }
+}
+
+
+/**
+ * Маршрут ребра: порты на ближайших гранях + ортогональные waypoints с обходом чужих узлов.
+ * Порты задаются долями вдоль грани (`exitY`/`entryY` при LR, `exitX`/`entryX` при TB).
+ *
+ * @param {object} fromBox
+ * @param {object} toBox
+ * @param {'east'|'west'|'north'|'south'} exitSide
+ * @param {'east'|'west'|'north'|'south'} entrySide
+ * @param {number} exitFrac — доля вдоль грани источника (разведение параллельных рёбер)
+ * @param {number} entryFrac — доля вдоль грани приёмника
+ * @param {number} lane — предпочтительная координата коридора (x для LR, y для TB)
+ * @param {Array<{x:number,y:number,width:number,height:number}>} obstacles — чужие узлы, расширенные на gutter
+ * @param {{ gutter: number, stub: number, bounds: object }} opts
+ * @returns {{ exitX:number, exitY:number, entryX:number, entryY:number, points:{x:number,y:number}[] }}
+ */
+function routeBetween(fromBox, toBox, exitSide, entrySide, exitFrac, entryFrac, lane, obstacles, opts) {
+  const exit = portOnSide(fromBox, exitSide, exitFrac, true);
+  const entry = portOnSide(toBox, entrySide, entryFrac, false);
+  const horizontal = exitSide === 'east' || exitSide === 'west';
+  const midLane = horizontal ? (exit.x + entry.x) / 2 : (exit.y + entry.y) / 2;
+  const preferred = Number.isFinite(lane) ? lane : midLane;
+
+  let best = null;
+  const consider = (points, laneDelta) => {
+    const cand = {
+      points,
+      laneDelta,
+      crossings: routeCrossings(points, obstacles),
+      length: routeLength(points),
+    };
+    if (isBetterRoute(cand, best)) best = cand;
+  };
+
+  if (horizontal) {
+    buildHorizontalCandidates(exit, entry, exitSide, entrySide, preferred, obstacles, opts, consider);
+  } else {
+    buildVerticalCandidates(exit, entry, exitSide, entrySide, preferred, obstacles, opts, consider);
+  }
+
+  const chosen = best ? best.points : [exit, entry];
+  const points = [];
+  for (const p of chosen.slice(1, -1)) {
+    const prev = points.length ? points[points.length - 1] : exit;
+    if (Math.round(prev.x) === Math.round(p.x) && Math.round(prev.y) === Math.round(p.y)) continue;
+    points.push({ x: p.x, y: p.y });
+  }
   return {
     exitX: exit.exitX,
     exitY: exit.exitY,
@@ -253,106 +438,179 @@ function orthogonalRouteNearestSide(fromBox, toBox, exitFrac, entryFrac, offset,
   };
 }
 
+
 function computeEdgeRoutes(positions, relations, layout) {
   const layoutDirection = String(layout.direction || 'LR').toUpperCase();
   const parallelGap = Number(layout.parallelEdgeGap) || 12;
+  // Зазор до чужих узлов при обходе (issue #93): по умолчанию — половина parallelEdgeGap, не меньше 8px.
+  const gutter = Number(layout.obstacleGap) > 0 ? Number(layout.obstacleGap) : Math.max(8, Math.round(parallelGap / 2));
+  const stub = Math.max(8, Math.round(gutter));
   const routes = new Map();
 
-  const valid = (relations || []).filter((r) => {
-    const from = r.from_ar_systems_id != null ? `sys-${r.from_ar_systems_id}` : null;
-    const to = r.to_ar_systems_id != null ? `sys-${r.to_ar_systems_id}` : null;
-    return from && to && positions.has(from) && positions.has(to);
+  const valid = (relations || [])
+    .filter((r) => {
+      const from = r.from_ar_systems_id != null ? `sys-${r.from_ar_systems_id}` : null;
+      const to = r.to_ar_systems_id != null ? `sys-${r.to_ar_systems_id}` : null;
+      return from && to && positions.has(from) && positions.has(to);
+    })
+    .sort((a, b) => Number(a.id) - Number(b.id));
+
+  if (!valid.length) return routes;
+
+  const nodes = [...positions.entries()].map(([id, box]) => ({ id, box }));
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const { box } of nodes) {
+    minX = Math.min(minX, box.x);
+    minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.width);
+    maxY = Math.max(maxY, box.y + box.height);
+  }
+  const bounds = {
+    minX: minX - 2 * gutter,
+    minY: minY - 2 * gutter,
+    maxX: maxX + 2 * gutter,
+    maxY: maxY + 2 * gutter,
+  };
+
+  // 1. Стороны портов — по взаимному положению узлов (ближайшая грань).
+  // Для петли (система → сама себе) выход и вход — на одной грани по направлению раскладки.
+  const selfSide = layoutDirection === 'TB' || layoutDirection === 'BT' ? 'south' : 'east';
+  const infos = valid.map((r) => {
+    const from = `sys-${r.from_ar_systems_id}`;
+    const to = `sys-${r.to_ar_systems_id}`;
+    const selfLoop = from === to;
+    const sides = selfLoop
+      ? { exitSide: selfSide, entrySide: selfSide }
+      : pickSides(positions.get(from), positions.get(to), layoutDirection);
+    return { r, from, to, selfLoop, sides, pair: pairKey(from, to) };
   });
 
+  // 2. Пучок A↔B: полосы (lane) внутри коридора общие для обоих направлений (issue #93).
   const byPair = new Map();
-  const outBySource = new Map();
-  const inByTarget = new Map();
-
-  for (const r of valid) {
-    const from = `sys-${r.from_ar_systems_id}`;
-    const to = `sys-${r.to_ar_systems_id}`;
-    const pk = `${from}\0${to}`;
-    if (!byPair.has(pk)) byPair.set(pk, []);
-    byPair.get(pk).push(r);
-    if (!outBySource.has(from)) outBySource.set(from, []);
-    outBySource.get(from).push(r);
-    if (!inByTarget.has(to)) inByTarget.set(to, []);
-    inByTarget.get(to).push(r);
+  for (const info of infos) {
+    if (!byPair.has(info.pair)) byPair.set(info.pair, []);
+    byPair.get(info.pair).push(info);
+  }
+  const laneByRel = new Map();
+  for (const list of byPair.values()) {
+    const sorted = [...list].sort((a, b) => Number(a.r.id) - Number(b.r.id));
+    if (sorted[0].selfLoop) continue;
+    const { exitSide, entrySide } = sorted[0].sides;
+    const fromBox = positions.get(sorted[0].from);
+    const toBox = positions.get(sorted[0].to);
+    const c0 = sideCoord(fromBox, exitSide);
+    const c1 = sideCoord(toBox, entrySide);
+    const lo = Math.min(c0, c1);
+    const hi = Math.max(c0, c1);
+    const mid = (lo + hi) / 2;
+    const width = Math.max(0, hi - lo);
+    const n = sorted.length;
+    sorted.forEach((info, i) => {
+      let lane = mid;
+      if (n > 1) {
+        const step = Math.max(parallelGap, width / (n + 1));
+        lane = clamp(mid + (i - (n - 1) / 2) * step, lo, hi);
+      }
+      laneByRel.set(info.r.id, lane);
+    });
   }
 
-  const outIndex = new Map();
-  const inIndex = new Map();
-  const pairIndex = new Map();
-  const sortedValid = [...valid].sort((a, b) => Number(a.id) - Number(b.id));
+  // 3. Порты на грань узла. Предпочтительная доля ребра одна для выхода и входа (ребро идёт «прямо»,
+  // а не Z-образно), затем внутри грани доли выравниваются по порядку — это разводит и встречные потоки.
+  // Петли участвуют в распределении наравне с остальными связями (две точки на одной грани).
+  const pairSlotFrac = new Map();
+  for (const list of byPair.values()) {
+    const sorted = [...list].sort((a, b) => Number(a.r.id) - Number(b.r.id));
+    sorted.forEach((info, i) => pairSlotFrac.set(info.r.id, portFraction(i, sorted.length)));
+  }
 
-  for (const r of sortedValid) {
-    const from = `sys-${r.from_ar_systems_id}`;
-    const to = `sys-${r.to_ar_systems_id}`;
-    const pk = `${from}\0${to}`;
-    const oi = outIndex.get(from) || 0;
-    outIndex.set(from, oi + 1);
-    const ii = inIndex.get(to) || 0;
-    inIndex.set(to, ii + 1);
-    const pi = pairIndex.get(pk) || 0;
-    pairIndex.set(pk, pi + 1);
+  const slotKey = (nodeId, side) => `${nodeId}\u0000${side}`;
+  const slots = new Map();
+  for (const info of infos) {
+    const a = slotKey(info.from, info.sides.exitSide);
+    const b = slotKey(info.to, info.sides.entrySide);
+    if (!slots.has(a)) slots.set(a, []);
+    if (!slots.has(b)) slots.set(b, []);
+    const preferred = pairSlotFrac.get(info.r.id) ?? 0.5;
+    slots.get(a).push({ relId: info.r.id, role: 'exit', preferred });
+    slots.get(b).push({ relId: info.r.id, role: 'entry', preferred });
+  }
+  const fracByRel = new Map();
+  for (const list of slots.values()) {
+    list.sort((x, y) => {
+      if (Math.abs(x.preferred - y.preferred) > 1e-6) return x.preferred - y.preferred;
+      if (x.role !== y.role) return x.role === 'exit' ? -1 : 1;
+      return Number(x.relId) - Number(y.relId);
+    });
+    list.forEach((it, i) => fracByRel.set(`${it.relId}\u0000${it.role}`, portFraction(i, list.length)));
+  }
 
-    const rid = `rel-${r.id}`;
-    const fromBox = positions.get(from);
-    const toBox = positions.get(to);
-    const nOut = outBySource.get(from).length;
-    const nIn = inByTarget.get(to).length;
-    const nPair = byPair.get(pk).length;
-
-    if (from === to) {
-      routes.set(rid, selfLoopRoute(fromBox, pi, nPair, layoutDirection, parallelGap));
+  // 4. Маршруты: ближайшая сторона, свободный коридор или обход чужих узлов.
+  for (const info of infos) {
+    const rid = `rel-${info.r.id}`;
+    const fromBox = positions.get(info.from);
+    const toBox = positions.get(info.to);
+    if (!fromBox || !toBox) continue;
+    const exitFrac = fracByRel.get(`${info.r.id}\u0000exit`) ?? 0.5;
+    const entryFrac = fracByRel.get(`${info.r.id}\u0000entry`) ?? 0.5;
+    if (info.selfLoop) {
+      routes.set(rid, selfLoopRoute(fromBox, exitFrac, entryFrac, layoutDirection, parallelGap));
       continue;
     }
-
-    const offset = nPair > 1 ? (pi - (nPair - 1) / 2) * parallelGap : 0;
-    const exitFrac = nPair > 1 ? portFraction(pi, nPair) : portFraction(oi, nOut);
-    const entryFrac = nPair > 1 ? portFraction(pi, nPair) : portFraction(ii, nIn);
-    const route = orthogonalRouteNearestSide(
-      fromBox,
-      toBox,
-      exitFrac,
-      entryFrac,
-      offset,
-      layoutDirection,
+    const obstacles = nodes
+      .filter((n) => n.id !== info.from && n.id !== info.to)
+      .map((n) => inflateBox(n.box, gutter));
+    routes.set(
+      rid,
+      routeBetween(
+        fromBox,
+        toBox,
+        info.sides.exitSide,
+        info.sides.entrySide,
+        exitFrac,
+        entryFrac,
+        laneByRel.get(info.r.id),
+        obstacles,
+        { gutter, stub, bounds },
+      ),
     );
-    routes.set(rid, route);
   }
 
   return routes;
 }
 
-function selfLoopRoute(box, index, total, direction, gap) {
-  const t = portFraction(index, total);
+/**
+ * Петля связи «система → сама себе»: ортогональный обход снаружи узла (issue #93).
+ * Доли выхода/входа приходят из общего распределения портов по грани (`computeEdgeRoutes`),
+ * поэтому петля не садится на точку другой связи.
+ */
+function selfLoopRoute(box, exitFrac, entryFrac, direction, gap) {
+  const loop = Math.max(40, gap * 4);
   if (direction === 'TB' || direction === 'BT') {
-    const cx = box.x + box.width * t;
-    const loop = Math.max(40, gap * 4);
+    const yLoop = box.y + box.height + loop;
     return {
-      exitX: t,
+      exitX: exitFrac,
       exitY: 1,
-      entryX: Math.min(1, t + 0.15),
+      entryX: entryFrac,
       entryY: 1,
       points: [
-        { x: cx, y: box.y + box.height + loop },
-        { x: cx + loop, y: box.y + box.height + loop },
-        { x: cx + loop, y: box.y + box.height - 8 },
+        { x: box.x + box.width * exitFrac, y: yLoop },
+        { x: box.x + box.width * entryFrac, y: yLoop },
       ],
     };
   }
-  const cy = box.y + box.height * t;
-  const loop = Math.max(48, gap * 4);
+  const xLoop = box.x + box.width + loop;
   return {
     exitX: 1,
-    exitY: t,
+    exitY: exitFrac,
     entryX: 1,
-    entryY: Math.min(1, t + 0.35),
+    entryY: entryFrac,
     points: [
-      { x: box.x + box.width + loop, y: cy },
-      { x: box.x + box.width + loop, y: cy - loop * 0.6 },
-      { x: box.x + box.width - 8, y: cy - loop * 0.5 },
+      { x: xLoop, y: box.y + box.height * exitFrac },
+      { x: xLoop, y: box.y + box.height * entryFrac },
     ],
   };
 }

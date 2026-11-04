@@ -46,6 +46,27 @@ if exist "!SSH_KEY!" (
 echo [1/3] Копирование проекта на сервер %DEPLOY_SSH_TARGET_HOST% ...
 cd /d "%LOCAL_DIR%"
 
+rem --- Преддеплойная проверка (issue #96): только чистый тег, всё запушено -----------
+rem deploy_local.bat == прод: грязная сборка и деплой незатегированного коммита запрещены.
+set "VER_FILE=%LOCAL_DIR%\deploy_version.env"
+if exist "%VER_FILE%" del "%VER_FILE%" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCAL_DIR%\infra\prod\deploy-precheck.ps1" -RepoRoot "%LOCAL_DIR%" -OutFile "%VER_FILE%"
+if errorlevel 1 (
+    echo [ERROR] Преддеплойная проверка не пройдена — деплой отменён.
+    exit /b 1
+)
+set "APP_VERSION="
+set "APP_COMMIT="
+set "APP_BUILD_TIME="
+set "APP_TAG="
+for /f "usebackq tokens=1,* delims==" %%a in ("%VER_FILE%") do set "%%a=%%b"
+del "%VER_FILE%" 2>nul
+if "%APP_VERSION%"=="" (
+    echo [ERROR] Не удалось определить версию для сборки.
+    exit /b 1
+)
+echo [version] %APP_TAG% ^(%APP_VERSION%^), commit %APP_COMMIT%
+
 rem Упаковываем только исходники. Раньше здесь был `scp -r frontend-v3`: он тащил
 rem frontend-v3\node_modules (~140 МБ, ~7000 файлов) через jump-host (деплой в 10 раз
 rem дольше), а Windows-артефакты ломали сборку в образе
@@ -59,7 +80,12 @@ rem из архива пропадали frontend-v3/src/views (весь код 
 rem AnalyticsView.vue) и backend/views. На сервере они оставались от прошлых
 rem деплоев, образ собирался из СТАРОГО кода, а деплой «проходил успешно».
 rem Исключаем только по полному относительному пути и только реально лишнее.
-tar --exclude=frontend-v3/node_modules -czf "%STAGE_ARCHIVE%" backend frontend-v3 infra DB package.json package-lock.json pgmrc.json .dockerignore
+rem Подключаемые модули (docs/modules-contract.md): каталога может не быть — модули не ставили.
+rem Но если он есть, его обязательно надо положить в архив: infra/common/dockerfile делает
+rem `COPY modules`. tar с несуществующим путём падает, поэтому аргумент добавляем условно.
+set "MODULES_ARG="
+if exist "%LOCAL_DIR%\modules" set "MODULES_ARG=modules"
+tar --exclude=frontend-v3/node_modules -czf "%STAGE_ARCHIVE%" backend frontend-v3 infra DB package.json package-lock.json pgmrc.json .dockerignore !MODULES_ARG!
 if %ERRORLEVEL% neq 0 (
     echo Ошибка упаковки исходников ^(нужен tar.exe из Windows 10 1803+^).
     exit /b 1
@@ -71,6 +97,11 @@ tar -tzf "%STAGE_ARCHIVE%" > "%LOCAL_DIR%\deploy_stage_list.txt"
 set "MISSING="
 for %%R in (frontend-v3/index.html frontend-v3/vite.config.js frontend-v3/package.json frontend-v3/src/App.vue frontend-v3/src/views/ frontend-v3/src/components/ frontend-v3/src/config/ backend/index.js infra/common/dockerfile) do (
     findstr /C:"%%R" "%LOCAL_DIR%\deploy_stage_list.txt" >nul || set "MISSING=!MISSING! %%R"
+)
+rem Если каталог modules существует локально, он обязан быть в архиве: иначе docker build
+rem упадёт на `COPY modules` («/modules: not found») — ровно этот регресс случился 2026-11-02.
+if not "!MODULES_ARG!"=="" (
+    findstr /C:"modules/" "%LOCAL_DIR%\deploy_stage_list.txt" >nul || set "MISSING=!MISSING! modules/"
 )
 del "%LOCAL_DIR%\deploy_stage_list.txt" 2>nul
 if not "!MISSING!"=="" (
@@ -104,18 +135,19 @@ echo [2/3] Подготовка скрипта сборки и запуска...
     echo echo "Остановка контейнера..."
     echo docker stop ar-api-container 2^>/dev/null ^|^| true
     echo docker rm ar-api-container 2^>/dev/null ^|^| true
-    echo echo "Сборка образа ar-api-image..."
-    echo docker build -f infra/common/dockerfile -t ar-api-image .
+    echo echo "Сборка образа ar-api-image:!APP_VERSION! ..."
+    echo docker build -f infra/common/dockerfile --build-arg APP_VERSION=!APP_VERSION! --build-arg APP_COMMIT=!APP_COMMIT! --build-arg "APP_BUILD_TIME=!APP_BUILD_TIME!" -t ar-api-image:!APP_VERSION! -t ar-api-image:latest .
     echo echo "Удаление отвязанных образов..."
     echo docker image prune -f
     echo echo "Запуск контейнера..."
     echo ENV_EXTRA=""
     echo [ -f .env.production ] ^&^& ENV_EXTRA="--env-file .env.production"
-    echo docker run -d --restart=always -e NODE_ENV=production $ENV_EXTRA -e SERVER_PORT=3000 -p 3000:3000 --name ar-api-container --network ar-network ar-api-image
+    echo docker run -d --restart=always -e NODE_ENV=production $ENV_EXTRA -e SERVER_PORT=3000 -p 3000:3000 --name ar-api-container --network ar-network ar-api-image:!APP_VERSION!
     echo echo "Ожидание /api/health..."
     echo for i in 1 2 3 4 5 6 7 8 9 10; do
     echo   if curl -sf http://127.0.0.1:3000/api/health ^>^/dev/null; then
     echo     echo "OK: API отвечает на :3000"
+    echo     curl -s http://127.0.0.1:3000/api/version
     echo     exit 0
     echo   fi
     echo   sleep 2

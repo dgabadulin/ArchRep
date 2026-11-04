@@ -1,11 +1,17 @@
 # Контракт модулей ИСАР (module contract)
 
-Статус: **черновик v0.1 — на согласование.**
+Статус: **v0.2 — MVP инфраструктуры реализован в ядре; контракт уточняется по мере подключения модулей.**
 
-> ⚠️ **Спецификация не реализована.** Код ядра и модулей по этому документу ещё не пишется;
-> ниже зафиксированы договорённости (решения) и открытые вопросы с рекомендациями.
+> ✅ **Реализовано (MVP):** загрузчик `registerModules()`, реестр `isar_modules`, лицензионный гейт
+> (Ed25519), секция `modules` в `GET /api/config`, RBAC-правила и проверка маршрутов модулей,
+> реестр поверхностей UI + компонент-хост, адаптеры для DrawIO Pro v0.1.0.
+> Карта файлов и порядок старта — §4.3; известные расхождения и адаптеры — §16.6.
+> Пошаговая процедура подключения для администратора — **[`docs/modules-admin-guide.md`](./modules-admin-guide.md)**,
+> короткий чеклист — **[`docs/modules-connect-checklist.md`](./modules-connect-checklist.md)**.
+> Формат/инструмент выпуска лицензионных ключей по-прежнему — отдельная спецификация (§16.3).
 Основа: обсуждение ядра [`temp/modules-installation-discussion.md`](../temp/modules-installation-discussion.md), спецификация [`docs/issue-74-adr-linear-save-model.md`](./issue-74-adr-linear-save-model.md).
-Пример будущего модуля (для иллюстрации): **DrawIO Pro** — приватный репозиторий `dgabadulin/isarDiagramEditor`; модуль пока **не реализован**.
+Пример модуля: **DrawIO Pro** — приватный репозиторий `dgabadulin/isarDiagramEditor`, версия **0.1.0**
+(подключается как `@isar/drawio-pro`; код модуля в ядро не копируется и не патчится).
 
 ## 1. Назначение
 
@@ -85,6 +91,27 @@
 | `config` | нет | Параметры модуля (группа «Модули»). |
 | `license` | нет | Признак платного модуля и продукт для проверки ключа. |
 | `schema` | нет | Выделенная схема БД модуля (`archrep_mod_<code>`). |
+
+### 3.2. Legacy-адаптер `manifest.json` — **временное решение**
+
+Первый реальный модуль (`@isar/drawio-pro` 0.1.0) отдаёт **не** `module.json`, а `manifest.json`
+с полями `id` / `permissionsProvided` / `surface`. Пока модуль не приведён к контракту, ядро
+применяет адаптер `backend/modules/manifest.js → normalizeLegacyManifest()`:
+
+| Legacy `manifest.json` | Контракт `module.json` | Примечание |
+|---|---|---|
+| `id` | `code` | должен быть kebab-case |
+| `permissionsProvided[]` | `permissions[]` | права вида `<code>:<action>` |
+| `surface.<screen>.action` | `surfaces[] { point: '<screen>.actions' }` | + `label` / `requiredPermission` |
+| `surface.<screen>.toolbar: true` | `surfaces[] { point: 'diagramEditor.toolbar' }` | компонент подставляет ядро |
+| `type: "module"` | `type: "hybrid"` | legacy-значение не входит в §2 |
+| `endpoints[]` | `routes[]` | нужно ядру и `check:routes` |
+| *(нет поля)* | `license: { required: true, product: "<code>" }` | **fail-closed**: legacy-манифест не умеет объявлять лицензию, а первый такой модуль — платный |
+
+**Задача модулю (отдельный тикет):** добавить `module.json`, `register({ app, ctx })`, `install(ctx)`
+и `surfaces[]`; после этого адаптер перестаёт применяться (ядро пишет в лог предупреждение
+`используется legacy manifest.json …`). Удаление адаптера — **ломающее** изменение не является:
+это удаление временной совместимости, выполняется после миграции всех модулей.
 
 ## 4. Жизненный цикл модуля
 
@@ -184,6 +211,62 @@ URL/`postMessage`. Паттерн уже отработан на внешних 
 | Плюсы | Минусы |
 |---|---|
 | независимые релизы модуля; ядро не пересобирается (соответствует «обновление без пересборки ядра») | UI не «родной» (iframe); склейка/дублирование авторизации; больше эксплуатации (сертификаты, CORS/CSP, логи) |
+
+### 4.3. Реализация MVP в ядре
+
+**Карта файлов**
+
+| Файл | Роль |
+|---|---|
+| `backend/modules/index.js` | `registerModules(app, ctx)`: поиск модулей, `enabled`, лицензия, монтаж маршрутов, реестр в памяти |
+| `backend/modules/manifest.js` | чтение/валидация `module.json`, legacy-адаптер, `resolveModulePackage()`, `discoverModuleCodes()` |
+| `backend/modules/semver.js` | проверка `requiresCore` без внешних зависимостей (`>=1.0`, `^1.2`, `~1.2`, `1.x`, `\|\|`) |
+| `backend/modules/license.js` | `verifyLicense(key, { instanceId })` — Ed25519, срок, `instance_id`, trial; кэш статуса |
+| `backend/modules/registry.js` | `archrep.isar_modules`: чтение/upsert, fail-open при отсутствии миграции |
+| `backend/modules/adapters/legacy.js` | монтаж `handlers` + подмена `/manifest` статусом ядра, вызов `register({app, ctx, coreApi})` |
+| `backend/adrIncrements.js` | нормализация `increments[]` (`client_ref`/`from_ref` → имена ядра), merge шапки, валидация mxfile |
+| `DB/scripts/migrate_20261103120000_isar_modules.sql` + `DB/migrations/20261103120000_isar_modules.js` | таблица + параметры группы «Модули» |
+| `backend/auth/routePermissions.js`, `permissionsCatalog.js` | правила `/api/drawio-pro/*`, право `drawio_pro:manage` |
+| `scripts/check-route-permissions.js` | учитывает `endpoints[]`/`routes[]` и `permissions[]` манифестов |
+| `backend/modules/__tests__/*.test.js` | loader / license / manifest / payload / RBAC (`npm run test:modules`) |
+| `scripts/modules-status.js` | диагностика для администратора: `npm run modules:status` (см. `docs/modules-admin-guide.md`) |
+| `frontend-v3/src/modules/registry.js`, `SurfaceHost.vue` | реестр поверхностей и компонент-хост |
+| `frontend-v3/src/modules/status.js` | статус модулей: `/api/config.modules` → fallback `/api/<code>/manifest` |
+| `frontend-v3/src/modules/adapters/*` | адаптеры DrawIO Pro: компоненты (build-time) и API контроллера |
+| `frontend-v3/src/modules/stubs/drawio-pro` | заглушка, чтобы `npm run build:v3` не падал без пакета |
+
+**Порядок старта (критично):**
+
+```
+loadParams(pool) → registerModules(app, { db, getParam, logger })
+                 → mountFrontendStatic()   // express.static + app.get('*')
+                 → app.listen()
+```
+
+Иначе SPA-fallback перехватит `/api/<code>/*` (§6.1 п.4). `registerModules` **не бросает**:
+ошибка загрузки/манифеста/версии = `enabled=false` в реестре + запись в лог, ядро продолжает работу.
+
+**Включение и лицензия (env):**
+
+| Переменная | Назначение |
+|---|---|
+| `ENABLED_MODULES` | аварийный override: перечисленные коды включаются, остальные выключаются |
+| `SYS_MODULE_<code>_ENABLED` | точечный env-override для одного модуля |
+| `SYS_MODULE_<code>_LICENSE` | ключ лицензии (**только env**, в БД/фронт не попадает) |
+| `SYS_MODULE_LICENSE_PUBLIC_KEY` | публичный ключ Ed25519 (PEM или base64 от PEM) |
+| `SYS_MODULE_LICENSE_ALLOW_UNVERIFIED` | `true` — dev-режим без проверки подписи (не для prod) |
+| `SYS_INSTANCE_ID` | идентификатор инсталляции для привязки ключа (по умолчанию host + имя БД) |
+| `MODULES_DIR` | альтернативный каталог модулей (по умолчанию `<repo>/modules`) |
+
+**Проверка после старта:**
+
+```sql
+select code, version, enabled, licensed, license_expires_at from archrep.isar_modules;
+```
+```bash
+curl -s /api/config | jq '.modules'
+curl -s /api/drawio-pro/manifest
+```
 
 ## 5. Реестр подключаемых модулей `isar_modules`
 
@@ -288,6 +371,19 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 Флаг несекретный приходит из `GET /api/config` (например `modules: { "<code>": { enabled, expires_at } }`),
 плюс проверка права (`requiredPermission`) на стороне UI.
 
+**Реализация (ядро):**
+
+- `GET /api/config` → `modules: { "<code>": { enabled, licensed, edition, expires_at } }` — **источник
+  правды для UI** (§16.6 #9). Ключ лицензии и `settings_json` не отдаются никогда.
+- `GET /api/<code>/manifest` — вспомогательный: ядро подменяет `active` модуля на
+  `enabled && licensed` из реестра (модуль v0.1.0 отдаёт `active: true` безусловно).
+- `frontend-v3/src/modules/SurfaceHost.vue` — единая точка гейта: `enabled && licensed` из
+  `modules` (+ `authStore.hasPermission(requiredPermission)`); при отсутствии секции в конфиге —
+  одноразовый fallback на `/api/<code>/manifest`.
+- Режим «модуль включён, но не лицензирован»: поверхность **скрыта** (не «серая»), причина
+  доступна в `manifest.reason` и в логе ядра — см. §16.6 #19.
+
+
 ## 8. RBAC
 
 - Права модуля (`<code>:<action>`) регистрируются в каталоге permissions ядра.
@@ -321,6 +417,18 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 - **ломающее** изменение контракта подключения → **MAJOR** ядра (модули требуют обновления);
 - **добавление** возможностей/полей → **MINOR** (совместимо: старые модули продолжают работать — благодаря объектной форме `register` и точкам расширения);
 - исправления → **PATCH**.
+
+**Что уже добавлено в этой итерации (MINOR, обратная совместимость сохранена):**
+
+| Добавление | Где | Совместимость |
+|---|---|---|
+| секция `modules` в `/api/config` | `backend/index.js` | новое поле ответа |
+| `increment_id` / `increments[]` в ответе `POST/PUT .../full` | `backend/index.js` | поля добавлены, старые сохранены |
+| `increments_mode: 'merge'` + `increment_id` в теле `PUT .../full` | `backend/index.js` | опционально, по умолчанию прежнее поведение |
+| `mxfile` и `expected_version` в `POST .../diagrams` | `backend/index.js` | опционально, без них — генерация из БД |
+| нормализация `client_ref` / `from_ref` / `to_ref` | `backend/adrIncrements.js` | принимаются обе формы ссылок |
+| `endpoints[]` / `routes[]` / `permissions[]` в манифесте | `backend/modules/manifest.js` | новые необязательные поля |
+
 
 Ядро **не хранит список «поколений контракта»** — единственная ось совместимости: версия ядра.
 
@@ -399,8 +507,18 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 
 #### Ключи лицензий
 - **Решение:** хранить **только в env** — `SYS_MODULE_<code>_LICENSE` (в БД не размещаем).
-- **Рекомендация:** подпись Ed25519; приватный ключ — у вендора, публичный — в ядре/модуле; проверка **офлайн**; trial — флаг в ключе.
-- **Отдельная спека:** генерация/выпуск ключей, формат, закрытый инструмент вендора.
+- **Решение (2026-11-02): проверка остаётся офлайн.** Онлайн-активация / лицензионный сервер
+  **не вводятся**. Подпись Ed25519 (публичный ключ в ядре), поля `instance_id`, `exp`, `edition`,
+  `trial`, `limit`; ключ читается при старте, в `/api/config` и `/api/<code>/manifest` уходит
+  только статус.
+- **Принятые ограничения офлайн-модели** (осознанно, см. `docs/modules-admin-guide.md` §4.1):
+  ключ вместе с `instance_id` можно скопировать на другой сервер — лицензия там заработает;
+  счётчика инсталляций нет; `exp` проверяется по часам сервера.
+  Компенсация — организационная: ключ выпускается под конкретный `instance_id`
+  (генерируется `npm run modules:status -- --new-instance-id`), фиксируется в заявке/акте,
+  копирование считается нарушением лицензии; на стендах — синхронизация времени (NTP).
+- **Отдельная спека (остаётся):** формат ключа, инструмент вендора для выпуска/ротации,
+  порядок перевыпуска при смене инсталляции.
 
 ### 16.4. Версионирование — решено
 
@@ -425,14 +543,63 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 > Ранее «блокирующие» вопросы сняты: форма `register` и формат модулей — **решены** (§16.1);
 > вопрос про payload относился к **логике конкретного модуля**, а не к подключению, и в контракт не входит.
 
+### 16.6. Известные расхождения и адаптеры (DrawIO Pro 0.1.0)
+
+Модуль подключён **без форка и правок кода**: все несовпадения закрыты адаптерами ядра.
+Каждое расхождение зафиксировано здесь; для модуля — отдельные задачи (не блокируют работу).
+
+| # | Расхождение | Решение в ядре | Кто закрывает |
+|---|---|---|---|
+| 1 | `manifest.json` (`id`, `permissionsProvided`, `surface`) vs `module.json` (`code`, `permissions`, `surfaces[]`) | legacy-адаптер `normalizeLegacyManifest()` + предупреждение в лог | ядро (адаптер), модуль (перейти на `module.json`) |
+| 2 | `register({ app, coreApi })` vs контракт `register({ app, ctx })` | ядро вызывает `register({ app, ctx, db, auth, coreApi })`; если модуль отдаёт `handlers` + `endpoints[]` — маршруты монтирует ядро (`adapters/legacy.js`) | ядро (адаптер), модуль (`ctx`, `install`) |
+| 3 | `client_ref` / `from_ref` / `to_ref` vs `local_key` / `from_new_key` / `to_new_key` | `normalizeIncrementPayload()` до `resolveRelationEndpoint()` + тесты | ядро (адаптер), модуль (перейти на имена ядра) |
+| 4 | `POST /full` не возвращал `increment_id` | ответ расширен: `{ id, code, increment_id, increments[] }` | ядро |
+| 5 | `PUT /full` с телом `{ increments }` затирал шапку | `mergeAppliedHeader()`: отсутствующие поля берутся из БД | ядро |
+| 6 | `POST .../diagrams` игнорировал клиентский `mxfile` | принимаем `mxfile` (валидация XML + лимит `DRAWIO_MXFILE_MAX_MB`), сохраняем как новую версию; без `mxfile` — прежняя генерация. Опционально `expected_version` → 409 | ядро |
+| 7 | `/api/config` без `modules` | несекретная секция `modules` добавлена | ядро |
+| 8 | `DiagramEditorView` без props/events | режим `?module=drawio-pro`: surface `diagramEditor.toolbar`, панель владеет сохранением, автосохранение ядра отключено | ядро |
+| 9 | Модуль отдаёт `active: true` безусловно | ядро гейтит по `enabled && licensed` и подменяет `/manifest.active` статусом реестра | ядро, модуль (учитывать `ctx.module.status()`) |
+| 10 | Модуль присылает **один** increment, а `PUT /full` по умолчанию заменяет **весь** состав заключения | опциональный `increments_mode: 'merge'` + `increment_id`: пересоздаётся только выбранное решение, остальные и их схемы сохраняются | ядро (адаптер вызова) |
+| 11 | Модуль сохраняет `.drawio` из **своей** модели (без ручной раскладки) | перед `createIncrementDiagram` ядро запрашивает `{ action: 'export' }` у Draw.io и передаёт текущий XML; mxfile модуля — только фолбэк | ядро (адаптер API) |
+| 12 | `requireActive` модуля отвечает 403 только по своей заглушке `license.active = true` | ядровый гейт `makeGate()` на каждом маршруте: выключен → 403, без лицензии → 402 | ядро |
+| 13 | Модуль не объявляет точки расширения в форме контракта | `frontend-v3/src/modules/adapters/drawioPro.js` регистрирует `adrAppliedForm.actions` и `diagramEditor.toolbar` | ядро (адаптер), модуль (`install(ctx)`) |
+| 14 | `@isar/drawio-pro` не в `exports` карты пакета (`./frontend/*.vue`) | Vite alias `@isar/drawio-pro` → каталог пакета; при отсутствии — каталог-заглушка | ядро (сборка), модуль (добавить export) |
+| 15 | Модуль написан в CommonJS | `build.commonjsOptions.include` для `modules/drawio-pro` и `node_modules` | ядро (сборка) |
+| 16 | Модуль не мигрирует свою схему | данных в БД у модуля нет (черновик в памяти); схема `archrep_mod_drawio_pro` пока не создаётся | модуль (когда появятся свои данные) |
+| 17 | Событие `saved` не уведомляет форму заключения | форма перечитывает данные при возврате фокуса (модуль открывается в новой вкладке) | ядро |
+| 18 | `/api/drawio-pro/*` не покрыт RBAC | правила `GET`/`POST` + право `drawio_pro:manage` в каталоге, `check:routes` учитывает манифесты | ядро |
+| 19 | «Включён, но не лицензирован» — неопределённое поведение UI | **решение:** поверхность и меню **скрыты**, API отвечает 402 с причиной, причина в `manifest.reason` и логе | ядро |
+| 20 | Формат лицензионного ключа не определён | контейнер `<base64url(payload)>.<base64url(signature)>` (Ed25519) как временный; `verifyLicense(key, { instanceId })` — стабильный интерфейс для будущей спеки | ядро (интерфейс), спека §16.3 |
+| 21 | Legacy-манифест не объявляет лицензию → платный модуль считался бы бесплатным | legacy-адаптер **fail-closed**: без явного `license` → `{ required: true, product: <code> }`; после перехода на `module.json` действует явное значение | ядро (адаптер), модуль (`module.json` с `license`) |
+
+### 16.7. Решения по открытым вопросам (часть E задачи)
+
+| # | Вопрос | Решение |
+|---|---|---|
+| 1 | Чей статус авторитетен для UI: `/api/config.modules` или `/api/<code>/manifest` | **`/api/config.modules`**. Manifest — fallback и диагностика. Модуль не может «включить себя сам» |
+| 2 | Где хранить `licensed` / `license_expires_at` | **только в `isar_modules`** (и в памяти процесса). В `settings_json` **не дублируем**: ключ и производные от него — не настройки модуля |
+| 3 | Формат ключа и инструмент подписи | интерфейс `verifyLicense(key, { instanceId })` реализован (Ed25519, `exp`, `instance_id`, `trial`, `limit`); формат и генератор — отдельная спека §16.3 |
+| 4 | Нужен ли `--drop-schema` для `archrep_mod_<code>` при удалении | **пока нет**: у первого модуля своей схемы нет. Вводим вместе с первой модульной миграцией (флаг `--drop-schema` у скрипта удаления модуля) |
+| 5 | Как показывать «включён, но не лицензирован» | **скрывать** точку расширения (не «серая» кнопка). Администратору — статус в `/api/config` и причина в `/api/<code>/manifest.reason`; пользователю — ничего |
+| 6 | Онлайн-активация / защита ключа от копирования | **не вводим** (решение 2026-11-02): проверка офлайн, ограничения приняты и описаны в §16.3 и `docs/modules-admin-guide.md` §4.1 |
+
+
+
 ## 17. Ссылки
 
 - `temp/modules-installation-discussion.md` — исходное обсуждение (варианты 1–4, план этапов).
 - `docs/issue-74-adr-linear-save-model.md` — контракт сохранения ADR (пример интеграции).
+- `backend/modules/` — загрузчик, манифест, лицензия, реестр, адаптеры (см. §4.3).
+- `docs/modules-admin-guide.md` — инструкция администратора: установка, лицензия, включение, диагностика.
+- `docs/modules-connect-checklist.md` — короткий чеклист подключения (10 шагов).
+- `docs/issue-modules-enabled-duplication.md` — задача «дублирование источников включения модулей» (текст для GitHub).
+- `modules/README.md` — drop-in каталог модулей и шпаргалка команд.
 - `backend/auth/routePermissions.js`, `scripts/check-route-permissions.js` — RBAC и проверка маршрутов.
-- `frontend-v3/src/views/DecisionAppliedForm.vue`, `DiagramEditorView.vue` — будущие точки расширения UI.
+- `frontend-v3/src/modules/` — реестр поверхностей, `SurfaceHost`, адаптеры модулей.
+- `frontend-v3/src/views/DecisionAppliedForm.vue`, `DiagramEditorView.vue` — точки расширения UI.
 - `frontend-v3/src/config/params.js`, `backend/index.js` (`/api/config`) — канал конфигурации.
 - `infra/common/dockerfile`, `infra/*/docker-compose.yml` — сборка и поставка.
+
 
 ## Приложение A. Пример манифеста DrawIO Pro
 
@@ -456,7 +623,8 @@ export { ModuleButton, ModulePanel };  // компоненты для точек
 
 ---
 
-*Создано: 2026-09-12. Черновик; **спецификация не реализована**; решения по §16 вносятся по мере согласования.*
+*Создано: 2026-09-12. Обновлено: 2026-11-02 — **MVP инфраструктуры реализован** (§4.3), адаптеры и
+расхождения зафиксированы (§16.6), решения по открытым вопросам — §16.7.*
 
 
 

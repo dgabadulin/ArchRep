@@ -131,6 +131,12 @@ function getIncrSysFuncStatusIdByCode(code) {
   return incrSysFuncStatusCodeToId.get(String(code).trim()) ?? null;
 }
 
+/** Код статуса функции в заключении (ar_adr_increment_system_function_statuses) по id — issue #93. */
+function getIncrSysFuncStatusCodeById(id) {
+  if (id == null) return null;
+  return incrSysFuncStatusIdToCode.get(Number(id)) || null;
+}
+
 function getIncrSysStatusIdByCode(code) {
   if (code == null || code === '') return null;
   return incrSysStatusCodeToId.get(String(code).trim()) ?? null;
@@ -253,6 +259,7 @@ module.exports = {
   getSystemStatusCodeById,
   getSysFuncStatusIdByCode,
   getIncrSysFuncStatusIdByCode,
+  getIncrSysFuncStatusCodeById,
   getIncrSysStatusIdByCode,
   getIncrRelStatusCodeById,
   getIncrRelStatusIdByCode,

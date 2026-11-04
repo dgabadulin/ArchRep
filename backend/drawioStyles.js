@@ -49,6 +49,8 @@ const DEFAULT_DRAWIO_LAYOUT_STYLE = {
   edgeLabelReserveH: 24,
   edgeLabelReserveV: 20,
   parallelEdgeGap: 12,
+  /** Зазор до чужих узлов при обходе ребром (issue #93), px. */
+  obstacleGap: 12,
 };
 
 function isPlainObject(x) {

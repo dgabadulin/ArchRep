@@ -8,6 +8,8 @@ import 'v-network-graph/lib/style.css'
 import { api } from './api/client'
 import { setConfig } from './config/params'
 import { authStore } from './auth/authStore'
+import { setModulesConfig } from './modules/status'
+import { installModuleSurfaces } from './modules/install'
 
 async function bootstrap() {
   let config = {}
@@ -17,6 +19,10 @@ async function bootstrap() {
   } catch (_) {
     setConfig({})
   }
+  // Статус подключаемых модулей (docs/modules-contract.md §7.4) — до установки поверхностей,
+  // чтобы SurfaceHost сразу знал enabled/licensed и не мигал скрытыми кнопками.
+  setModulesConfig(config && config.modules)
+  installModuleSurfaces()
   await authStore.loadFromConfig(config)
 
   const app = createApp(App)

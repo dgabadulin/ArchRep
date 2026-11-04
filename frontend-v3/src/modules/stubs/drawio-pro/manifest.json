@@ -1,0 +1,15 @@
+{
+  "id": "drawio-pro",
+  "name": "DrawIO Pro (заглушка сборки)",
+  "version": "0.0.0",
+  "requiresCore": ">=1.0",
+  "type": "module",
+  "permissionsProvided": ["drawio_pro:manage"],
+  "surface": {
+    "adrAppliedForm": {
+      "action": "fillFromDiagram",
+      "requiredPermission": "adr_applied:write",
+      "toolbar": true
+    }
+  }
+}

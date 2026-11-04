@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-v-in-tag": true,
+  "separate-pull-requests": false,
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "changelog-sections": [
+        { "type": "feat", "section": "Новое", "hidden": false },
+        { "type": "fix", "section": "Исправлено", "hidden": false },
+        { "type": "perf", "section": "Производительность", "hidden": false },
+        { "type": "revert", "section": "Откаты", "hidden": false },
+        { "type": "deps", "section": "Зависимости", "hidden": false },
+        { "type": "docs", "section": "Документация", "hidden": true },
+        { "type": "chore", "section": "Служебное", "hidden": true },
+        { "type": "refactor", "section": "Рефакторинг", "hidden": true },
+        { "type": "test", "section": "Тесты", "hidden": true },
+        { "type": "ci", "section": "CI", "hidden": true }
+      ],
+      "extra-files": [
+        { "type": "json", "path": "frontend-v3/package.json", "jsonpath": "$.version" }
+      ]
+    }
+  }
+}

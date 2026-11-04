@@ -489,6 +489,8 @@ module.exports = {
   adr_increment_systems_update_comment: `UPDATE archrep.ar_adr_increment_systems SET comment = NULLIF($1,'') WHERE id = $2 RETURNING *`,
   system_functions_by_ids_system: `SELECT id, name FROM archrep.ar_system_functions WHERE ar_systems_id = $1 AND id = ANY($2::bigint[])`,
   adr_increment_system_functions_ordered: `SELECT j.ar_system_functions_id, j.sort_order, j.ar_adr_increment_system_function_statuses_id, st.code AS increment_sysfunc_status_code FROM archrep.ar_adr_increment_system_functions j LEFT JOIN archrep.ar_adr_increment_system_function_statuses st ON st.id = j.ar_adr_increment_system_function_statuses_id WHERE j.ar_adr_increment_system_id = $1 ORDER BY j.sort_order, j.id`,
+  /** Функции всех систем инкремента — тело узла схемы решения (issue #93: маркеры по статусу функции). */
+  adr_increment_system_functions_by_increment: `SELECT j.ar_adr_increment_system_id, j.sort_order, sf.name AS function_name, st.code AS increment_sysfunc_status_code FROM archrep.ar_adr_increment_system_functions j JOIN archrep.ar_adr_increment_systems ais ON ais.id = j.ar_adr_increment_system_id JOIN archrep.ar_system_functions sf ON sf.id = j.ar_system_functions_id LEFT JOIN archrep.ar_adr_increment_system_function_statuses st ON st.id = j.ar_adr_increment_system_function_statuses_id WHERE ais.ar_adr_increment_id = $1 ORDER BY j.ar_adr_increment_system_id, j.sort_order, j.id`,
   // issue #74: у ar_systems нет колонки updated_at (только ar_system_functions/ar_integration_flows её имеют) —
   // не добавлять сюда updated_at, иначе 42703 «column "updated_at" of relation "ar_systems" does not exist».
   system_status_update: `UPDATE archrep.ar_systems SET ar_system_statuses_id = NULLIF($1,'')::BIGINT WHERE id = $2 RETURNING id`,

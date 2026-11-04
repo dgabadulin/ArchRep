@@ -1,6 +1,6 @@
 {
   "name": "archrep",
-  "version": "1.0.0",
+  "version": "3.0.1",
   "description": "Архитектурный репозиторий (ИСАР): BFF + PostgreSQL + Vue 3 для корпоративных и системных архитекторов.",
   "main": "backend/index.js",
   "scripts": {
@@ -11,7 +11,10 @@
     "db:migrate:down": "node-pg-migrate down --config-file pgmrc.json --migrations-dir DB/migrations",
     "db:migrate:create": "node-pg-migrate create --config-file pgmrc.json --migrations-dir DB/migrations",
     "check:routes": "node scripts/check-route-permissions.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check:drawio": "node scripts/check-drawio-increment.js",
+    "modules:status": "node scripts/modules-status.js",
+    "test": "node scripts/run-tests.js",
+    "test:modules": "node scripts/run-module-tests.js"
   },
   "keywords": [
     "enterprise-architecture",

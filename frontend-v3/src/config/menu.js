@@ -76,6 +76,13 @@ export const menuItems = [
       { label: 'Роли', path: '/settings/administration/roles', icon: 'book', requiredPermission: 'roles:read' },
     ],
   },
+  {
+    label: 'Справка',
+    icon: 'book',
+    children: [
+      { label: 'О системе', path: '/about', icon: 'book' },
+    ],
+  },
 ]
 
 /** Рекурсивная фильтрация меню по permissions (open mode — всё видно). */

@@ -17,6 +17,7 @@ const PUBLIC_PATHS = new Set([
   '/api/health',
   '/api/health/db',
   '/api/config',
+  '/api/version',
   '/api/auth/login',
   '/api/auth/oidc/login',
   '/api/auth/oidc/callback',
@@ -107,6 +108,19 @@ const RULES = [
   { methods: ['POST'], pattern: re('/api/ai/chat'), permissions: ['ai_architect:use'] },
   { methods: ['GET', 'POST', 'DELETE'], pattern: re('/api/ai/conversations'), permissions: ['ai_architect:use'] },
   { methods: ['GET'], pattern: /^\/api\/ai\/status$/, permissions: ['ai_architect:use'] },
+
+  // Подключаемые модули (docs/modules-contract.md §8): deny-by-default, права модуля
+  // (<code>:<action>) выдаются только при активной лицензии. Сейчас единственный модуль —
+  // drawio-pro; для новых модулей правило добавляется по тому же шаблону (или генерируется
+  // из манифеста — scripts/check-route-permissions.js проверяет покрытие).
+  // GET /api/drawio-pro/manifest — любой аутентифицированный с adr_applied:read (или drawio_pro:manage);
+  // POST /api/drawio-pro/{parse,validate,payload} — adr_applied:write (или drawio_pro:manage).
+  { methods: ['GET'], pattern: re('/api/drawio-pro'), anyOf: ['adr_applied:read', 'drawio_pro:manage'] },
+  {
+    methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
+    pattern: re('/api/drawio-pro'),
+    anyOf: ['adr_applied:write', 'drawio_pro:manage'],
+  },
 
   { methods: ['GET'], pattern: /^\/api\/admin\/users(?:\/|$)/, permissions: ['users:read'], exportPermission: 'users:export' },
   { methods: ['POST'], pattern: /^\/api\/admin\/users$/, permissions: ['users:write'] },

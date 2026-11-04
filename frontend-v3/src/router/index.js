@@ -92,6 +92,7 @@ const routes = [
       { path: 'references', name: 'references', component: () => import('../views/ReferencesV2.vue'), meta: { title: 'Справочники', requiredPermissions: ['references:read'] } },
       { path: 'references-togaf', redirect: { name: 'references' } },
       { path: 'settings/parameters', name: 'settings-parameters', component: () => import('../views/SettingsParametersView.vue'), meta: { title: 'Параметры', requiredPermissions: ['settings_parameters:read'] } },
+      { path: 'about', name: 'about', component: () => import('../views/AboutView.vue'), meta: { title: 'О системе' } },
       { path: 'settings/jobs', name: 'settings-jobs', component: () => import('../views/SettingsJobsView.vue'), meta: { title: 'Управление заданиями', requiredPermissions: ['jobs:read'] } },
       { path: 'settings/service-operations', name: 'settings-service-operations', component: () => import('../views/SettingsServiceOperationsView.vue'), meta: { title: 'Сервисные операции', requiredPermissions: ['service_operations:execute'] } },
       { path: 'settings/service-operations/import', name: 'settings-data-import', component: () => import('../views/DataImportView.vue'), meta: { title: 'Импорт данных', requiredPermissions: ['import:execute'] } },

@@ -41,9 +41,17 @@ temp/
 
 # Архив исходников, который создаёт deploy.bat (пакуется на месте, передаётся по scp)
 deploy_stage.tar.gz
+# Рантайм-файл преддеплойной проверки (создаёт и удаляет infra/prod/deploy.bat)
+deploy_version.env
 
 # Артефакт сборки frontend-v3 (vite build → ../frontend-v3-dist)
 frontend-v3-dist/
 
 # Draw.io — локальный бэкап редактора (не коммитить)
 .$*.drawio.bkp
+
+# Подключаемые модули: платный код модулей не коммитим (ставится npm-пакетом/артефактом).
+# Каталог и README остаются в репозитории как точка монтирования.
+modules/*
+!modules/README.md
+!modules/.gitkeep

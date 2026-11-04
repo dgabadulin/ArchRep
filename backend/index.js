@@ -16,6 +16,7 @@ const {
   getSystemStatusIdByCode,
   getSysFuncStatusIdByCode,
   getIncrSysFuncStatusIdByCode,
+  getIncrSysFuncStatusCodeById,
   getIncrSysStatusIdByCode,
   getIncrRelStatusCodeById,
   getIncrRelStatusIdByCode,
@@ -26,6 +27,16 @@ const { enrichRelationRow, enrichRelationRows } = require('./relationLabels');
 const { isManagedRelationType } = require('./relationTypePolicy');
 const { buildHomeStats } = require('./homeDashboard');
 const { buildMxfile, mergeMxfileWithData } = require('./incrementDiagram');
+const { formatSysFuncComment } = require('./sysFuncMarkers');
+const {
+  normalizeIncrementPayload,
+  mergeAppliedHeader,
+  extractMxfile,
+  mxfileMaxBytes,
+  validateMxfile,
+  buildFullSaveResponse,
+} = require('./adrIncrements');
+const { registerModules, getPublicModulesConfig, listModules } = require('./modules');
 const {
   DEFAULT_DRAWIO_NODE_STYLE,
   DEFAULT_DRAWIO_EDGE_STYLE,
@@ -43,6 +54,8 @@ const { PUBLIC_DEFAULTS: AI_PUBLIC_CONFIG_DEFAULTS, aiPublicEnvOverrides } = req
 const { bootstrapAuth } = require('./auth/bootstrapAuth');
 const { normalizeDomainName } = require('./domainFromUrl');
 const { netboxObjectWebUrl, parseSystemCodes } = require('./netboxClient');
+const { getVersionInfo, normalizeVersion, readPackageVersion } = require('./version');
+
 
 // Параметры ADR: только коды справочников (issue #31).
 // Значения — коды из ar_integration_flow_statuses (issue #91): FLOW_STATUS_1 «Планируется к реализации»,
@@ -112,11 +125,23 @@ function pgParam(v) {
   return v === undefined ? null : v;
 }
 
-/** Текст поля «Функции» в строке системы решения (issue #52). */
-function formatSystemFunctionsComment(names) {
-  const list = (names || []).map((n) => String(n || '').trim()).filter(Boolean);
-  if (!list.length) return '';
-  return list.map((n) => `-${n};`).join('\r\n');
+/**
+ * Текст поля «Функции» в строке системы решения (issue #52/#93).
+ * Маркер перед названием зависит от статуса функции в заключении (issue #93):
+ * `+` создаётся, `•` модифицируется, `✓` используется, `-` выводится, `?` статус не задан.
+ * Соответствие «код → маркер» — параметр `DRAWIO_SYSFUNC_MARKERS` (backend/sysFuncMarkers.js).
+ *
+ * @param {Array<{name?: string, increment_sysfunc_status_code?: string|null, ar_adr_increment_system_function_statuses_id?: number|string|null}>} entries
+ * @returns {string}
+ */
+function formatSystemFunctionsComment(entries) {
+  const list = (entries || []).map((fn) => ({
+    name: fn && fn.name,
+    increment_sysfunc_status_code:
+      (fn && fn.increment_sysfunc_status_code)
+      || getIncrSysFuncStatusCodeById(fn && fn.ar_adr_increment_system_function_statuses_id),
+  }));
+  return formatSysFuncComment(list, getParam);
 }
 
 const app = express();
@@ -241,7 +266,38 @@ function mountFrontendStatic() {
 }
 
 // Проверка доступности бэкенда (без БД); после deploy — открыть http://host:3000/api/health
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+const HEALTH_VERSION = normalizeVersion(
+  process.env.APP_VERSION || readPackageVersion(),
+  { commit: process.env.APP_COMMIT, dirty: String(process.env.APP_DIRTY || '').toLowerCase() === 'true' },
+).version;
+app.get('/api/health', (req, res) => res.json({ ok: true, version: HEALTH_VERSION }));
+
+/**
+ * Публичная версия продукта и состояние схемы БД (issue #96).
+ * Отдаётся всем: версия, commit, время сборки, состояние миграций, список модулей.
+ * Секретов здесь нет; `db.warn_mode` — режим показа плашки в UI (`off|admin|all`).
+ */
+app.get('/api/version', async (req, res) => {
+  try {
+    const modules = {};
+    for (const rec of listModules()) {
+      modules[rec.code] = {
+        version: rec.version || null,
+        enabled: Boolean(rec.enabled),
+        licensed: Boolean(rec.licensed),
+      };
+    }
+    const info = await getVersionInfo({
+      pool,
+      modules,
+      warnMode: String(getParam('SYS_DB_SCHEMA_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
+    });
+    res.json(info);
+  } catch (err) {
+    console.error('[version]', err);
+    res.status(500).json({ error: 'Failed to read version' });
+  }
+});
 
 /** Политика перезапуска процесса Node (сервисные операции UI). */
 function getNodeRestartPolicy() {
@@ -379,6 +435,9 @@ app.get('/api/config', (req, res) => {
   aiPublicEnvOverrides(out);
   out.auth_enabled = isAuthEnabled();
   Object.assign(out, publicKeycloakFlags());
+  // Подключаемые модули (docs/modules-contract.md §7.4): только несекретный статус.
+  // Источник правды для UI — эта секция; /api/<code>/manifest — вспомогательный (fallback).
+  out.modules = getPublicModulesConfig();
   res.json(out);
 });
 
@@ -1179,7 +1238,11 @@ app.post('/api/decisions/applied/full', async (req, res) => {
   try {
     await client.query('BEGIN');
     const b = req.body || {};
-    const { task_name, task_link, conclusion, ar_adr_statuses_id, author, increments = [] } = b;
+    const { task_name, task_link, conclusion, ar_adr_statuses_id, author } = b;
+    // Нормализация ссылок модулей (issue #74 / docs/modules-contract.md §16.6 #3):
+    // client_ref → local_key, from_ref/to_ref → from_new_key/to_new_key.
+    const increments = normalizeIncrementPayload(b.increments);
+    const createdIncrements = [];
     const adraPrefix = getParam('ADR_ADRA_PREFIX', 'ADRA-') || 'ADRA-';
     const r = await client.query(queries.adrs_applied_insert, [adraPrefix, task_name || '', task_link || '', conclusion || '', ar_adr_statuses_id || null, author || '']);
     const appliedId = r.rows[0].id;
@@ -1194,6 +1257,7 @@ app.post('/api/decisions/applied/full', async (req, res) => {
         normalizeOptionalBigint(inc.ar_adr_increment_types_id),
       ]);
       const incId = incR.rows[0].id;
+      createdIncrements.push({ id: incId, order_index: inc.order_index ?? i + 1, name: inc.name || '' });
       const systems = inc.systems || [];
       const relations = inc.relations || [];
       for (const s of systems) {
@@ -1204,11 +1268,10 @@ app.post('/api/decisions/applied/full', async (req, res) => {
         if (s.local_key) systemKeyMap.set(String(s.local_key).trim(), sysId);
         const incrStatusId = s.ar_adr_increment_system_statuses_id
           || (s.increment_status_code ? getIncrSysStatusIdByCode(s.increment_status_code) : null);
-        const fnNames = (s.functions || []).map((fn) => fn.name).filter(Boolean);
         // Текст «Функции» пересчитывается из актуального списка (issue #74): раньше присланный comment
-        // перекрывал новые функции, и схема решения не видела изменений.
+        // перекрывал новые функции, и схема решения не видела изменений. Маркеры — по статусу функции (issue #93).
         const sysComment = Array.isArray(s.functions)
-          ? formatSystemFunctionsComment(fnNames)
+          ? formatSystemFunctionsComment(s.functions)
           : (s.comment || '');
         const sysRow = await client.query(queries.adr_increment_systems_insert, [incId, sysId, incrStatusId || null, sysComment]);
         const incrSysId = sysRow.rows[0].id;
@@ -1246,7 +1309,8 @@ app.post('/api/decisions/applied/full', async (req, res) => {
     }
     await client.query('COMMIT');
     client.release();
-    res.status(201).json({ id: appliedId, code: r.rows[0].code });
+    // Ответ расширен (contract §16.6 #4): модуль читает result.increment_id, чтобы сохранить .drawio.
+    res.status(201).json(buildFullSaveResponse({ appliedId, code: r.rows[0].code, increments: createdIncrements }));
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     client.release();
@@ -1498,7 +1562,9 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
     await client.query('BEGIN');
     const appliedId = req.params.id;
     const b = req.body || {};
-    const { task_name, task_link, conclusion, ar_adr_statuses_id, author, increments = [] } = b;
+    // Нормализация ссылок модулей (contract §16.6 #3) — до resolveRelationEndpoint().
+    const increments = normalizeIncrementPayload(b.increments);
+    const createdIncrements = [];
 
     const current = await client.query(queries.adrs_applied_get, [appliedId]);
     if (current.rows.length === 0) {
@@ -1507,6 +1573,14 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
     }
     const currentRow = current.rows[0];
+    // Шапка: отсутствующие в теле поля берём из БД, а не затираем пустыми строками
+    // (contract §16.6 #5: PUT .../full с телом { increments } не должен терять шапку).
+    const header = mergeAppliedHeader(b, currentRow);
+    // Адаптер для модуля: `increments_mode: 'merge'` + `increment_id` — заменить только это
+    // решение, не удаляя остальные (модуль присылает один increment). По умолчанию — прежнее
+    // поведение «replace» (ручная форма присылает весь состав заключения).
+    const incrementsMode = b.increments_mode === 'merge' ? 'merge' : 'replace';
+    const targetIncrementId = normalizeOptionalBigint(b.increment_id);
     const currentStatusCode = (currentRow.status_code || getAdrStatusCodeById(currentRow.ar_adr_statuses_id) || '').trim();
     const draftStatusCode = String(getParam('ADR_DRAFT_STATUS_CODE', DEFAULT_DRAFT_STATUS_CODE) || DEFAULT_DRAFT_STATUS_CODE).trim();
     // Править состав можно в статусах-«редактируемых» (issue #91): список кодов — параметр
@@ -1520,11 +1594,11 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       // П.5: не в редактируемом статусе — только статус; или он редактируемый, но прислан только смена статуса
       // (без increments) — не затирать данные
       const upd = await client.query(queries.adrs_applied_update, [
-        payloadIsStatusOnly ? (currentRow.task_name ?? '') : (task_name || ''),
-        payloadIsStatusOnly ? (currentRow.task_link ?? '') : (task_link || ''),
-        payloadIsStatusOnly ? (currentRow.conclusion ?? '') : (conclusion || ''),
-        ar_adr_statuses_id ?? currentRow.ar_adr_statuses_id,
-        payloadIsStatusOnly ? (currentRow.author ?? '') : (author || ''),
+        header.task_name,
+        header.task_link,
+        header.conclusion,
+        header.ar_adr_statuses_id,
+        header.author,
         appliedId,
       ]);
       if (upd.rowCount === 0) {
@@ -1533,7 +1607,14 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
         return res.status(404).json({ error: 'Not found' });
       }
     } else {
-      const upd = await client.query(queries.adrs_applied_update, [task_name || '', task_link || '', conclusion || '', ar_adr_statuses_id || null, author || '', appliedId]);
+      const upd = await client.query(queries.adrs_applied_update, [
+        header.task_name,
+        header.task_link,
+        header.conclusion,
+        header.ar_adr_statuses_id,
+        header.author,
+        appliedId,
+      ]);
       if (upd.rowCount === 0) {
         await client.query('ROLLBACK');
         client.release();
@@ -1544,6 +1625,8 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       const savedDiagrams = (await client.query(queries.adr_increment_diagrams_by_applied, [appliedId])).rows;
       const incs = await client.query(queries.adr_increments_by_applied, [appliedId]);
       for (const inc of incs.rows) {
+        // merge-режим (адаптер модуля): пересоздаём только целевое решение, остальные не трогаем.
+        if (incrementsMode === 'merge' && targetIncrementId != null && Number(inc.id) !== targetIncrementId) continue;
         await client.query(queries.adr_increment_relations_delete_by_increment, [inc.id]);
         await client.query(queries.adr_increment_systems_delete_by_increment, [inc.id]);
         await client.query(queries.adr_increments_delete, [inc.id]);
@@ -1562,6 +1645,7 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       ]);
         const incId = incR.rows[0].id;
         incKeyMap.set(`${inc.order_index ?? i + 1}|${inc.name || ''}`, incId);
+        createdIncrements.push({ id: incId, order_index: inc.order_index ?? i + 1, name: inc.name || '' });
         const systems = inc.systems || [];
         const relations = inc.relations || [];
         for (const s of systems) {
@@ -1572,11 +1656,11 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
           if (s.local_key) systemKeyMap.set(String(s.local_key).trim(), sysId);
           const incrStatusId = s.ar_adr_increment_system_statuses_id
             || (s.increment_status_code ? getIncrSysStatusIdByCode(s.increment_status_code) : null);
-          const fnNames = (s.functions || []).map((fn) => fn.name).filter(Boolean);
           // Текст «Функции» пересчитывается из актуального списка (issue #74): иначе схема решения
           // показывает функции, сохранённые при предыдущем сохранении заключения.
+          // Маркеры перед названиями — по статусу функции в заключении (issue #93).
           const sysComment = Array.isArray(s.functions)
-            ? formatSystemFunctionsComment(fnNames)
+            ? formatSystemFunctionsComment(s.functions)
             : (s.comment || '');
           const sysRow = await client.query(queries.adr_increment_systems_insert, [incId, sysId, incrStatusId || null, sysComment]);
           const incrSysId = sysRow.rows[0].id;
@@ -1637,7 +1721,8 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
 
     await client.query('COMMIT');
     client.release();
-    res.json({ id: appliedId });
+    // increment_id: модуль сохраняет .drawio по id решения (contract §16.6 #4).
+    res.json(buildFullSaveResponse({ appliedId, code: currentRow.code, increments: createdIncrements }));
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     client.release();
@@ -1886,7 +1971,7 @@ app.put('/api/adr-increment-systems/:rowId/function-selection', async (req, res)
         : new Map();
     await client.query('BEGIN');
     await client.query(queries.adr_increment_system_functions_delete_by_row, [rowId]);
-    const names = [];
+    const entries = [];
     for (let i = 0; i < orderedIds.length; i++) {
       const fid = orderedIds[i];
       const chk = await client.query(queries.system_functions_by_ids_system, [sysId, [fid]]);
@@ -1895,12 +1980,12 @@ app.put('/api/adr-increment-systems/:rowId/function-selection', async (req, res)
         client.release();
         return res.status(400).json({ error: `Функция id=${fid} не принадлежит этой системе` });
       }
-      names.push(chk.rows[0].name);
       const statusCode = statusMap.get(fid) || null;
+      entries.push({ name: chk.rows[0].name, increment_sysfunc_status_code: statusCode });
       const statusId = statusCode ? getIncrSysFuncStatusIdByCode(statusCode) : null;
       await client.query(queries.adr_increment_system_functions_insert_row, [rowId, fid, i, statusId]);
     }
-    const comment = formatSystemFunctionsComment(names);
+    const comment = formatSystemFunctionsComment(entries);
     await client.query(queries.adr_increment_systems_update_comment, [comment, rowId]);
     await client.query('COMMIT');
     const out = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
@@ -1967,14 +2052,32 @@ app.delete('/api/increments/:incrementId/relations/:id', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 
+/**
+ * Данные для генерации схемы решения: инкремент, системы (с функциями и статусами функций — issue #93)
+ * и связи. Тело узла строится из функций, поэтому `comment` здесь — только fallback для легаси-строк.
+ */
 async function loadIncrementDiagramContext(incrementId) {
   const inc = await pool.query(queries.adr_increment_get, [incrementId]);
   if (inc.rowCount === 0) return null;
-  const [sys, rel] = await Promise.all([
+  const [sys, rel, fn] = await Promise.all([
     pool.query(queries.adr_increment_systems_by_increment, [incrementId]),
     pool.query(queries.adr_increment_relations_by_increment, [incrementId]),
+    pool.query(queries.adr_increment_system_functions_by_increment, [incrementId]),
   ]);
-  return { increment: inc.rows[0], systems: sys.rows, relations: rel.rows };
+  const functionsByRow = new Map();
+  for (const row of fn.rows || []) {
+    const key = Number(row.ar_adr_increment_system_id);
+    if (!functionsByRow.has(key)) functionsByRow.set(key, []);
+    functionsByRow.get(key).push({
+      name: row.function_name,
+      increment_sysfunc_status_code: row.increment_sysfunc_status_code || null,
+    });
+  }
+  const systems = (sys.rows || []).map((s) => ({
+    ...s,
+    functions: functionsByRow.get(Number(s.id)) || [],
+  }));
+  return { increment: inc.rows[0], systems, relations: rel.rows };
 }
 
 function solutionNameFromIncrement(inc) {
@@ -2011,22 +2114,47 @@ app.get('/api/increments/:incrementId/diagrams/:diagramId', async (req, res) => 
 app.post('/api/increments/:incrementId/diagrams', async (req, res) => {
   try {
     const incrementId = req.params.incrementId;
+    // Клиентский mxfile (модуль DrawIO Pro) — сохраняется как есть, чтобы не потерять
+    // раскладку пользователя (contract §16.6 #6). Без mxfile — прежнее поведение: buildMxfile из БД.
+    const { xml: clientMxfile, error: mxfileError } = extractMxfile(req.body);
+    if (mxfileError) return res.status(400).json({ error: mxfileError });
+    if (clientMxfile != null) {
+      const check = validateMxfile(clientMxfile, { maxBytes: mxfileMaxBytes(getParam) });
+      if (!check.ok) return res.status(400).json({ error: check.error });
+    }
+
     const ctx = await loadIncrementDiagramContext(incrementId);
     if (!ctx) return res.status(404).json({ error: 'Increment not found' });
     const mv = await pool.query(queries.adr_increment_diagrams_max_version, [incrementId]);
-    const nextV = (mv.rows[0].max_v || 0) + 1;
+    const currentMax = Number(mv.rows[0].max_v || 0);
+    // Оптимистичная блокировка: клиент присылает версию, от которой отталкивался.
+    const expected = normalizeOptionalBigint(req.body && req.body.expected_version);
+    if (expected != null && expected !== currentMax) {
+      return res.status(409).json({
+        error: `Схема изменена: актуальная версия ${currentMax}, ожидалась ${expected}. Перечитайте схему и повторите сохранение.`,
+        current_version: currentMax,
+      });
+    }
+    const nextV = currentMax + 1;
     const vLabel = `v${nextV}`;
     const solutionName = solutionNameFromIncrement(ctx.increment);
-    // Новая версия диаграммы: только данные инкремента из БД (buildMxfile), без merge со старыми mxfile.
-    const mxfile = buildMxfile({
-      systems: ctx.systems,
-      relations: ctx.relations,
-      solutionName,
-      versionLabel: vLabel,
-      getParam,
-    });
-    const ins = await pool.query(queries.adr_increment_diagrams_insert, [incrementId, nextV, mxfile, null]);
-    res.status(201).json(ins.rows[0]);
+    // Если клиент прислал mxfile — сохраняем его (включая координаты узлов sys-*/rel-*).
+    // Иначе — генерация по данным инкремента (buildMxfile), как раньше.
+    const mxfile = clientMxfile != null
+      ? clientMxfile
+      : buildMxfile({
+        systems: ctx.systems,
+        relations: ctx.relations,
+        solutionName,
+        versionLabel: vLabel,
+        getParam,
+      });
+    const editedBy = req.body && req.body.last_edited_by != null
+      ? String(req.body.last_edited_by).trim() || null
+      : null;
+    const ins = await pool.query(queries.adr_increment_diagrams_insert, [incrementId, nextV, mxfile, editedBy]);
+    const row = ins.rows[0] || {};
+    res.status(201).json({ ...row, id: row.id, version_no: row.version_no != null ? row.version_no : nextV });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Failed to create diagram' });
@@ -3818,13 +3946,24 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
 
 (async () => {
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;
-  mountFrontendStatic();
+
+  // Сервер поднимаем сразу (healthcheck отвечает даже при недоступной БД), но SPA-fallback
+  // регистрируем только после модулей: иначе `app.get('*')` перехватит `/api/<code>/*`
+  // (docs/modules-contract.md §6.1 п.4). Express допускает добавление маршрутов после listen().
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
 
   try {
+    // 1) параметры (нужны модулям: SYS_MODULE_*), 2) маршруты модулей, 3) статика + SPA-fallback.
+    // registerModules не бросает (fail-open для ядра).
     await loadParams(pool);
+    await registerModules(app, { db: pool, getParam, logger: console });
+  } finally {
+    mountFrontendStatic();
+  }
+
+  try {
     try {
       await loadRefCodes(pool);
     } catch (e) {

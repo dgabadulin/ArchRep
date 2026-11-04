@@ -192,7 +192,15 @@ export const api = {
   removeIncrementRelation: (incrementId, id) => request(`/api/increments/${incrementId}/relations/${id}`, { method: 'DELETE' }),
   getIncrementDiagrams: (incrementId) => request(`/api/increments/${incrementId}/diagrams`),
   getIncrementDiagram: (incrementId, diagramId) => request(`/api/increments/${incrementId}/diagrams/${diagramId}`),
-  createIncrementDiagram: (incrementId) => request(`/api/increments/${incrementId}/diagrams`, { method: 'POST', body: '{}' }),
+  /**
+   * Новая версия схемы решения. `body.mxfile` (клиентский XML) сохраняется как есть —
+   * так модуль DrawIO Pro не теряет раскладку пользователя (docs/modules-contract.md §16.6 #6).
+   * `body.expected_version` — оптимистичная блокировка (409 при расхождении).
+   */
+  createIncrementDiagram: (incrementId, body = {}) =>
+    request(`/api/increments/${incrementId}/diagrams`, { method: 'POST', body: JSON.stringify(body || {}) }),
+  /** Статус подключаемого модуля (fallback к секции modules из /api/config). */
+  getModuleManifest: (code) => request(`/api/${code}/manifest`),
   mergeIncrementDiagram: (incrementId, diagramId) =>
     request(`/api/increments/${incrementId}/diagrams/${diagramId}/merge`, { method: 'POST', body: '{}' }),
   putIncrementDiagram: (incrementId, diagramId, body) =>
@@ -310,5 +318,7 @@ export const api = {
   patchJob: (jobId, body) => request(`/api/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   getConfig: () => request('/api/config'),
+  /** Версия продукта и состояние схемы БД (issue #96). */
+  getVersion: () => request('/api/version'),
   getHomeStats: () => request('/api/dashboard/home-stats'),
 }
