@@ -127,7 +127,8 @@ async function syncModuleRecord(pool, rec, { logger = console } = {}) {
     return (r.rows && r.rows[0]) || null;
   } catch (err) {
     if (isMissingTableError(err)) {
-      logger.warn(`[modules] ${rec.code}: ${TABLE} не найдена — статус не сохранён в БД`);
+      logger.warn(`[modules] ${rec.code}: ${TABLE} не найдена — статус не сохранён в БД ` +
+        '(примените DB/scripts/migrate_20261103120000_isar_modules.sql)');
       return null;
     }
     if (isMissingColumnError(err)) {
@@ -154,47 +155,6 @@ module.exports = {
   SELECT_SQL_LEGACY,
   isMissingTableError,
   isMissingColumnError,
-  loadModuleRecords,
-  syncModuleRecord,
-};
-
-/**
- * Синхронизировать запись модуля с фактически загруженным кодом (версия ядра, enabled, licensed).
- *
- * @param {import('pg').Pool} pool
- * @param {{code:string, name?:string, version?:string, coreVersion?:string, enabled?:boolean,
- *   licensed?:boolean, expiresAt?:string|null}} rec
- * @param {{logger?:Console}} [opts]
- * @returns {Promise<object|null>} строка реестра (или null, если БД недоступна)
- */
-async function syncModuleRecord(pool, rec, { logger = console } = {}) {
-  if (!pool || typeof pool.query !== 'function') return null;
-  try {
-    const r = await pool.query(UPSERT_SQL, [
-      rec.code,
-      rec.name || rec.code,
-      rec.version || '0.0.0',
-      rec.coreVersion || null,
-      Boolean(rec.enabled),
-      Boolean(rec.licensed),
-      rec.expiresAt || null,
-    ]);
-    return (r.rows && r.rows[0]) || null;
-  } catch (err) {
-    if (isMissingTableError(err)) {
-      logger.warn(`[modules] ${rec.code}: ${TABLE} не найдена — статус не сохранён в БД`);
-    } else {
-      logger.warn(`[modules] ${rec.code}: не удалось записать статус в ${TABLE}: ${err.message}`);
-    }
-    return null;
-  }
-}
-
-module.exports = {
-  TABLE,
-  UPSERT_SQL,
-  SELECT_SQL,
-  isMissingTableError,
   loadModuleRecords,
   syncModuleRecord,
 };
