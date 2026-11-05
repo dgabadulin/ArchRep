@@ -28,11 +28,11 @@ GitHub: https://github.com/dgabadulin/ArchRep/issues/78
 
 ## 2. Почему это функция ядра, а не модуль (ADR)
 
-**Решение:** ИИ-архитектор реализуется как **функция ядра**, а не как модуль по `docs/modules-contract.md`.
+**Решение:** ИИ-архитектор реализуется как **функция ядра** (модульный слой удалён в v4.0.0, см. `docs/adr-single-core.md`).
 
 **Контекст:**
 
-- контракт модулей (`docs/modules-contract.md`, v0.1) в коде ядра **не реализован**: нет загрузчика модулей,
+- контракт модулей (v0.1) в коде ядра **не реализовывался**: модульный слой удалён в v4.0.0 (`docs/adr-single-core.md`),
   реестра `isar_modules`, точки `register({ app, ctx })`;
 - функциональность требует **точек UI самого ядра**: футер бокового меню, раскладка `LayoutV3.vue`,
   доступ ко всем экранным формам реестров и заключений; точки расширения UI для модулей контрактом
@@ -578,7 +578,7 @@ Dual-миграция: `DB/scripts/migrate_20261001120000_ai_architect.sql` (pro
 
 - `docs/adding-new-api-endpoint.md` — чек-лист «маршрут ↔ RBAC».
 - `docs/access-control-design.md` — RBAC, deny-by-default.
-- `docs/modules-contract.md` — контракт модулей (обоснование §2).
+- `docs/adr-single-core.md` — решение «единое ядро» (обоснование §2).
 - `backend/queries.js` — источник данных инструментов.
 - `frontend-v3/src/router/index.js` — имена маршрутов форм для `aiActions.js`.
 

@@ -1,7 +1,7 @@
--- Подключаемые модули ИСАР (docs/modules-contract.md §5, §9).
+-- Подключаемые модули ИСАР (история; удалено в v4.0.0).
 -- Реестр archrep.isar_modules — источник правды для UI (enabled / licensed / license_expires_at).
 -- env ENABLED_MODULES — аварийный override, в БД не дублируется.
--- Ключ лицензии в БД НЕ хранится: только env SYS_MODULE_<code>_LICENSE (contract §10).
+-- Ключ лицензии в БД НЕ хранится: только env SYS_MODULE_<code>_LICENSE (удалено в v4.0.0).
 -- Идемпотентно: повторный запуск безопасен.
 
 CREATE TABLE IF NOT EXISTS archrep.isar_modules (
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS archrep.isar_modules (
 );
 
 COMMENT ON TABLE archrep.isar_modules IS
-  'Реестр подключаемых модулей ИСАР (docs/modules-contract.md). Статус синхронизируется ядром при старте.';
+  'Реестр подключаемых модулей ИСАР (история; удалено в v4.0.0). Статус синхронизируется ядром при старте.';
 COMMENT ON COLUMN archrep.isar_modules.code IS 'Код модуля (kebab-case), = префикс маршрутов /api/<code> и прав <code>:<action>';
 COMMENT ON COLUMN archrep.isar_modules.enabled IS 'Включён (env ENABLED_MODULES имеет приоритет как аварийный override)';
 COMMENT ON COLUMN archrep.isar_modules.licensed IS 'Лицензия активна (проверка Ed25519 по ключу из env, ключ в БД не хранится)';

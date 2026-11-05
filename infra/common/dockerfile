@@ -25,11 +25,6 @@ COPY frontend-v3/index.html frontend-v3/vite.config.js ./
 COPY frontend-v3/public ./public
 COPY frontend-v3/src ./src
 
-# Фронт подключаемого модуля (build-time, docs/modules-contract.md §7.2):
-# vite.config.js ищет его в ../modules/drawio-pro (см. resolveDrawioProDir). Без этой строки
-# в контейнере собирается заглушка, и кнопка модуля не появляется.
-COPY modules /app/modules
-
 RUN npm run build
 
 FROM node:20-alpine
@@ -52,9 +47,6 @@ COPY DB/migrations ./DB/migrations
 COPY DB/scripts ./DB/scripts
 
 COPY backend ./backend
-# Backend-часть модулей: загрузчик ищет пакет в <repo>/modules/<code> (или в node_modules,
-# если ставите @isar/* как зависимость сборки). Без этой строки в контейнере модуля нет.
-COPY modules ./modules
 COPY --from=frontend-v3-build /app/frontend-v3-dist ./frontend-v3-dist
 
 EXPOSE 5000

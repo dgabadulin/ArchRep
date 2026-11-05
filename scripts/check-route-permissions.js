@@ -65,31 +65,7 @@ for (const f of files) {
 }
 
 const apiRoutes = routes.filter((r) => r.path.startsWith('/api'));
-
-// 1.1) Маршруты подключаемых модулей (docs/modules-contract.md §8): объявлены в манифесте
-// (endpoints[] legacy / routes[] контракт), а монтируются ядром в рантайме (registerModules).
-// Без этого они выпадали бы из контроля deny-by-default.
-const { discoverInstalledManifests } = require(path.join(ROOT, 'backend', 'modules', 'manifest.js'));
-const moduleManifests = discoverInstalledManifests({ rootDir: ROOT });
-const moduleRoutes = [];
-const declaredModulePerms = new Set();
-for (const item of moduleManifests) {
-  if (!item.manifest) continue;
-  for (const p of item.manifest.permissions || []) declaredModulePerms.add(String(p));
-  const declared = [
-    ...(item.manifest.endpoints || []),
-    ...(item.manifest.routes || []),
-  ];
-  for (const ep of declared) {
-    if (!ep || !ep.path) continue;
-    moduleRoutes.push({
-      method: String(ep.method || 'GET').toUpperCase(),
-      path: String(ep.path),
-      file: `module:${item.code}`,
-    });
-  }
-}
-const allApiRoutes = [...apiRoutes, ...moduleRoutes];
+const allApiRoutes = apiRoutes;
 
 /**
  * Пути-образцы для правила RBAC. Правила в routePermissions.js описаны «боевыми» путями
@@ -135,36 +111,20 @@ for (const rule of perm.RULES) {
 const allPerms = new Set(ALL_PERMISSIONS);
 const unknownPerms = [...usedPerms].filter((c) => !allPerms.has(c)).sort();
 
-// 3) Права, объявленные манифестами модулей, должны быть в каталоге (bootstrap выдаст их ролям).
-const unknownModulePerms = [...declaredModulePerms].filter((c) => !allPerms.has(c)).sort();
-
 // Отчёт.
 let failed = false;
 console.log(`[check:routes] /api-маршрутов: ${apiRoutes.length}`);
-console.log(`[check:routes] модулей (манифесты): ${moduleManifests.length}, маршрутов модулей: ${moduleRoutes.length}`);
 console.log(`[check:routes] непокрытых правилами: ${uncovered.length}`);
 for (const u of uncovered) {
   console.log(`  НЕ ПОКРЫТ: ${u.method} ${u.path}   [${u.file}]`);
 }
 if (uncovered.length) failed = true;
 
-for (const item of moduleManifests) {
-  if (item.manifest) continue;
-  console.log(`  МОДУЛЬ БЕЗ ВАЛИДНОГО МАНИФЕСТА: ${item.code} — ${item.errors.join('; ')}`);
-  failed = true;
-}
-
 console.log(`[check:routes] прав в RULES вне ALL_PERMISSIONS: ${unknownPerms.length}`);
 for (const c of unknownPerms) {
   console.log(`  НЕИЗВЕСТНОЕ ПРАВО: ${c} (добавьте в backend/auth/permissionsCatalog.js)`);
 }
 if (unknownPerms.length) failed = true;
-
-console.log(`[check:routes] прав модулей вне ALL_PERMISSIONS: ${unknownModulePerms.length}`);
-for (const c of unknownModulePerms) {
-  console.log(`  НЕИЗВЕСТНОЕ ПРАВО МОДУЛЯ: ${c} (добавьте в backend/auth/permissionsCatalog.js)`);
-}
-if (unknownModulePerms.length) failed = true;
 
 if (failed) {
   console.error('[check:routes] FAIL');

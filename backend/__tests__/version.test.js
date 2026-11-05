@@ -108,7 +108,6 @@ test('readMigrationPrefixes: реальные миграции репозито�
 test('getVersionInfo: форма ответа /api/version', async () => {
   const info = await getVersionInfo({
     env: { APP_VERSION: 'v3.0.1', APP_COMMIT: 'abc1234', APP_BUILD_TIME: '2026-11-02T20:00:00Z' },
-    modules: { 'drawio-pro': { version: '0.1.0', enabled: true, licensed: true } },
     warnMode: 'off',
   });
   assert.equal(info.product, 'ИСАР');
@@ -119,5 +118,5 @@ test('getVersionInfo: форма ответа /api/version', async () => {
   assert.ok(info.contract_version);
   assert.equal(info.db.source, 'unknown');
   assert.equal(info.db.warn_mode, 'off');
-  assert.equal(info.modules['drawio-pro'].licensed, true);
+  assert.equal('modules' in info, false, 'секции modules больше нет (единое ядро, v4.0.0)');
 });

@@ -20,33 +20,6 @@ function appVersion() {
   }
 }
 
-/**
- * Каталог фронта модуля @isar/drawio-pro (build-time, docs/modules-contract.md §7.2).
- *
- * Пока пакет не установлен — используется каталог-заглушка, чтобы `npm run build:v3`
- * не падал. Порядок: env ISAR_DRAWIO_PRO_DIR → node_modules/@isar/drawio-pro →
- * ../node_modules/@isar/drawio-pro → ../modules/drawio-pro → заглушка.
- */
-function resolveDrawioProDir() {
-  const candidates = [
-    process.env.ISAR_DRAWIO_PRO_DIR,
-    path.join(__dirname, 'node_modules', '@isar', 'drawio-pro'),
-    path.join(__dirname, '..', 'node_modules', '@isar', 'drawio-pro'),
-    path.join(__dirname, '..', 'modules', 'drawio-pro'),
-  ].filter(Boolean)
-  for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, 'frontend', 'DrawioProPanel.vue'))) return dir
-  }
-  return path.join(__dirname, 'src', 'modules', 'stubs', 'drawio-pro')
-}
-
-const drawioProDir = resolveDrawioProDir()
-/**
- * CommonJS-фронт модуля может лежать вне `node_modules` (каталог modules/ или локальный чекаут):
- * без явного include Rollup не трансформирует require() и сборка падает.
- */
-const drawioProGlob = `${drawioProDir.replace(/\\/g, '/')}/**`
-
 export default defineConfig({
   base: '/',
   plugins: [vue()],
@@ -58,19 +31,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.join(__dirname, 'src'),
-      // Модуль подключается как публичный пакет; alias обходит package.json#exports
-      // (модуль v0.1.0 не экспортирует ./frontend/*.vue) и подставляет заглушку при отсутствии.
-      '@isar/drawio-pro': drawioProDir,
     },
   },
   build: {
     outDir: '../frontend-v3-dist',
     emptyOutDir: true,
-    commonjsOptions: {
-      // Фронт модуля написан в CommonJS и может лежать вне node_modules (modules/drawio-pro,
-      // локальный чекаут): без этого Rollup не трансформирует require() и сборка падает.
-      include: [/node_modules/, drawioProGlob],
-    },
   },
   server: {
     port: 5175,

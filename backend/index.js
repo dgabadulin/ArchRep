@@ -36,7 +36,6 @@ const {
   validateMxfile,
   buildFullSaveResponse,
 } = require('./adrIncrements');
-const { registerModules, getPublicModulesConfig, listModules } = require('./modules');
 const {
   DEFAULT_DRAWIO_NODE_STYLE,
   DEFAULT_DRAWIO_EDGE_STYLE,
@@ -274,22 +273,13 @@ app.get('/api/health', (req, res) => res.json({ ok: true, version: HEALTH_VERSIO
 
 /**
  * Публичная версия продукта и состояние схемы БД (issue #96).
- * Отдаётся всем: версия, commit, время сборки, состояние миграций, список модулей.
+ * Отдаётся всем: версия, commit, время сборки, состояние миграций.
  * Секретов здесь нет; `db.warn_mode` — режим показа плашки в UI (`off|admin|all`).
  */
 app.get('/api/version', async (req, res) => {
   try {
-    const modules = {};
-    for (const rec of listModules()) {
-      modules[rec.code] = {
-        version: rec.version || null,
-        enabled: Boolean(rec.enabled),
-        licensed: Boolean(rec.licensed),
-      };
-    }
     const info = await getVersionInfo({
       pool,
-      modules,
       warnMode: String(getParam('SYS_DB_SCHEMA_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
     });
     res.json(info);
@@ -435,9 +425,6 @@ app.get('/api/config', (req, res) => {
   aiPublicEnvOverrides(out);
   out.auth_enabled = isAuthEnabled();
   Object.assign(out, publicKeycloakFlags());
-  // Подключаемые модули (docs/modules-contract.md §7.4): только несекретный статус.
-  // Источник правды для UI — эта секция; /api/<code>/manifest — вспомогательный (fallback).
-  out.modules = getPublicModulesConfig();
   res.json(out);
 });
 
@@ -1239,7 +1226,7 @@ app.post('/api/decisions/applied/full', async (req, res) => {
     await client.query('BEGIN');
     const b = req.body || {};
     const { task_name, task_link, conclusion, ar_adr_statuses_id, author } = b;
-    // Нормализация ссылок модулей (issue #74 / docs/modules-contract.md §16.6 #3):
+    // Нормализация ссылок payload решения (issue #74):
     // client_ref → local_key, from_ref/to_ref → from_new_key/to_new_key.
     const increments = normalizeIncrementPayload(b.increments);
     const createdIncrements = [];
@@ -3947,18 +3934,14 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
 (async () => {
   const port = Number(process.env.SERVER_PORT) || Number(getParam('ARR_SERVER_PORT', 3000)) || 3000;
 
-  // Сервер поднимаем сразу (healthcheck отвечает даже при недоступной БД), но SPA-fallback
-  // регистрируем только после модулей: иначе `app.get('*')` перехватит `/api/<code>/*`
-  // (docs/modules-contract.md §6.1 п.4). Express допускает добавление маршрутов после listen().
+  // Сервер поднимаем сразу (healthcheck отвечает даже при недоступной БД).
+  // Параметры читаем после listen, затем монтируем статику и SPA-fallback.
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
 
   try {
-    // 1) параметры (нужны модулям: SYS_MODULE_*), 2) маршруты модулей, 3) статика + SPA-fallback.
-    // registerModules не бросает (fail-open для ядра).
     await loadParams(pool);
-    await registerModules(app, { db: pool, getParam, logger: console });
   } finally {
     mountFrontendStatic();
   }

@@ -132,7 +132,7 @@ async function readSchemaState(pool) {
 
 /**
  * Публичный объект `GET /api/version`.
- * @param {{pool?:object, env?:object, modules?:object, warnMode?:string}} [opts]
+ * @param {{pool?:object, env?:object, warnMode?:string}} [opts]
  */
 async function getVersionInfo(opts = {}) {
   const env = opts.env || process.env;
@@ -152,7 +152,6 @@ async function getVersionInfo(opts = {}) {
       ...db,
       warn_mode: opts.warnMode || 'admin',
     },
-    modules: opts.modules && typeof opts.modules === 'object' ? opts.modules : {},
   };
 }
 

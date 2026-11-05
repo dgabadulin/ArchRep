@@ -194,7 +194,7 @@ export const api = {
   getIncrementDiagram: (incrementId, diagramId) => request(`/api/increments/${incrementId}/diagrams/${diagramId}`),
   /**
    * Новая версия схемы решения. `body.mxfile` (клиентский XML) сохраняется как есть —
-   * так модуль DrawIO Pro не теряет раскладку пользователя (docs/modules-contract.md §16.6 #6).
+   * так модуль DrawIO Pro не теряет раскладку пользователя (v4.0.0: модульный слой удалён).
    * `body.expected_version` — оптимистичная блокировка (409 при расхождении).
    */
   createIncrementDiagram: (incrementId, body = {}) =>

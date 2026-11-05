@@ -1,5 +1,5 @@
--- Метаданные лицензии модулей в archrep.isar_modules (docs/modules-contract.md §5, §10;
--- формат ключа — docs/module-license-key.md, ключ v1).
+-- Метаданные лицензии модулей в archrep.isar_modules (история; удалено в v4.0.0;
+-- формат ключа — v1).
 --
 -- Что добавляется:
 --   license_id          — идентификатор ключа из payload (LIC-2026-000001) для сверки с реестром лицензий;
@@ -16,7 +16,7 @@ ALTER TABLE archrep.isar_modules
   ADD COLUMN IF NOT EXISTS license_checked_at timestamptz;
 
 COMMENT ON COLUMN archrep.isar_modules.license_id IS
-  'license_id из проверенного ключа (v1). Ключ в БД не хранится (docs/module-license-key.md)';
+  'license_id из проверенного ключа (v1). Ключ в БД не хранится (удалено в v4.0.0)';
 COMMENT ON COLUMN archrep.isar_modules.license_kid IS
   'kid ключа — по нему выбирается публичный ключ в SYS_MODULE_LICENSE_PUBKEYS';
 COMMENT ON COLUMN archrep.isar_modules.license_binding IS

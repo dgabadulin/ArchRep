@@ -24,7 +24,7 @@
 
 ## Архитектура (кратко)
 
-- Функция **ядра** (не модуль по `docs/modules-contract.md`): маршруты `/api/ai/*`, права `ai_architect:*`, параметры `SYS_AI_*`, таблицы в схеме `archrep`. Используются существующие механизмы ядра: `PUBLIC_CONFIG_DEFAULTS`/`GET /api/config`, `routePermissions.js` + `permissionsCatalog.js` + `npm run check:routes`, `ar_settings_parameters`, dual-миграции.
+- Функция **ядра** (не модуль; модульный слой удалён в v4.0.0): маршруты `/api/ai/*`, права `ai_architect:*`, параметры `SYS_AI_*`, таблицы в схеме `archrep`. Используются существующие механизмы ядра: `PUBLIC_CONFIG_DEFAULTS`/`GET /api/config`, `routePermissions.js` + `permissionsCatalog.js` + `npm run check:routes`, `ar_settings_parameters`, dual-миграции.
 - Backend: изолированный `backend/ai/` (`config`, `provider`, `tools`, `prompt`, `conversations`, `aiService`, `aiRoutes`), монтирование `app.use('/api/ai', createAiRouter(pool, queries))` **после** auth-middleware.
 - Транспорт: `POST /api/ai/chat` — SSE (`meta`/`delta`/`tool`/`action`/`done`/`error`).
 - UI-действия: сервер возвращает типизированное действие `{ type: 'open_form' | 'prefill_form', entityType, entityId?, mode, label, permission }`; фронт **перепроверяет права** и маппит `entityType → route` через реестр `frontend-v3/src/config/aiActions.js`.
@@ -59,6 +59,6 @@
 
 - `docs/adding-new-api-endpoint.md` — чек-лист маршрут↔RBAC.
 - `docs/access-control-design.md` — RBAC/deny-by-default.
-- `docs/modules-contract.md` — почему это функция ядра, а не модуль (ADR в спеке).
+- `docs/adr-single-core.md` — почему это функция ядра, а не модуль.
 - `backend/queries.js` — источник данных для инструментов.
 - `docs/issue-51-applied-conclusion-diagrams.md` — контракт `?payload=` в форме заключения (prefill).

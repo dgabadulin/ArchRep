@@ -194,16 +194,7 @@
                 >
                   Создать схему решения
                 </button>
-                <!--
-                  Точка расширения модуля (docs/modules-contract.md §7.1):
-                  кнопка «Заполнить из диаграммы» рисуется только если модуль включён
-                  и лицензирован (/api/config) и есть право adr_applied:write.
-                -->
-                <SurfaceHost
-                  point="adrAppliedForm.actions"
-                  :context="drawioProContext"
-                  @open="openDrawioProEditor"
-                />
+                <!-- Точки расширения модулей удалены вместе с модульным слоем (v4.0.0). -->
               </div>
               <p v-if="!isFormReadOnly && formHasUnsavedChanges" class="hint">
                 Схема строится по сохранённым данным: перед её формированием будет предложено сохранить заключение.
@@ -389,7 +380,6 @@ import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
 import IncrementSystemFunctionsModal from '../components/IncrementSystemFunctionsModal.vue'
 import IncrementRelationsModal from '../components/IncrementRelationsModal.vue'
-import SurfaceHost from '../modules/SurfaceHost.vue'
 import { api } from '../api/client'
 import { messageFromApiError } from '../utils/apiErrors'
 import { getConfig } from '@/config/params'
@@ -854,12 +844,11 @@ async function mergeIncrementDiagramRow(row) {
   }
 }
 
-function openDiagramEditorTab(row, options = {}) {
+function openDiagramEditorTab(row) {
   if (!selectedIncrementId.value || !row?.id || !id.value) return
   // _t: уникальный query, иначе браузер может сфокусировать уже открытую вкладку с тем же URL —
   // Vue не перемонтирует экран и iframe не перезагружает mxfile (после «Обновить» / повторного «Открыть»).
   // schemeLabel: как в колонке «Имя файла» на форме (совпадает с именем при скачивании без .drawio).
-  // module: режим «панель модуля» в DiagramEditorView (docs/modules-contract.md §16.6 #8).
   const url = router.resolve({
     name: 'decision-applied-diagram-editor',
     query: {
@@ -868,7 +857,6 @@ function openDiagramEditorTab(row, options = {}) {
       appliedId: String(id.value),
       _t: String(Date.now()),
       schemeLabel: diagramDisplayName(row),
-      ...(options.module ? { module: String(options.module) } : {}),
     },
   }).href
   // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API схем.
@@ -908,78 +896,6 @@ async function deleteDiagramRow(row) {
   } finally {
     diagramsBusy.value = false
   }
-}
-
-// --- DrawIO Pro: точка расширения adrAppliedForm.actions (docs/modules-contract.md §7.4) ---
-
-/**
- * Контекст для компонента модуля. В кнопку модуль ждёт `appliedId` / `incrementId`;
- * черновые (несохранённые) решения не передаём — модуль сохраняет через `full`-эндпоинты.
- */
-const drawioProContext = computed(() => {
-  const incId = selectedIncrementId.value
-  const savedIncrementId = incId && !isLocalIncrementId(incId) ? String(incId) : null
-  const appliedId = id.value && String(id.value) !== 'new' ? String(id.value) : null
-  return { appliedId, incrementId: savedIncrementId }
-})
-
-const drawioProOpening = ref(false)
-/**
- * Событие `open` кнопки модуля: открыть редактор в режиме панели модуля.
- * Схема должна существовать: если у решения ещё нет схемы — создаём пустую версию
- * (mxfile генерируется ядром по сохранённым данным и тут же подхватывается панелью).
- */
-async function openDrawioProEditor() {
-  if (!canWrite.value) return
-  const appliedId = id.value && String(id.value) !== 'new' ? String(id.value) : null
-  if (!appliedId) {
-    submitError.value = 'Сначала сохраните архитектурное заключение, затем откройте «Заполнить из диаграммы».'
-    return
-  }
-  const incId = selectedIncrementId.value
-  if (!incId || isLocalIncrementId(incId)) {
-    submitError.value = 'Выберите сохранённое решение (инкремент) — схема привязана к решению.'
-    return
-  }
-  drawioProOpening.value = true
-  submitError.value = ''
-  try {
-    await loadIncrementDiagrams()
-    let row = incrementDiagrams.value[0] || null
-    if (!row) {
-      row = await api.createIncrementDiagram(incId)
-      await loadIncrementDiagrams()
-      row = incrementDiagrams.value.find((d) => Number(d.id) === Number(row && row.id)) || row
-    }
-    if (!row || row.id == null) {
-      submitError.value = 'Не удалось подготовить схему решения для модуля DrawIO Pro.'
-      return
-    }
-    openDiagramEditorTab(row, { module: 'drawio-pro' })
-    armReloadAfterModuleEditor()
-  } catch (e) {
-    submitError.value = messageFromApiError(e?.status, e?.body, e?.message)
-      || 'Не удалось открыть редактор DrawIO Pro'
-  } finally {
-    drawioProOpening.value = false
-  }
-}
-
-/**
- * Панель модуля сохраняет заключение сама (в отдельной вкладке). Когда пользователь
- * возвращается на форму, перечитываем данные — Dual Listbox функций и списки систем
- * должны показать то, что записал модуль (критерий готовности §D).
- */
-function armReloadAfterModuleEditor() {
-  if (typeof window === 'undefined') return
-  const onFocus = async () => {
-    window.removeEventListener('focus', onFocus)
-    try {
-      await reloadAfterSave()
-    } catch (_) { /* форма уже могла быть закрыта */ }
-  }
-  // Небольшая задержка: фокус возвращается на форму после закрытия/переключения вкладки.
-  window.setTimeout(() => window.addEventListener('focus', onFocus, { once: true }), 300)
 }
 
 function formSnapshot() {

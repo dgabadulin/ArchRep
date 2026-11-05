@@ -7,7 +7,7 @@
 
 | Bump | Что входит | Пример |
 |---|---|---|
-| **MAJOR** | ломающие изменения публичных контрактов: REST API (пути/обязательные поля), коды RBAC-прав, контракт подключаемых модулей (`docs/modules-contract.md` §11), несовместимая схема БД | удалили поле из ответа, переименовали endpoint |
+| **MAJOR** | ломающие изменения публичных контрактов: REST API (пути/обязательные поля/формат ответа), коды RBAC-прав, несовместимая схема БД | удалили поле из ответа, переименовали endpoint |
 | **MINOR** | новые эндпоинты/поля/реестры/точки расширения; старые клиенты и модули работают | новый реестр, новое право |
 | **PATCH** | исправления, тексты, стили | фикс сортировки |
 
@@ -36,7 +36,7 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
 1. Коммит в `main` в формате **Conventional Commits**:
    `feat(ui): …`, `fix(registry): …`, `perf: …`, `docs: …`;
    ломающее — `feat!:` или тело `BREAKING CHANGE: <что сломано и что делать>`.
-2. **CI** (`.github/workflows/ci.yml`): `npm test`, `npm run check:routes`, `npm run modules:status`, сборка фронта.
+2. **CI** (`.github/workflows/ci.yml`): `npm test`, `npm run check:routes`, сборка фронта.
 3. **Release Please** (`.github/workflows/release-please.yml`) на push в `main`:
    - читает коммиты с последнего тега, определяет bump;
    - создаёт/обновляет **один** PR `chore: release X.Y.Z` с изменениями только в
@@ -72,7 +72,7 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
 
 | Проверка | Поведение |
 |---|---|
-| грязное дерево (кроме `.env*`, `deploy_*`, `modules/`, `temp/`, `frontend-v3-dist/`, `docs/exports/`) | **стоп**, список файлов |
+| грязное дерево (кроме `.env*`, `deploy_*`, `temp/`, `frontend-v3-dist/`, `docs/exports/`) | **стоп**, список файлов |
 | незапушенные коммиты (`HEAD` ≠ upstream) | **стоп** |
 | `HEAD` не на теге | **стоп** (деплой только по тегу) |
 | `package.json.version` ≠ тег | **стоп** (значит, релизный PR не смержен) |
@@ -132,8 +132,7 @@ GET /api/version  → {
   "commit": "826a27b", "build_time": "2026-11-02T20:00:00Z",
   "contract_version": "1.0",
   "db": { "source": "schema_info", "schema_version": "20261105120000",
-          "applied_at": "…", "pending": [], "warn_mode": "admin" },
-  "modules": { "drawio-pro": { "version": "0.1.0", "enabled": true, "licensed": true } }
+          "applied_at": "…", "pending": [], "warn_mode": "admin" }
 }
 ```
 

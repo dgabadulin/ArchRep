@@ -80,12 +80,7 @@ rem из архива пропадали frontend-v3/src/views (весь код 
 rem AnalyticsView.vue) и backend/views. На сервере они оставались от прошлых
 rem деплоев, образ собирался из СТАРОГО кода, а деплой «проходил успешно».
 rem Исключаем только по полному относительному пути и только реально лишнее.
-rem Подключаемые модули (docs/modules-contract.md): каталога может не быть — модули не ставили.
-rem Но если он есть, его обязательно надо положить в архив: infra/common/dockerfile делает
-rem `COPY modules`. tar с несуществующим путём падает, поэтому аргумент добавляем условно.
-set "MODULES_ARG="
-if exist "%LOCAL_DIR%\modules" set "MODULES_ARG=modules"
-tar --exclude=frontend-v3/node_modules -czf "%STAGE_ARCHIVE%" backend frontend-v3 infra DB package.json package-lock.json pgmrc.json .dockerignore !MODULES_ARG!
+tar --exclude=frontend-v3/node_modules -czf "%STAGE_ARCHIVE%" backend frontend-v3 infra DB package.json package-lock.json pgmrc.json .dockerignore
 if %ERRORLEVEL% neq 0 (
     echo Ошибка упаковки исходников ^(нужен tar.exe из Windows 10 1803+^).
     exit /b 1
@@ -97,11 +92,6 @@ tar -tzf "%STAGE_ARCHIVE%" > "%LOCAL_DIR%\deploy_stage_list.txt"
 set "MISSING="
 for %%R in (frontend-v3/index.html frontend-v3/vite.config.js frontend-v3/package.json frontend-v3/src/App.vue frontend-v3/src/views/ frontend-v3/src/components/ frontend-v3/src/config/ backend/index.js infra/common/dockerfile) do (
     findstr /C:"%%R" "%LOCAL_DIR%\deploy_stage_list.txt" >nul || set "MISSING=!MISSING! %%R"
-)
-rem Если каталог modules существует локально, он обязан быть в архиве: иначе docker build
-rem упадёт на `COPY modules` («/modules: not found») — ровно этот регресс случился 2026-11-02.
-if not "!MODULES_ARG!"=="" (
-    findstr /C:"modules/" "%LOCAL_DIR%\deploy_stage_list.txt" >nul || set "MISSING=!MISSING! modules/"
 )
 del "%LOCAL_DIR%\deploy_stage_list.txt" 2>nul
 if not "!MISSING!"=="" (

@@ -24,8 +24,6 @@ jobs:
         run: npm test
       - name: RBAC coverage
         run: npm run check:routes
-      - name: Modules diagnostics
-        run: npm run modules:status
 
   frontend:
     name: Frontend build

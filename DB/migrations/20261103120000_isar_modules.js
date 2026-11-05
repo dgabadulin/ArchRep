@@ -5,7 +5,7 @@ const path = require('path');
 
 /**
  * Подключаемые модули: реестр archrep.isar_modules + параметры группы «Модули»
- * (docs/modules-contract.md §5, §9).
+ * (история; удалено в v4.0.0).
  *
  * Dual-миграция: тот же SQL, что в prod-скрипте
  * DB/scripts/migrate_20261103120000_isar_modules.sql (psql -f для prod,

@@ -46,9 +46,6 @@ const ALL_PERMISSIONS = [
   'roles:read', 'roles:assign', 'roles:write',
   'system_admin:restart',
   'ai_architect:use',
-  // Подключаемые модули (docs/modules-contract.md §8/§14): права вида <code>:<action>.
-  // Серверный гейт: без активной лицензии маршруты модуля отвечают 402/403.
-  'drawio_pro:manage',
 ];
 
 function reExport(prefix) {
@@ -111,9 +108,6 @@ const ARCHITECT = [
   ...fullCrud('employee'),
   ...fullCrud('technology'),
   ...fullCrud('metamodel_relation'),
-  // Модуль DrawIO Pro: действие «Заполнить из диаграммы» доступно архитекторам
-  // (правило маршрута допускает и adr_applied:write — см. backend/auth/routePermissions.js).
-  'drawio_pro:manage',
 ];
 
 const REPOSITORY_ADMIN = [
