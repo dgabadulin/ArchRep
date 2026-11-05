@@ -54,6 +54,24 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
 
 Повлиять на версию: пустой коммит с футером `Release-As: 2.0.0` (для «забыли `!`» или hotfix).
 
+### 3.0. Настройка Release Please в этом репозитории (проверено 2026-11-05)
+
+RP в manifest-режиме перестаёт выпускать тег, если конфигурация не соответствует схеме тегов.
+Проверенный рабочий набор:
+
+| Настройка | Значение | Зачем |
+|---|---|---|
+| `permissions` воркфлоу | `contents: write`, `pull-requests: write`, **`issues: write`** | метки `autorelease: pending/tagged` ставятся через Issues API; без `issues: write` PR остаётся «pending» и RP падает |
+| `separate-pull-requests` | **не задавать** | при `false` подключается плагин Merge, который находит уже смерженный PR и прерывает прогон (`There are untagged, merged release PRs outstanding - aborting`) — тег не создаётся |
+| `include-component-in-tag` | `false` | иначе тег `archrep-vX.Y.Z` не совпадает с гейтом деплоя и RP не находит прошлые релизы |
+| `last-release-sha` | коммит последнего выпущенного релиза | RP строит диапазон коммитов от него; нужен после перехода с ручных тегов |
+
+Диагностика «тег не создался» — по логу прогона: `Merging 1 pull requests`/`aborting` (плагин Merge),
+`No latest release found` (схема тегов), `adding labels: autorelease: tagged` (успех).
+
+Имя ветки релизного PR содержит компонент (`release-please--branches--main--components--archrep`),
+поэтому PR искать **по метке** `autorelease: pending`, а не по `--head`.
+
 ### 3.1. Автоматизация по триггерам
 
 Фразы «коммит, пуш», «релиз», «задеплой» — явное разрешение выполнить действия без переспрашивания:

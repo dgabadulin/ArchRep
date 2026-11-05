@@ -26,18 +26,37 @@ alwaysApply: true
 Процесс описан в `docs/versioning.md`; ниже — что делаю я.
 
 1. Проверить: дерево чистое, `git status -sb` = `## main...origin/main` (всё запушено).
-2. Найти релизный PR:
-   `gh pr list --state open --label "autorelease: pending"` (или PR от `github-actions[bot]` с заголовком `chore: release`).
+2. Найти релизный PR **по метке** (не по имени ветки: после `include-component-in-tag: false`
+   RP создаёт ветку `release-please--branches--main--components--archrep`):
+   `gh pr list --state open --label "autorelease: pending"`.
 3. **Если PR есть** — показать версию и черновик CHANGELOG; мерж:
-   `gh pr merge <N> --squash`; затем `git fetch --tags` и подтвердить тег: `git describe --tags --exact-match origin/main`.
-4. **Если PR нет** — версия не выпущена:
+   `gh pr merge <N> --squash`; затем **дождаться прогона Release Please** (1–2 мин):
+   - `gh run list --workflow release-please.yml --limit 1` — статус `success`;
+   - `git fetch origin --tags` и подтвердить тег: `git describe --tags --exact-match HEAD`;
+   - в логе прогона должно быть `adding labels: autorelease: tagged` и `Found release for path ., vX.Y.Z`;
+   - **тег создаёт RP**, вручную его не ставим.
+4. **Если тег не появился** — сначала диагностика (не ручной тег):
+   - в логе искать `aborting` / `Merging 1 pull requests` — это плагин Merge
+     (включается при `"separate-pull-requests": false`; быть не должно);
+   - права воркфлоу: `contents: write`, `pull-requests: write`, **`issues: write`**
+     (метки `autorelease: pending/tagged` идут через Issues API);
+   - в `release-please-config.json` должны быть `last-release-sha` и `include-component-in-tag: false`
+     (иначе RP ищет теги `archrep-vX.Y.Z` и «не видит» существующие релизы);
+   - только если RP объективно не выпускает тег — **аварийный ручной тег** (§2.6).
+5. **Если PR нет** — версия не выпущена:
    - посчитать ожидаемый bump по коммитам после последнего тега
      (`git log <last-tag>..HEAD --oneline`): `feat` → minor, `fix|perf` → patch, `!|BREAKING` → major;
    - **предложить версию и дождаться «ок»**, если bump неочевиден (мажор, первый релиз, смешанный набор);
-   - если релиз не требуется (только `docs`/`chore`/`ci`) — сказать это прямо и не выпускать версию.
-5. **Ручной тег — только по явной просьбе.** Тогда синхронно поднять `package.json`,
-   `frontend-v3/package.json`, `.release-please-manifest.json` и добавить секцию в `CHANGELOG.md`,
-   иначе Release Please рассинхронизируется и следующий релиз будет неверным.
+   - если релиз не требуется (только `docs`/`chore`/`ci`) — сказать это прямо и не выпускать версию;
+   - форсировать версию можно пустым коммитом:
+     `git commit --allow-empty -m "chore: release X.Y.Z" -m "Release-As: X.Y.Z"` → push → PR появится.
+6. **Ручной тег — аварийный путь** (только по явной просьбе или при подтверждённой поломке RP).
+   Тогда синхронно поднять `package.json`, `frontend-v3/package.json`,
+   `.release-please-manifest.json`, добавить секцию в `CHANGELOG.md`, а тег/Release ставить
+   **на конкретный коммит**, а не на ветку:
+   `git tag -a vX.Y.Z <sha> -m "X.Y.Z"` → `git push origin vX.Y.Z` →
+   `gh release create vX.Y.Z --title "X.Y.Z" --notes-file <notes> --verify-tag`.
+   После этого снять с PR метку `autorelease: pending` и закрыть «фантомный» PR RP (если появился).
 
 ## 3. «задеплой», «выкати на прод», «на стенд»
 
