@@ -17,6 +17,26 @@ alwaysApply: true
 4. **Сообщение** — Conventional Commits, русский текст допустим:
    `feat|fix|perf|docs|chore|refactor|test(<scope>): <что сделано> (#N)`.
    Ломающее изменение — `!` в типе и тело `BREAKING CHANGE: <что сломано и что делать администратору>`.
+
+   **Release notes собираются из сообщений коммитов** (Release Please): в секцию CHANGELOG попадают
+   `scope` + `subject` коммитов `feat`/`fix`/`perf` и блок `BREAKING CHANGE`. Тело коммита (кроме
+   `BREAKING CHANGE`) в notes **не попадает**; `docs`/`chore`/`ci`/`test` скрыты в конфиге RP.
+   Поэтому согласование текста = согласование `subject` **до** коммита.
+
+   **Стоп-чеклист перед `git commit` (обязателен).** Если тип `feat`/`fix`/`perf` либо есть
+   `!`/`BREAKING CHANGE` — коммит станет пунктом release notes:
+   1. показать будущую строку notes — `* **<scope>:** <subject без типа и scope>` — и, если есть,
+      блок `BREAKING CHANGE`;
+   2. **дождаться «ок»/правок; до ответа не коммитить** (после пуша сообщение не переписывается, §5);
+   3. для `docs`/`chore`/`ci`/`test`/`refactor` согласование не требуется — они в notes не попадают.
+
+   **Шаблон `subject` для feat/fix** — писать эффект, а не механику; один смысл на коммит:
+   - плохо: `feat(deploy): гейт с режимами ahead/dirty и состояние деплоя в /api/version и «О системе»`
+     (канцелярит, перечисление механизмов, два смысла в одном);
+   - хорошо: `feat(deploy): деплой впереди тега и пометка «не из релиза» в /api/version и «О системе»`
+     (что получает администратор);
+   - ориентиры: ≤ ~80 символов, без «гейт/механизм/реализация» без нужды; инструкции администратору —
+     в `BREAKING CHANGE`, а не в `subject`.
 5. `git push origin <текущая-ветка>`.
    - Если отклонён (`fetch first`) → `git fetch origin`, **страховка** `git branch -f backup/pre-rebase HEAD`, затем `git rebase origin/main`; конфликты разрешить, повторить проверки из п.2, push. Сообщить итог.
 6. **Тег на этом шаге НЕ ставить.** Версия выпускается отдельно (§2) — CHANGELOG и manifest ведёт Release Please.
@@ -35,10 +55,17 @@ alwaysApply: true
    - `git fetch origin --tags` и подтвердить тег: `git describe --tags --exact-match HEAD`;
    - в логе прогона должно быть `adding labels: autorelease: tagged` и `Found release for path ., vX.Y.Z`;
    - **тег создаёт RP**, вручную его не ставим;
-   - **release notes:** до мержа показать черновик секции CHANGELOG и дождаться правок;
-     правки в `CHANGELOG.md` внутри PR — только после последнего прогона RP и сразу мерж.
-     После релиза текст правится в GitHub Release (`gh release edit … --notes-file`), asset
-     пересобирается: `gh workflow run release-notes.yml -f tag=vX.Y.Z`.
+   - **release notes — стоп-шаг перед мержем (согласование с владельцем):**
+     1. показать секцию CHANGELOG из PR и **сверить** её с `subject`-ами, согласованными при коммитах
+        (§1 п.4); при расхождении — сказать, чем именно;
+     2. дождаться «ок» по тексту — **без «ок» PR не мержить**;
+     3. `CHANGELOG.md` сам не переписываю: он генерируется RP из коммитов
+        (`node scripts/release-notes.js --tag vX.Y.Z` — только предпросмотр, без `--from-release`);
+     4. «нарратив» (пояснения, «Что сделать администратору») правится **после релиза** в body GitHub Release
+        (`gh release edit vX.Y.Z --notes-file …`), затем asset пересобирается:
+        `gh workflow run release-notes.yml -f tag=vX.Y.Z`;
+     5. исключение — правка `CHANGELOG.md` внутри PR, только если владелец просит изменить именно
+        git-историю: делать после последнего прогона RP и сразу мержить.
 4. **Если тег не появился** — сначала диагностика (не ручной тег):
    - в логе искать `aborting` / `Merging 1 pull requests` — это плагин Merge
      (включается при `"separate-pull-requests": false`; быть не должно);

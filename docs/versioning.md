@@ -209,9 +209,12 @@ GET /api/version  → {
 1. Смержить изменения в `main` (CI зелёный).
 2. Дождаться PR от `github-actions[bot]` `chore: release X.Y.Z` (искать по метке `autorelease: pending`).
 3. Проверить bump и состав файлов PR (только версии + CHANGELOG).
-4. **Согласовать release notes:** показать секцию CHANGELOG из PR, при необходимости отредактировать
-   формулировки; для MAJOR — добавить «Что сделать администратору». Правки — после последнего
-   прогона RP и сразу мерж (иначе RP перегенерирует секцию). Источник asset для сайта — **body релиза**.
+4. **Согласовать release notes — стоп-шаг: без «ок» владельца PR не мержить.** Текст notes = `scope` +
+   `subject` согласованных коммитов (`feat`/`fix`/`perf`, блок `BREAKING CHANGE`); согласование идёт
+   **до** коммита — `.clinerules` §1 п.4 (после пуша сообщение не переписывается). На релизе показать
+   секцию CHANGELOG из PR и сверить с этими `subject`-ами; для MAJOR — добавить «Что сделать администратору».
+   `CHANGELOG.md` в PR правится только по просьбе владельца (после последнего прогона RP и сразу мерж),
+   «нарратив» — после релиза в body релиза. Источник asset для сайта — **body релиза**.
 5. Merge PR → RP создаёт тег и Release, отдельный job собирает `release-notes.md` (workflow_call);
    проверить `git fetch --tags` и `gh release view vX.Y.Z` (asset на месте).
 6. `deploy_local.bat` → в логе `[precheck] OK (state)`, `[version]`, образ `ar-api-image:<APP_IMAGE_TAG>`,
