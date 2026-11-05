@@ -281,6 +281,7 @@ app.get('/api/version', async (req, res) => {
     const info = await getVersionInfo({
       pool,
       warnMode: String(getParam('SYS_DB_SCHEMA_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
+      deployWarnMode: String(getParam('SYS_DEPLOY_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
     });
     res.json(info);
   } catch (err) {

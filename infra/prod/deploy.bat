@@ -46,11 +46,19 @@ if exist "!SSH_KEY!" (
 echo [1/3] Копирование проекта на сервер %DEPLOY_SSH_TARGET_HOST% ...
 cd /d "%LOCAL_DIR%"
 
-rem --- Преддеплойная проверка (issue #96): только чистый тег, всё запушено -----------
-rem deploy_local.bat == прод: грязная сборка и деплой незатегированного коммита запрещены.
+rem --- Преддеплойная проверка (issue #96): режим гейта -----------------------------
+rem Приоритет: аргумент (strict|ahead|dirty) > env DEPLOY_GATE > strict.
+rem deploy_local.bat == прод: строгий режим по умолчанию; ahead/dirty — осознанно.
+set "GATE_ARG=%~1"
+if "%GATE_ARG%"=="" set "GATE_ARG=%DEPLOY_GATE%"
+if "%GATE_ARG%"=="" set "GATE_ARG=strict"
+if /i "%GATE_ARG%"=="dirty" if not "%CONFIRM_DIRTY%"=="1" (
+    echo [ERROR] dirty-деплой требует подтверждения: set CONFIRM_DIRTY=1
+    exit /b 1
+)
 set "VER_FILE=%LOCAL_DIR%\deploy_version.env"
 if exist "%VER_FILE%" del "%VER_FILE%" 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCAL_DIR%\infra\prod\deploy-precheck.ps1" -RepoRoot "%LOCAL_DIR%" -OutFile "%VER_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCAL_DIR%\infra\prod\deploy-precheck.ps1" -RepoRoot "%LOCAL_DIR%" -OutFile "%VER_FILE%" -Gate "%GATE_ARG%"
 if errorlevel 1 (
     echo [ERROR] Преддеплойная проверка не пройдена — деплой отменён.
     exit /b 1
@@ -59,13 +67,25 @@ set "APP_VERSION="
 set "APP_COMMIT="
 set "APP_BUILD_TIME="
 set "APP_TAG="
+set "APP_BASE_TAG="
+set "APP_DEPLOY_STATE=release"
+set "APP_AHEAD_COMMITS=0"
+set "APP_DIRTY_FILES=0"
+set "APP_IMAGE_TAG="
+set "APP_CHANNEL=stable"
 for /f "usebackq tokens=1,* delims==" %%a in ("%VER_FILE%") do set "%%a=%%b"
 del "%VER_FILE%" 2>nul
 if "%APP_VERSION%"=="" (
     echo [ERROR] Не удалось определить версию для сборки.
     exit /b 1
 )
-echo [version] %APP_TAG% ^(%APP_VERSION%^), commit %APP_COMMIT%
+rem Backward compatibility: старый precheck не писал APP_IMAGE_TAG/APP_DEPLOY_STATE.
+if "%APP_IMAGE_TAG%"=="" set "APP_IMAGE_TAG=%APP_VERSION%"
+if "%APP_BASE_TAG%"=="" set "APP_BASE_TAG=%APP_TAG%"
+echo [version] %APP_TAG% ^(%APP_VERSION%^), commit %APP_COMMIT%, state %APP_DEPLOY_STATE%
+if not "%APP_DEPLOY_STATE%"=="release" (
+    echo [version] WARNING: deploy state=%APP_DEPLOY_STATE% ^(ahead=%APP_AHEAD_COMMITS%, dirty files=%APP_DIRTY_FILES%^) — /about покажет пометку
+)
 
 rem Упаковываем только исходники. Раньше здесь был `scp -r frontend-v3`: он тащил
 rem frontend-v3\node_modules (~140 МБ, ~7000 файлов) через jump-host (деплой в 10 раз
@@ -125,14 +145,14 @@ echo [2/3] Подготовка скрипта сборки и запуска...
     echo echo "Остановка контейнера..."
     echo docker stop ar-api-container 2^>/dev/null ^|^| true
     echo docker rm ar-api-container 2^>/dev/null ^|^| true
-    echo echo "Сборка образа ar-api-image:!APP_VERSION! ..."
-    echo docker build -f infra/common/dockerfile --build-arg APP_VERSION=!APP_VERSION! --build-arg APP_COMMIT=!APP_COMMIT! --build-arg "APP_BUILD_TIME=!APP_BUILD_TIME!" -t ar-api-image:!APP_VERSION! -t ar-api-image:latest .
+    echo echo "Сборка образа ar-api-image:!APP_IMAGE_TAG! ..."
+    echo docker build -f infra/common/dockerfile --build-arg APP_VERSION=!APP_VERSION! --build-arg APP_COMMIT=!APP_COMMIT! --build-arg "APP_BUILD_TIME=!APP_BUILD_TIME!" --build-arg APP_CHANNEL=!APP_CHANNEL! --build-arg APP_DEPLOY_STATE=!APP_DEPLOY_STATE! --build-arg "APP_BASE_TAG=!APP_BASE_TAG!" --build-arg APP_AHEAD_COMMITS=!APP_AHEAD_COMMITS! --build-arg APP_DIRTY_FILES=!APP_DIRTY_FILES! -t ar-api-image:!APP_IMAGE_TAG! -t ar-api-image:latest .
     echo echo "Удаление отвязанных образов..."
     echo docker image prune -f
     echo echo "Запуск контейнера..."
     echo ENV_EXTRA=""
     echo [ -f .env.production ] ^&^& ENV_EXTRA="--env-file .env.production"
-    echo docker run -d --restart=always -e NODE_ENV=production $ENV_EXTRA -e SERVER_PORT=3000 -p 3000:3000 --name ar-api-container --network ar-network ar-api-image:!APP_VERSION!
+    echo docker run -d --restart=always -e NODE_ENV=production $ENV_EXTRA -e SERVER_PORT=3000 -p 3000:3000 --name ar-api-container --network ar-network ar-api-image:!APP_IMAGE_TAG!
     echo echo "Ожидание /api/health..."
     echo for i in 1 2 3 4 5 6 7 8 9 10; do
     echo   if curl -sf http://127.0.0.1:3000/api/health ^>^/dev/null; then

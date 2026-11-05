@@ -1,83 +1,135 @@
 param(
     [Parameter(Mandatory = $true)][string]$RepoRoot,
-    [string]$OutFile = ''
+    [string]$OutFile = '',
+    [ValidateSet('strict', 'ahead', 'dirty')][string]$Gate = ''
 )
 
-# Pre-deploy gate (issue #96). deploy_local.bat == prod, so the rules are strict:
-#   1) clean working tree (allowlist: modules/, temp/, frontend-v3-dist/, docs/exports/, .env*, deploy_*)
-#   2) no unpushed commits (HEAD equals its upstream; uses local remote-tracking ref, no network)
-#   3) HEAD is exactly on a tag, and package.json version equals the tag version
-# On success writes KEY=VALUE file for deploy.bat (APP_VERSION / APP_COMMIT / APP_BUILD_TIME / APP_TAG).
+# Pre-deploy gate (issue #96) with modes (docs/versioning.md §4):
+#   strict (default) - HEAD is exactly on a tag, clean tree, everything pushed;
+#   ahead  - allows deploy "ahead of the tag" (N commits not in a release) and marks
+#            the deploy state in /api/version and the About page;
+#   dirty  - emergency only: allows uncommitted files (code outside git), always marked
+#            as a dirty deploy (pass explicitly).
+# Invariant in every mode: no unpushed commits (otherwise the build is not reproducible).
+# On success writes a KEY=VALUE file for deploy.bat.
 
 $ErrorActionPreference = 'Continue'
 $fail = @()
 $warn = @()
-$allow = @('modules/', 'temp/', 'frontend-v3-dist/', 'docs/exports/')
+$allow = @('temp/', 'frontend-v3-dist/', 'docs/exports/')
+
+# Safe git output (PowerShell returns $null when the command writes nothing).
+function GitOut([string[]]$gitArgs) {
+    $out = & git -C $RepoRoot @gitArgs 2>$null
+    if ($null -eq $out) { return '' }
+    return ([string](@($out) -join "`n")).Trim()
+}
+
+if ([string]::IsNullOrWhiteSpace($Gate)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_GATE)) { $Gate = $env:DEPLOY_GATE } else { $Gate = 'strict' }
+}
 
 if (-not (Test-Path (Join-Path $RepoRoot '.git'))) {
     $fail += "Not a git repository: $RepoRoot"
 }
 
+$state = 'release'
+$dirtyFiles = @()
+$aheadCommits = 0
+$baseTag = ''
+
 # --- 1) dirty tree -----------------------------------------------------------
 if ($fail.Count -eq 0) {
     $statusLines = @(& git -C $RepoRoot status --porcelain=v1 --untracked-files=normal 2>$null)
-    $bad = @()
     foreach ($line in $statusLines) {
         $text = [string]$line
         if ([string]::IsNullOrWhiteSpace($text) -or $text.Length -lt 4) { continue }
         $path = $text.Substring(3).Trim().Trim('"')
         if ($path -match '(^|/)\.env') { continue }
         if ($path -match '^deploy_') { continue }
-        if ($path -eq 'modules' -or $path.StartsWith('modules/')) { continue }
         $skip = $false
         foreach ($a in $allow) { if ($path.StartsWith($a)) { $skip = $true; break } }
         if ($skip) { continue }
-        $bad += $text
+        $dirtyFiles += $text
     }
-    if ($bad.Count -gt 0) {
-        $fail += 'Working tree is dirty - commit or revert these changes:'
-        foreach ($b in $bad) { $fail += "    $b" }
+    if ($dirtyFiles.Count -gt 0) {
+        if ($Gate -eq 'dirty') {
+            $state = 'dirty'
+            $warn += "dirty tree: $($dirtyFiles.Count) file(s) outside git - deploy marked as dirty"
+            foreach ($d in $dirtyFiles) { $warn += "    $d" }
+        } else {
+            $fail += 'Working tree is dirty - commit or revert these changes (emergency: --allow-dirty):'
+            foreach ($d in $dirtyFiles) { $fail += "    $d" }
+        }
     }
 }
 
-# --- 2) unpushed commits -----------------------------------------------------
+# --- 2) unpushed commits (required in every mode) ----------------------------
 if ($fail.Count -eq 0) {
-    $upstream = [string](& git -C $RepoRoot rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
-    $upstream = $upstream.Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upstream)) {
+    $upstream = GitOut @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    if ([string]::IsNullOrWhiteSpace($upstream)) {
         $fail += 'Branch has no upstream - push it first (git push -u origin <branch>)'
     } else {
-        $counts = [string](& git -C $RepoRoot rev-list --left-right --count "HEAD...$upstream" 2>$null)
-        $counts = $counts.Trim()
+        $counts = GitOut @('rev-list', '--left-right', '--count', "HEAD...$upstream")
         if (-not [string]::IsNullOrWhiteSpace($counts)) {
             $parts = $counts -split '\s+'
-            $ahead = [int]$parts[0]
+            $aheadLocal = [int]$parts[0]
             $behind = [int]$parts[1]
-            if ($ahead -gt 0) { $fail += "$ahead local commit(s) not pushed to $upstream - push before deploy" }
+            if ($aheadLocal -gt 0) { $fail += "$aheadLocal local commit(s) not pushed to $upstream - push before deploy" }
             if ($behind -gt 0) { $warn += "$behind commit(s) behind $upstream - deploying an older commit" }
         }
     }
 }
 
-# --- 3) tag on HEAD + version consistency ------------------------------------
+
+# --- 3) tag / release base ---------------------------------------------------
+$commit = GitOut @('rev-parse', '--short', 'HEAD')
 $tag = ''
 if ($fail.Count -eq 0) {
-    $tag = [string](& git -C $RepoRoot describe --tags --exact-match HEAD 2>$null)
-    $tag = $tag.Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tag)) {
-        $fail += 'HEAD is not tagged - releases must be deployed from a tag (vX.Y.Z)'
+    $tag = GitOut @('describe', '--tags', '--exact-match', 'HEAD')
+    if ([string]::IsNullOrWhiteSpace($tag)) {
         $tag = ''
+        $desc = GitOut @('describe', '--tags', '--long', 'HEAD')
+        if ([string]::IsNullOrWhiteSpace($desc)) {
+            $fail += 'HEAD is not on a tag and has no reachable tag base - cut a release first'
+        } else {
+            $m = [regex]::Match($desc, '^(?<tag>.+)-(?<n>\d+)-g(?<sha>[0-9a-f]+)$')
+            if (-not $m.Success) {
+                $fail += "cannot parse git describe output: $desc"
+            } else {
+                $baseTag = $m.Groups['tag'].Value
+                $aheadCommits = [int]$m.Groups['n'].Value
+                if ($Gate -eq 'strict') {
+                    $fail += "HEAD is not tagged: $aheadCommits commit(s) ahead of $baseTag (release first, or --ahead for a hotfix deploy)"
+                } else {
+                    if ($state -ne 'dirty') { $state = 'ahead' }
+                    $warn += "deploy ahead of $baseTag by $aheadCommits commit(s) - state marked as $state"
+                }
+            }
+        }
+    } else {
+        $baseTag = $tag
     }
 }
 
+# --- 4) version and package.json consistency ---------------------------------
 $version = ''
-if (-not [string]::IsNullOrWhiteSpace($tag)) {
-    $version = $tag -replace '^v', ''
+if ($fail.Count -eq 0) {
+    if ($aheadCommits -gt 0) {
+        $baseVersion = $baseTag -replace '^v', ''
+        $version = "$baseVersion+$aheadCommits.g$commit"
+        if ($state -eq 'dirty') { $version = "$version.dirty" }
+    } else {
+        $version = $tag -replace '^v', ''
+        if ($state -eq 'dirty') { $version = "$version+dirty.$commit" }
+    }
+
+    $expectedPkg = if ($aheadCommits -gt 0) { $baseTag -replace '^v', '' } else { $version }
     $pkgPath = Join-Path $RepoRoot 'package.json'
     if (Test-Path $pkgPath) {
         $pkgVersion = [string](Get-Content -Raw -Encoding UTF8 $pkgPath | ConvertFrom-Json).version
-        if ($pkgVersion -ne $version) {
-            $fail += "package.json version ($pkgVersion) != tag ($version) - merge the release PR first"
+        if ($pkgVersion -ne $expectedPkg) {
+            $fail += "package.json version ($pkgVersion) != expected ($expectedPkg) - merge the release PR first"
         }
     }
 }
@@ -90,20 +142,27 @@ if ($fail.Count -gt 0) {
     exit 1
 }
 
-$commit = [string](& git -C $RepoRoot rev-parse --short HEAD 2>$null)
-$commit = $commit.Trim()
 $buildTime = (Get-Date).ToString('o')
+$channel = if ($state -eq 'release') { 'stable' } else { 'dev' }
+# Docker image tags do not allow '+' - the image gets the '-' form.
+$imageTag = $version.Replace('+', '-')
 
 if (-not [string]::IsNullOrWhiteSpace($OutFile)) {
     $lines = @(
         "APP_VERSION=$version",
         "APP_COMMIT=$commit",
         "APP_BUILD_TIME=$buildTime",
-        "APP_TAG=$tag"
+        "APP_TAG=$baseTag",
+        "APP_BASE_TAG=$baseTag",
+        "APP_DEPLOY_STATE=$state",
+        "APP_AHEAD_COMMITS=$aheadCommits",
+        "APP_DIRTY_FILES=$($dirtyFiles.Count)",
+        "APP_IMAGE_TAG=$imageTag",
+        "APP_CHANNEL=$channel"
     )
     Set-Content -Path $OutFile -Value $lines -Encoding ASCII
 }
 
-Write-Output "[precheck] OK: $tag (version $version, commit $commit)"
+$tagLabel = if ($aheadCommits -gt 0) { "$baseTag+$aheadCommits" } else { $baseTag }
+Write-Output "[precheck] OK ($state): $tagLabel (version $version, commit $commit, image tag $imageTag)"
 exit 0
-

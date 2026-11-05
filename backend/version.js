@@ -132,7 +132,12 @@ async function readSchemaState(pool) {
 
 /**
  * Публичный объект `GET /api/version`.
- * @param {{pool?:object, env?:object, warnMode?:string}} [opts]
+ *
+ * `deploy` (docs/versioning.md §4) — состояние деплоя: `release` (HEAD на теге) |
+ * `ahead` (деплой впереди тега) | `dirty` (есть код вне git). Поля аддитивные,
+ * формат остальных секций не меняется.
+ *
+ * @param {{pool?:object, env?:object, warnMode?:string, deployWarnMode?:string}} [opts]
  */
 async function getVersionInfo(opts = {}) {
   const env = opts.env || process.env;
@@ -141,16 +146,30 @@ async function getVersionInfo(opts = {}) {
   const normalized = normalizeVersion(env.APP_VERSION || readPackageVersion(), { commit, dirty: dirtyFlag });
   const db = await readSchemaState(opts.pool);
 
+  const deployState = String(env.APP_DEPLOY_STATE || '').trim().toLowerCase() || (normalized.dirty ? 'dirty' : 'release');
+  const aheadRaw = Number(env.APP_AHEAD_COMMITS);
+  const dirtyRaw = Number(env.APP_DIRTY_FILES);
+  const channel = deployState === 'release'
+    ? String(env.APP_CHANNEL || normalized.channel)
+    : 'dev';
+
   return {
     product: PRODUCT,
     version: normalized.version,
-    channel: String(env.APP_CHANNEL || normalized.channel),
+    channel,
     commit: commit || null,
     build_time: String(env.APP_BUILD_TIME || '').trim() || null,
     contract_version: String(env.APP_CONTRACT_VERSION || CONTRACT_VERSION),
     db: {
       ...db,
       warn_mode: opts.warnMode || 'admin',
+    },
+    deploy: {
+      state: deployState,
+      base_tag: String(env.APP_BASE_TAG || '').trim() || null,
+      ahead_commits: Number.isFinite(aheadRaw) && aheadRaw > 0 ? aheadRaw : 0,
+      dirty_files: Number.isFinite(dirtyRaw) && dirtyRaw > 0 ? dirtyRaw : 0,
+      warn_mode: String(opts.deployWarnMode || 'admin').trim().toLowerCase(),
     },
   };
 }

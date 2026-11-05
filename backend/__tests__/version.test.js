@@ -120,3 +120,54 @@ test('getVersionInfo: форма ответа /api/version', async () => {
   assert.equal(info.db.warn_mode, 'off');
   assert.equal('modules' in info, false, 'секции modules больше нет (единое ядро, v4.0.0)');
 });
+
+test('getVersionInfo: deploy=release по умолчанию (канал stable)', async () => {
+  const info = await getVersionInfo({
+    env: { APP_VERSION: '4.0.1', APP_COMMIT: 'abc1234' },
+    warnMode: 'off',
+  });
+  assert.equal(info.version, '4.0.1');
+  assert.equal(info.channel, 'stable');
+  assert.equal(info.deploy.state, 'release');
+  assert.equal(info.deploy.base_tag, null);
+  assert.equal(info.deploy.ahead_commits, 0);
+  assert.equal(info.deploy.dirty_files, 0);
+  assert.equal(info.deploy.warn_mode, 'admin');
+});
+
+test('getVersionInfo: deploy=ahead (деплой впереди тега) → канал dev и детали', async () => {
+  const info = await getVersionInfo({
+    env: {
+      APP_VERSION: '4.0.1+3.gabc1234',
+      APP_COMMIT: 'abc1234',
+      APP_CHANNEL: 'stable',
+      APP_DEPLOY_STATE: 'ahead',
+      APP_BASE_TAG: 'v4.0.1',
+      APP_AHEAD_COMMITS: '3',
+    },
+    deployWarnMode: 'all',
+  });
+  assert.equal(info.version, '4.0.1+3.gabc1234');
+  assert.equal(info.channel, 'dev', 'ahead-деплой не может считаться stable');
+  assert.equal(info.deploy.state, 'ahead');
+  assert.equal(info.deploy.base_tag, 'v4.0.1');
+  assert.equal(info.deploy.ahead_commits, 3);
+  assert.equal(info.deploy.warn_mode, 'all');
+});
+
+test('getVersionInfo: deploy=dirty (код вне git) → канал dev и число файлов', async () => {
+  const info = await getVersionInfo({
+    env: {
+      APP_VERSION: '4.0.1+3.gabc1234.dirty',
+      APP_COMMIT: 'abc1234',
+      APP_DEPLOY_STATE: 'dirty',
+      APP_BASE_TAG: 'v4.0.1',
+      APP_AHEAD_COMMITS: '3',
+      APP_DIRTY_FILES: '5',
+    },
+  });
+  assert.equal(info.deploy.state, 'dirty');
+  assert.equal(info.deploy.dirty_files, 5);
+  assert.equal(info.channel, 'dev');
+  assert.equal(info.deploy.warn_mode, 'admin', 'значение по умолчанию');
+});

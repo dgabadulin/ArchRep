@@ -30,6 +30,12 @@
    - `git fetch origin --tags` → `git describe --tags --exact-match HEAD`;
    - в логе прогона: `adding labels: autorelease: tagged` и `Found release for path ., vX.Y.Z`.
    Тег вручную **не ставить** — его создаёт RP.
+   - **Release notes (согласование с владельцем):** до мержа показать черновик секции CHANGELOG
+     (`node scripts/release-notes.js --tag vX.Y.Z` — без `--from-release`, до создания релиза)
+     и дождаться правок. Правки в `CHANGELOG.md` внутри PR делать **после последнего прогона RP**
+     и сразу мержить (иначе RP перегенерирует секцию). После релиза текст правится в GitHub Release
+     (`gh release edit vX.Y.Z --notes-file …`), а asset пересобирается:
+     `gh workflow run release-notes.yml -f tag=vX.Y.Z`.
 4. **Если тег не появился** — диагностика (не ручной тег):
    - в логе искать `aborting` / `Merging 1 pull requests` → это плагин Merge, включается при
      `"separate-pull-requests": false` в `release-please-config.json` (должно быть убрано);
@@ -54,11 +60,20 @@
 
 `deploy_local.bat` == **прод** (`infra/prod/deploy.bat` с гейтом).
 
-1. Проверить: `git describe --tags --exact-match HEAD` возвращает тег и `git status` чист. Гейт пропускает **только** коммит на теге.
+1. Проверить режим деплоя (по умолчанию `strict`; в локальной обёртке `deploy_local.bat` — `ahead`):
+   - **strict** — `deploy_local.bat strict` (или `git describe --tags --exact-match HEAD` возвращает тег);
+   - **ahead** — `deploy_local.bat ahead`: деплой «впереди тега» (hotfix до релиза), версия
+     `X.Y.Z+N.g<sha>`, канал `dev`, `/about` показывает «Деплой не из релиза»;
+   - **dirty** — `set CONFIRM_DIRTY=1` + `deploy_local.bat dirty`: аварийный режим (код вне git),
+     только по явной просьбе; сборка не воспроизводима — доложить это и сохранить diff в артефакт.
+   Аргумент важнее env `DEPLOY_GATE`; инвариант во всех режимах: нет незапушенных коммитов
+   и `package.json.version` = базовый тег.
 2. Запустить `deploy_local.bat`, дождаться окончания.
-3. Доложить: `[precheck] OK: vX.Y.Z`, `[version]`, тег образа `ar-api-image:X.Y.Z`, финальный JSON `/api/version`.
+3. Доложить: `[precheck] OK (state): …`, `[version]` (с state), тег образа `ar-api-image:<APP_IMAGE_TAG>`,
+   финальный JSON `/api/version` (в частности `deploy.state`).
 4. Напомнить: новые `DB/scripts/*.sql` накатываются **вручную** (prod), после — проверить `/about`.
-5. **Не деплоить**, если тесты красные, дерево грязное или HEAD не на теге. Гейт не обходить.
+5. **Не деплоить**, если тесты красные; `ahead`/`dirty` — только осознанно и с пометкой в отчёте.
+   Молчаливый обход гейта (правка precheck «на месте») запрещён.
 
 ## 4. Порядок «релиз → деплой → потом коммиты»
 
@@ -68,6 +83,6 @@
 ## 5. Запреты
 
 - `git push --force` в `main`; amend/rewrite уже опубликованных коммитов.
-- коммит секретов (`.env*`), платного кода (`modules/*`), временных файлов.
+- коммит секретов (`.env*`), временных файлов, артефактов деплоя (`deploy_*`, `frontend-v3-dist`).
 - «тихий» релиз без тега/CHANGELOG; деплой без тега.
 - удаление чужих незакоммиченных изменений: если в дереве правки не мои — спросить.

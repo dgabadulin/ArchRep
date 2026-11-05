@@ -8,9 +8,17 @@
     <div v-else-if="error" class="error">{{ error }}</div>
 
     <template v-else-if="info">
-      <p v-if="channel !== 'stable'" class="banner banner--info">
-        Нерелизная сборка: канал <strong>{{ channel }}</strong>{{ info.commit ? `, коммит ${info.commit}` : '' }}.
-        Такая сборка не соответствует тегу — не используйте её как эталон для воспроизведения ошибок.
+      <p v-if="deployState !== 'release' && canSeeDeployWarn"
+         :class="['banner', deployState === 'dirty' ? 'banner--error' : 'banner--warn']">
+        <template v-if="deployState === 'dirty'">
+          Грязный деплой: {{ deploy.dirty_files }} файл(ов) вне git — сборка не воспроизводима,
+          не используйте её как эталон для воспроизведения ошибок.
+        </template>
+        <template v-else>
+          Деплой не из релиза: база <strong>{{ deploy.base_tag || '—' }}</strong>,
+          впереди {{ deploy.ahead_commits }} коммит(ов){{ info.commit ? ` (${info.commit})` : '' }}.
+        </template>
+        <span class="muted">Версия {{ info.version }}, канал {{ channel }}.</span>
       </p>
       <p v-if="versionMismatch" class="banner banner--warn">
         Версия интерфейса ({{ frontendVersion }}) не совпадает с версией API ({{ info.version }}).
@@ -29,7 +37,8 @@
             <tr><th>Версия</th><td><strong>{{ info.version }}</strong> <span class="muted">({{ channel }})</span></td></tr>
             <tr><th>Коммит</th><td>{{ info.commit || '—' }}</td></tr>
             <tr><th>Сборка</th><td>{{ formatDate(info.build_time) }}</td></tr>
-            <tr><th>Версия контракта модулей</th><td>{{ info.contract_version || '—' }}</td></tr>
+            <tr><th>Состояние деплоя</th><td>{{ deployStateLabel }}</td></tr>
+            <tr><th>Версия контракта API</th><td>{{ info.contract_version || '—' }}</td></tr>
             <tr><th>Интерфейс</th><td>{{ frontendVersion || '—' }}{{ frontendCommit ? ` (${frontendCommit})` : '' }}</td></tr>
           </tbody>
         </table>
@@ -56,21 +65,6 @@
         </table>
       </div>
 
-      <div class="card">
-        <h3 class="block-title">Подключаемые модули</h3>
-        <p v-if="!moduleList.length" class="empty">Модули не установлены.</p>
-        <table v-else class="about-table">
-          <thead><tr><th>Код</th><th>Версия</th><th>Включён</th><th>Лицензия</th></tr></thead>
-          <tbody>
-            <tr v-for="m in moduleList" :key="m.code">
-              <td><code>{{ m.code }}</code></td>
-              <td>{{ m.version || '—' }}</td>
-              <td>{{ m.enabled ? 'да' : 'нет' }}</td>
-              <td>{{ m.licensed ? 'активна' : 'нет' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
     </template>
   </div>
 </template>
@@ -111,9 +105,30 @@ const schemaSourceLabel = computed(() => {
   if (source === 'pgmigrations') return 'pgmigrations (node-pg-migrate, demo)'
   return 'не отслеживается'
 })
-const moduleList = computed(() => {
-  const mods = (info.value && info.value.modules) || {}
-  return Object.keys(mods).sort().map((code) => ({ code, ...mods[code] }))
+
+/** Состояние деплоя (docs/versioning.md §4): release | ahead | dirty. */
+const deploy = computed(() => {
+  const d = (info.value && info.value.deploy) || {}
+  return {
+    state: d.state || 'release',
+    base_tag: d.base_tag || null,
+    ahead_commits: Number(d.ahead_commits) || 0,
+    dirty_files: Number(d.dirty_files) || 0,
+    warn_mode: d.warn_mode || 'admin',
+  }
+})
+const deployState = computed(() => deploy.value.state)
+const canSeeDeployWarn = computed(() => {
+  const mode = deploy.value.warn_mode
+  if (mode === 'off') return false
+  if (mode === 'all') return true
+  return hasPermission('settings_parameters:write') || hasPermission('system_admin:restart')
+})
+const deployStateLabel = computed(() => {
+  const d = deploy.value
+  if (d.state === 'dirty') return `грязный (${d.dirty_files} файл(ов) вне git)`
+  if (d.state === 'ahead') return `впереди релиза ${d.base_tag || ''} (+${d.ahead_commits})`
+  return 'релиз (тег)'
 })
 
 function formatDate(value) {

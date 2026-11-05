@@ -84,19 +84,38 @@ RP в manifest-режиме перестаёт выпускать тег, есл
 
 Правило зафиксировано в `.clinerules` (Cline) и `.cursor/rules/git-release-automation.mdc` (Cursor).
 
-## 4. Деплой: строгий гейт (deploy_local.bat == прод)
+## 4. Деплой: гейт с режимами (deploy_local.bat == прод)
 
-`infra/prod/deploy.bat` перед упаковкой вызывает `infra/prod/deploy-precheck.ps1`:
+`infra/prod/deploy.bat` перед упаковкой вызывает `infra/prod/deploy-precheck.ps1`.
+Режим задаёт `-Gate strict|ahead|dirty` или env `DEPLOY_GATE`; **по умолчанию `strict`**.
 
-| Проверка | Поведение |
-|---|---|
-| грязное дерево (кроме `.env*`, `deploy_*`, `temp/`, `frontend-v3-dist/`, `docs/exports/`) | **стоп**, список файлов |
-| незапушенные коммиты (`HEAD` ≠ upstream) | **стоп** |
-| `HEAD` не на теге | **стоп** (деплой только по тегу) |
-| `package.json.version` ≠ тег | **стоп** (значит, релизный PR не смержен) |
+| Проверка | strict | ahead | dirty |
+|---|---|---|---|
+| грязное дерево (кроме `.env*`, `deploy_*`, `temp/`, `frontend-v3-dist/`, `docs/exports/`) | **стоп** | **стоп** | разрешено, помечается |
+| незапушенные коммиты (`HEAD` ≠ upstream) | **стоп** | **стоп** | **стоп** |
+| `HEAD` не на теге (N коммитов впереди) | **стоп** | разрешено, версия `X.Y.Z+N.g<sha>` | разрешено |
+| `package.json.version` ≠ базовый тег | **стоп** | **стоп** | **стоп** |
 
-Только при успехе собирается образ `ar-api-image:<version>` (и `:latest`), запускается **именно тег**;
-после health-check печатается `GET /api/version`. Откат:
+Состояние деплоя передаётся в образ (`APP_DEPLOY_STATE`, `APP_BASE_TAG`, `APP_AHEAD_COMMITS`,
+`APP_DIRTY_FILES`) и отдаётся в `GET /api/version`:
+
+```json
+"deploy": { "state": "ahead", "base_tag": "v4.0.1", "ahead_commits": 3,
+            "dirty_files": 0, "warn_mode": "admin" }
+```
+
+Правила:
+* `state=release` — канал `stable`; `state=ahead|dirty` — канал `dev` (даже если `APP_CHANNEL=stable`);
+* образ для ahead/dirty называется `ar-api-image:X.Y.Z-N.g<sha>[-dirty]` (Docker не допускает `+`);
+* страница «О системе» показывает пометку «Деплой не из релиза» / «Грязный деплой»;
+  кому видно — параметр `SYS_DEPLOY_WARN_MODE` (`off|admin|all`, по умолчанию `admin`);
+* `ahead` применяется **осознанно** (hotfix до релиза): `deploy_local.bat ahead`
+  (аргумент пробрасывается в precheck) или `set DEPLOY_GATE=ahead`;
+* `dirty` — аварийный режим (код вне git, сборка не воспроизводима): `deploy_local.bat dirty`
+  с предварительным `set CONFIRM_DIRTY=1`; применять только по решению и с записью diff в артефакт.
+
+Только при успехе собирается образ `ar-api-image:<APP_IMAGE_TAG>` (и `:latest`), запускается
+**именно этот тег**; после health-check печатается `GET /api/version`. Откат:
 
 ```cmd
 docker stop ar-api-container && docker rm ar-api-container
@@ -169,19 +188,36 @@ GET /api/version  → {
 
 ## 8. Сайт (archrep-site, Astro)
 
-Источник новости — `release-notes.md` из GitHub Release (front-matter `title/date/version/tag/channel`).
+Источник новости — `release-notes.md` (asset GitHub Release, front-matter `title/date/version/tag/channel`).
 Синхронизация — отдельным скриптом в репозитории сайта (`scripts/sync-news.mjs`), затем `astro build`
 (страница «Новости» + RSS). Релизы с `channel: rc` не публикуются.
+
+Как собирается asset (`scripts/release-notes.js` + `.github/workflows/release-notes.yml`):
+
+* текст берётся из **тела GitHub Release** (`--body-file`; согласованные формулировки), fallback —
+  секция `CHANGELOG.md` на теге (`--from-release`/локальный запуск без gh — CHANGELOG);
+* **служебные релизы** (в теле только `Служебное → release X.Y.Z`) заменяются шаблоном
+  «только служебные изменения, пользовательских изменений нет» — чтобы на сайте не появлялась
+  пустая новость;
+* workflow запускается: (1) событием `release: published` для релизов, созданных вручную;
+  (2) `workflow_dispatch` с input `tag`; (3) **из `release-please.yml`** (`workflow_call`) — потому что
+  релиз, созданный RP через `GITHUB_TOKEN`, не порождает событие `release` (защита от рекурсии);
+* пересобрать asset для существующего тега: `gh workflow run release-notes.yml -f tag=vX.Y.Z`.
 
 ## 9. Чек-лист релиза (владелец продукта)
 
 1. Смержить изменения в `main` (CI зелёный).
-2. Дождаться PR от `github-actions[bot]` `chore: release X.Y.Z`.
+2. Дождаться PR от `github-actions[bot]` `chore: release X.Y.Z` (искать по метке `autorelease: pending`).
 3. Проверить bump и состав файлов PR (только версии + CHANGELOG).
-4. Отредактировать формулировки; для MAJOR — добавить «Что сделать администратору».
-5. Merge PR → появился тег и Release (проверить `git fetch --tags`).
-6. `deploy_local.bat` → в логе `[version] vX.Y.Z`, образ `ar-api-image:X.Y.Z`, в конце — `GET /api/version`.
-7. Открыть `/about` на стенде: версия/схема/модули без красных плашек.
+4. **Согласовать release notes:** показать секцию CHANGELOG из PR, при необходимости отредактировать
+   формулировки; для MAJOR — добавить «Что сделать администратору». Правки — после последнего
+   прогона RP и сразу мерж (иначе RP перегенерирует секцию). Источник asset для сайта — **body релиза**.
+5. Merge PR → RP создаёт тег и Release, отдельный job собирает `release-notes.md` (workflow_call);
+   проверить `git fetch --tags` и `gh release view vX.Y.Z` (asset на месте).
+6. `deploy_local.bat` → в логе `[precheck] OK (state)`, `[version]`, образ `ar-api-image:<APP_IMAGE_TAG>`,
+   в конце — `GET /api/version` (включая `deploy.state`).
+7. Открыть `/about`: версия/схема/состояние деплоя без красных плашек (пометка «не из релиза» — норма
+   только для режима `ahead`).
 8. При необходимости — применить новые `DB/scripts/*.sql` (вручную) и обновить страницу.
 
 ## 10. Диагностика
