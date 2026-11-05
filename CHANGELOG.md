@@ -5,6 +5,29 @@
 из conventional commits (`feat`, `fix`, `feat!`, `BREAKING CHANGE`); вручную правим только формулировки
 в релизном PR (утверждение release notes — на владельце продукта).
 
+## [5.0.0](https://github.com/dgabadulin/ArchRep/compare/v4.0.0...v5.0.0) (2026-11-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **modules:** удалены маршруты /api/drawio-pro/* (manifest, parse, validate, payload), секции modules в /api/config и /api/version, переменные ENABLED_MODULES, SYS_MODULE_*, SYS_INSTANCE_ID, SYS_INSTALL_REF, MODULES_DIR и таблица archrep.isar_modules. Администратору: применить DB/scripts/migrate_20261106120000_drop_isar_modules.sql (prod — вручную), убрать модульные переменные из env и каталог modules/ (пакет @isar/drawio-pro).
+
+### Новое
+
+* **ai:** инструмент rank_relations — рейтинги «где больше всего» ([9149eaf](https://github.com/dgabadulin/ArchRep/commit/9149eaf6ac2b59ae1465641f0f8cfbb77264bd75))
+* **infrastructure:** add Netbox infrastructure catalog and sync job ([#92](https://github.com/dgabadulin/ArchRep/issues/92)) ([e2a399e](https://github.com/dgabadulin/ArchRep/commit/e2a399e71335eac634887fa1dcc313eec56ba5a7))
+* **modules:** единое ядро — удалён модульный слой (код, БД, фронт, документация) ([ee8baf2](https://github.com/dgabadulin/ArchRep/commit/ee8baf2d152638fe3164f8672287ec65ca2776dc))
+* **modules:** ключи лицензий v1 и метаданные лицензии в реестре ([05a66fb](https://github.com/dgabadulin/ArchRep/commit/05a66fb30208edda3cdbc1b8598c66be0a2380d6))
+* **ui:** логотип и иконки ИСАР от дизайнера ([826a27b](https://github.com/dgabadulin/ArchRep/commit/826a27b093b6ae7e4b686535d4d156c07e7eead4))
+* **version:** версия продукта, /api/version и строгий гейт деплоя ([#96](https://github.com/dgabadulin/ArchRep/issues/96)) ([1b0e7f2](https://github.com/dgabadulin/ArchRep/commit/1b0e7f253c2f9e1a1406ef7c913639036cd1c01d))
+
+
+### Исправлено
+
+* **modules:** метаданные лицензии не попадали в реестр (дубль функции) ([e497dab](https://github.com/dgabadulin/ArchRep/commit/e497dab0f9e1f7ded4d13178f7d904b302f5fc92))
+* **registry:** корректная сортировка по датам в реестрах ([587e165](https://github.com/dgabadulin/ArchRep/commit/587e165145d6d9f55ffbfefda22b95278a635580))
+* **registry:** пустые даты — в конце при asc и в начале при desc ([23c7640](https://github.com/dgabadulin/ArchRep/commit/23c76404a2dd556fa1f4b95822b341c683c70a70))
+
 ## [4.0.0](https://github.com/dgabadulin/ArchRep/compare/v3.1.0...v4.0.0) (2026-11-05)
 
 
