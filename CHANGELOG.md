@@ -2,8 +2,13 @@
 
 Все заметные изменения ядра ИСАР фиксируются здесь. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/). Разделы и версии формирует **Release Please**
-из conventional commits (`feat`, `fix`, `feat!`, `BREAKING CHANGE`); вручную правим только формулировки
-в релизном PR (утверждение release notes — на владельце продукта).
+из conventional commits (`feat`, `fix`, `feat!`, `BREAKING CHANGE`).
+
+**Формулировки пунктов = `subject`-ы коммитов**, и они согласуются с владельцем продукта **до** коммита
+(`.clinerules` §1 п.4): что согласовали — то и попадает в CHANGELOG и в release notes. Правка пункта
+в теле GitHub Release вместо `subject` не практикуется; в теле релиза допускается только **дополнение**
+(«Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
+владельца (после последнего прогона Release Please и сразу мерж).
 
 ## [4.1.0](https://github.com/dgabadulin/ArchRep/compare/v4.0.1...v4.1.0) (2026-11-06)
 
