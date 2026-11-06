@@ -12,6 +12,9 @@
     "db:migrate:create": "node-pg-migrate create --config-file pgmrc.json --migrations-dir DB/migrations",
     "check:routes": "node scripts/check-route-permissions.js",
     "check:drawio": "node scripts/check-drawio-increment.js",
+    "hooks:install": "node scripts/install-hooks.js",
+    "commit:approve": "node scripts/commit-gate.js approve",
+    "commit:gate": "node scripts/commit-gate.js check",
     "test": "node scripts/run-tests.js"
   },
   "keywords": [

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Гейт сообщения коммита (.clinerules §1): сообщение должно быть согласовано с владельцем.
+# Хук commit-msg получает путь к файлу с итоговым сообщением ($1) — pre-commit для этого не годится,
+# т.к. COMMIT_EDITMSG пишется позже.
+# Согласование: npm run commit:approve -- --file <utf8-файл-с-сообщением>
+# Установка хука: npm run hooks:install
+exec node "$(git rev-parse --show-toplevel)/scripts/commit-gate.js" check "$1"
