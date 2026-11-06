@@ -10,6 +10,19 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.2.0](https://github.com/dgabadulin/ArchRep/compare/v4.1.0...v4.2.0) (2026-11-06)
+
+
+### Новое
+
+* **deploy:** адрес стенда и подсказка про ssh-туннель в итоге деплоя ([54a08d2](https://github.com/dgabadulin/ArchRep/commit/54a08d2fa17794157a932b34d64dc474c5cea16e))
+* **frontend:** одна кнопка сохраняет форму вместе с вкладками ([#94](https://github.com/dgabadulin/ArchRep/issues/94)) ([8544060](https://github.com/dgabadulin/ArchRep/commit/85440609e082a81951e902ca7c787593e140aaaa))
+
+
+### Исправлено
+
+* **deploy:** dirty-деплой на теге не отклоняется из-за суффикса версии ([0961d72](https://github.com/dgabadulin/ArchRep/commit/0961d72fb77fb5c8f4875fd46f0f06827c4a084b))
+
 ## [4.1.0](https://github.com/dgabadulin/ArchRep/compare/v4.0.1...v4.1.0) (2026-11-06)
 
 
