@@ -9,7 +9,7 @@
     <template v-else-if="roleLoaded">
       <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>roles:write</code>.</p>
 
-      <form class="card form" @submit.prevent="save">
+      <form class="card form" @submit.prevent="save()">
         <fieldset class="form-fieldset" :disabled="!canWrite">
           <div class="form-grid">
             <div class="field">
@@ -70,12 +70,19 @@
             </div>
           </div>
         </fieldset>
+      </form>
 
-        <div v-if="submitError" class="error">{{ submitError }}</div>
-        <div class="actions">
-          <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">
-            {{ saving ? 'Сохранение...' : isNew ? 'Создать' : 'Сохранить' }}
-          </button>
+      <SaveBar
+        :saving="saving"
+        :saved="savedOk"
+        :dirty="isDirty"
+        :can-save="canWrite"
+        :error="submitError"
+        show-save-and-close
+        @save="save()"
+        @save-and-close="save({ close: true })"
+      >
+        <template #extra>
           <button
             v-if="canDelete"
             type="button"
@@ -85,11 +92,13 @@
           >
             {{ deleting ? 'Удаление...' : 'Удалить' }}
           </button>
+        </template>
+        <template #cancel>
           <router-link :to="listPath" class="btn btn-secondary">
             {{ canWrite ? 'Отмена' : 'К списку' }}
           </router-link>
-        </div>
-      </form>
+        </template>
+      </SaveBar>
     </template>
     <p v-else class="error">{{ submitError || 'Роль не найдена' }}</p>
   </div>
@@ -99,7 +108,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
+import SaveBar from '../components/SaveBar.vue'
 import { usePermissions } from '../composables/usePermissions'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
+import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -108,15 +121,25 @@ const listPath = '/settings/administration/roles'
 const isNew = computed(() => route.name === 'admin-role-new')
 
 const loading = ref(true)
-const saving = ref(false)
 const deleting = ref(false)
-const submitError = ref('')
 const role = ref(null)
 const allPermissionCodes = ref([])
 const assigned = ref([])
 const form = ref({ code: '', name: '', description: '' })
 const leftSelectRef = ref(null)
 const rightSelectRef = ref(null)
+
+/** Правки формы: поля роли + назначенные разрешения (issue #94). */
+const { isDirty, markSaved } = useFormDirty(() => ({ ...form.value, permissions: [...assigned.value] }))
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 const roleLoaded = computed(() => isNew.value || !!role.value)
 const pageTitle = computed(() => {
   if (isNew.value) return 'Новая роль'
@@ -176,16 +199,31 @@ async function load() {
     allPermissionCodes.value = (perms || []).map((p) => p.code).filter(Boolean)
   } catch (e) {
     role.value = null
-    submitError.value = e?.message || 'Ошибка загрузки'
+    markError(e?.message || 'Ошибка загрузки')
   } finally {
+    if (role.value) markSaved()
     loading.value = false
   }
 }
 
-async function save() {
-  if (!canWrite.value) return
-  submitError.value = ''
-  saving.value = true
+/**
+ * Единая точка сохранения формы (issue #94).
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти к списку ролей;
+ *   по умолчанию — остаться; новая роль превращается в карточку редактирования.
+ *
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если сохранение прошло без ошибок.
+ */
+async function save(opts = {}) {
+  if (!canWrite.value || saving.value) return false
+  if (!form.value.code.trim() || !form.value.name.trim()) {
+    markError('Заполните обязательные поля: код и название роли.')
+    return false
+  }
+  startSaving()
   try {
     const body = {
       code: form.value.code.trim(),
@@ -195,18 +233,39 @@ async function save() {
     }
     if (isNew.value) {
       const created = await api.createAdminRole(body)
+      // Снимок фиксируем ДО перехода: иначе guard предложит сохранить ещё раз и создаст дубль роли.
+      markSaved()
       await router.replace(`/settings/administration/roles/${created.id}/edit`)
-      await load()
-      return
+    } else {
+      await api.updateAdminRole(role.value.id, body)
+      markSaved()
     }
-    await api.updateAdminRole(role.value.id, body)
+    markSavedOk()
+    if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listPath)
+      return true
+    }
+    // Перечитываем запись: сервер нормализует поля (код, набор разрешений).
     await load()
+    return true
   } catch (e) {
-    submitError.value = e?.message || 'Ошибка сохранения'
-  } finally {
-    saving.value = false
+    markError(e?.message || 'Ошибка сохранения')
+    return false
   }
 }
+
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `save` возвращает `false` — переход отменяется, данные не теряются.
+ */
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  async () => {
+    const ok = await save({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
+)
 
 async function removeRole() {
   if (!canDelete.value || !role.value) return
@@ -216,9 +275,10 @@ async function removeRole() {
   deleting.value = true
   try {
     await api.deleteAdminRole(role.value.id)
+    markSaved()
     await router.push(listPath)
   } catch (e) {
-    submitError.value = e?.message || 'Ошибка удаления'
+    markError(e?.message || 'Ошибка удаления')
   } finally {
     deleting.value = false
   }
@@ -291,11 +351,6 @@ onMounted(load)
 .error {
   color: var(--ar-danger);
   margin-top: 0.75rem;
-}
-.actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
 }
 @media (max-width: 800px) {
   .dual-grid {

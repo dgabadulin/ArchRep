@@ -245,7 +245,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
@@ -256,6 +256,8 @@ import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
 import PartnerSelectField from '../components/PartnerSelectField.vue'
 import SaveBar from '../components/SaveBar.vue'
 import { useCollectionDraft } from '../composables/useCollectionDraft'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
 import { nodeId } from '../utils/entityTypeConfig'
 import { useAiPrefill } from '../composables/useAiPrefill'
 
@@ -283,16 +285,8 @@ const returnConclusionPath = computed(() => {
 })
 
 const loading = ref(false)
-const saving = ref(false)
-/** Кратковременная отметка «Сохранено ✓» в панели сохранения. */
-const savedOk = ref(false)
-const submitError = ref('')
-/** Изменена ли шапка формы относительно последнего сохранения/загрузки. */
-const headerDirty = ref(false)
-const initialLoadDone = ref(false)
 const codeInput = ref(null)
 const nameInput = ref(null)
-let savedTimer = null
 const parentSystems = ref([])
 const statuses = ref([])
 const vendors = ref([])
@@ -325,8 +319,6 @@ const techStackLoading = ref(false)
 const selectedTechnologyId = ref('')
 const integrationFlows = ref([])
 
-/** Есть несохранённые изменения: шапка формы или черновик вкладки. */
-const isDirty = computed(() => headerDirty.value || techDraftDirty.value)
 const integrationsLoading = ref(false)
 const integrationFlowsError = ref('')
 
@@ -364,28 +356,21 @@ const form = reactive({
   external_system: false,
 })
 
-function formSnapshot() {
-  return {
-    code: form.code,
-    name: form.name,
-    fullname: form.fullname,
-    parent_ar_systems_id: form.parent_ar_systems_id,
-    parent_name: form.parent_name,
-    ar_system_statuses_id: form.ar_system_statuses_id,
-    vendor_ar_partners_id: form.vendor_ar_partners_id,
-    supplier_ar_partners_id: form.supplier_ar_partners_id,
-    supporter_ar_partners_id: form.supporter_ar_partners_id,
-    description: form.description,
-    it_lead_employee_id: form.it_lead_employee_id,
-    business_lead_employee_id: form.business_lead_employee_id,
-    ar_system_owners_id: form.ar_system_owners_id,
-    ar_system_hosting_types_id: form.ar_system_hosting_types_id,
-    comment: form.comment,
-    external_system: form.external_system,
-  }
-}
+/** Правки шапки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty: headerDirty, markSaved: markHeaderSaved } = useFormDirty(() => form)
 
-const lastLoadedSnapshot = ref(null)
+/** Есть несохранённые изменения: шапка формы или черновик вкладки «Технологический стек». */
+const isDirty = computed(() => headerDirty.value || techDraftDirty.value)
+
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
 function emptyForm() {
   form.code = ''; form.name = ''; form.fullname = ''; form.parent_ar_systems_id = null; form.parent_name = ''
@@ -458,50 +443,33 @@ async function loadRefs() {
   employees.value = em
 }
 
-onMounted(async () => {
+/**
+ * Загрузка карточки: справочники + запись. Вызывается при открытии и при смене `id`
+ * (в т.ч. после создания записи: форма сама становится карточкой редактирования).
+ */
+async function load() {
+  submitError.value = ''
   await loadRefs()
   if (isEdit.value) {
     loading.value = true
     try {
       const row = await api.getSystem(id.value)
       mapToForm(row)
-      lastLoadedSnapshot.value = formSnapshot()
+      markHeaderSaved()
       // Черновик ИИ поверх загруженной записи (prefill_form, mode: 'edit'); сохранение — вручную.
       applyAiPrefillForRoute()
     } catch (e) {
-      submitError.value = e.body?.error || e.message || 'Ошибка загрузки'
+      markError(e.body?.error || e.message || 'Ошибка загрузки')
     } finally { loading.value = false }
   } else {
     emptyForm()
-    lastLoadedSnapshot.value = formSnapshot()
+    markHeaderSaved()
     applyAiPrefillForRoute()
   }
-  initialLoadDone.value = true
-})
-
-function isFormChanged() {
-  const cur = formSnapshot()
-  const prev = lastLoadedSnapshot.value
-  if (!prev) return false
-  return Object.keys(cur).some(k => {
-    const a = cur[k]
-    const b = prev[k]
-    if (a === b) return false
-    if (a == null && b == null) return false
-    return String(a) !== String(b)
-  })
 }
 
-watch(() => ({ ...form }), () => {
-  if (!initialLoadDone.value) return
-  headerDirty.value = isFormChanged()
-  savedOk.value = false
-}, { deep: true })
-
-/** Любая правка вкладки снимает отметку «Сохранено ✓». */
-watch(techDraftDirty, () => { savedOk.value = false })
-
-watch(id, () => { if (!isEdit.value) emptyForm() })
+onMounted(load)
+watch(id, load)
 
 /**
  * Каталог технологий нужен и в режиме создания (вкладка доступна без сохранения);
@@ -612,10 +580,8 @@ async function validateHeader() {
  */
 async function submit(opts = {}) {
   if (!canWrite.value || saving.value) return false
-  submitError.value = ''
-  savedOk.value = false
   if (!(await validateHeader())) return false
-  saving.value = true
+  startSaving()
   try {
     const body = {
       code: form.code.trim(),
@@ -645,45 +611,47 @@ async function submit(opts = {}) {
 
     // Вкладки: применяем накопленный черновик (в режиме создания — уже с реальным id).
     const { failures, failedAdds } = await applyTechDraft(systemId)
-    headerDirty.value = false
-    lastLoadedSnapshot.value = formSnapshot()
+    markHeaderSaved()
     if (failures.length) {
       // Частичный успех: перечитываем применённое, неприменённое возвращаем в черновик.
       await loadTechStack({ force: true })
       for (const row of failedAdds) {
         techDraft.add({ technologies_id: row.technologies_id, technology_name: row.technology_name })
       }
-      submitError.value = `Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`
+      markError(`Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`)
       return false
     }
     await loadTechStack({ force: true })
-    savedOk.value = true
-    clearTimeout(savedTimer)
-    savedTimer = setTimeout(() => { savedOk.value = false }, 2500)
+    markSavedOk()
     if (opts.skipNavigate) return true
-    if (!isEdit.value) {
-      if (returnToConclusion.value && route.query.payload != null) {
-        const q = { payload: route.query.payload }
-        if (route.query.appliedId) q.appliedId = route.query.appliedId
-        q.newSystemId = systemId
-        const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
-        router.push({ path, query: q })
-        return true
-      }
-      // Остаёмся на форме: дальше это карточка редактирования с уже доступными вкладками.
-      await router.replace(routeWithListSearch(`/systems/${systemId}/edit`))
+    // Сценарий «система создаётся из архитектурного заключения»: черновик ADR возвращается назад.
+    if (!isEdit.value && returnToConclusion.value && route.query.payload != null) {
+      const q = { payload: route.query.payload }
+      if (route.query.appliedId) q.appliedId = route.query.appliedId
+      q.newSystemId = systemId
+      const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
+      await router.push({ path, query: q })
       return true
     }
     if (opts.close) {
-      router.push(returnToConclusion.value ? returnConclusionPath.value : listRouteLocation.value)
+      await router.push(returnToConclusion.value ? returnConclusionPath.value : listRouteLocation.value)
+      return true
+    }
+    if (!isEdit.value) {
+      // Остаёмся на форме: дальше это карточка редактирования с уже доступными вкладками.
+      await router.replace(routeWithListSearch(`/systems/${systemId}/edit`))
     }
     return true
   } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
     return false
-  } finally { saving.value = false }
+  }
 }
 
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
 useUnsavedGuard(
   computed(() => canWrite.value && isDirty.value),
   async () => {
@@ -691,8 +659,6 @@ useUnsavedGuard(
     if (!ok) throw new Error('Не сохранено')
   },
 )
-
-onBeforeUnmount(() => clearTimeout(savedTimer))
 </script>
 
 <style scoped>

@@ -6,7 +6,7 @@
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
-    <form v-else class="card form" @submit.prevent="submit">
+    <form v-else class="card form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>adr_principle:write</code>.</p>
       <p v-if="prefillNotice" class="readonly-banner prefill-banner">{{ prefillNotice }}</p>
       <fieldset class="form-fieldset" :disabled="!canWrite">
@@ -44,12 +44,22 @@
         </div>
       </div>
       </fieldset>
-      <div v-if="submitError" class="error">{{ submitError }}</div>
-      <div class="actions">
-        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
-      </div>
     </form>
+
+    <SaveBar
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite"
+      :error="submitError"
+      show-save-and-close
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
+      </template>
+    </SaveBar>
   </div>
 </template>
 
@@ -59,12 +69,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
 import { useAiPrefill } from '../composables/useAiPrefill'
 import { api } from '../api/client'
+import SaveBar from '../components/SaveBar.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { listRouteLocation } = useFormListReturn('/decisions/principle')
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/decisions/principle')
 const { canWrite } = usePermissions('adr_principle')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value)
@@ -74,10 +87,6 @@ const formTitle = computed(() => {
 })
 
 const loading = ref(false)
-const saving = ref(false)
-const submitError = ref('')
-const isDirty = ref(false)
-const initialLoadDone = ref(false)
 const adrStatuses = ref([])
 const form = reactive({
   code: '',
@@ -89,18 +98,17 @@ const form = reactive({
   author: '',
 })
 
-function formSnapshot() {
-  return {
-    name: form.name,
-    context: form.context,
-    decision: form.decision,
-    consequences: form.consequences,
-    ar_adr_statuses_id: form.ar_adr_statuses_id,
-    author: form.author,
-  }
-}
-
-const lastLoadedSnapshot = ref(null)
+/** Правки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty, markSaved } = useFormDirty(() => form)
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
 /**
  * Черновик ИИ-архитектора (`prefill_form`, docs/ai-architect.md §7) — тот же контракт `?payload=`.
@@ -112,11 +120,16 @@ const { prefillNotice, applyAiPrefill } = useAiPrefill({
   fields: { name: 'string', context: 'string', decision: 'string', consequences: 'string' },
 })
 
-onMounted(async () => {
+/**
+ * Загрузка карточки: справочники + запись. Вызывается при открытии и при смене `id`
+ * (в т.ч. после создания записи: форма сама становится карточкой редактирования).
+ */
+async function load() {
+  submitError.value = ''
   try {
     adrStatuses.value = await api.getAdrStatuses()
   } catch (e) {
-    submitError.value = e.message || 'Ошибка загрузки справочников'
+    markError(e.message || 'Ошибка загрузки справочников')
   }
   if (isEdit.value) {
     loading.value = true
@@ -130,33 +143,37 @@ onMounted(async () => {
       form.ar_adr_statuses_id = row.ar_adr_statuses_id ?? null
       form.author = row.author ?? ''
     } catch (e) {
-      submitError.value = e.message || 'Ошибка загрузки'
+      markError(e.body?.error || e.message || 'Ошибка загрузки')
     } finally {
       loading.value = false
     }
   }
-  lastLoadedSnapshot.value = formSnapshot()
+  markSaved()
   // Черновик применяем после снятия снимка: форма помечается изменённой (guard несохранённых данных).
   applyAiPrefill()
-  initialLoadDone.value = true
-})
-
-function isFormChanged() {
-  const cur = formSnapshot()
-  const prev = lastLoadedSnapshot.value
-  if (!prev) return false
-  return Object.keys(cur).some(k => String(cur[k] ?? '') !== String(prev[k] ?? ''))
 }
 
-watch(() => ({ ...form }), () => {
-  if (!initialLoadDone.value) return
-  isDirty.value = isFormChanged()
-}, { deep: true })
+onMounted(load)
+watch(id, load)
 
+/**
+ * Единая точка сохранения формы (issue #94).
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти в реестр;
+ *   по умолчанию — остаться; созданная запись превращается в карточку редактирования.
+ *
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если сохранение прошло без ошибок.
+ */
 async function submit(opts = {}) {
-  if (!canWrite.value) return
-  submitError.value = ''
-  saving.value = true
+  if (!canWrite.value || saving.value) return false
+  if (!form.name?.trim()) {
+    markError('Укажите наименование — это обязательное поле.')
+    return false
+  }
+  startSaving()
   try {
     const body = {
       name: form.name.trim(),
@@ -166,28 +183,39 @@ async function submit(opts = {}) {
       ar_adr_statuses_id: form.ar_adr_statuses_id || undefined,
       author: form.author?.trim() || undefined,
     }
+    let principleId = id.value
     if (isEdit.value) {
       await api.updateDecisionPrinciple(id.value, body)
-      lastLoadedSnapshot.value = formSnapshot()
-      isDirty.value = false
-      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
-      await api.createDecisionPrinciple(body)
-      lastLoadedSnapshot.value = formSnapshot()
-      isDirty.value = false
-      if (!opts.skipNavigate) router.push(listRouteLocation.value)
+      const res = await api.createDecisionPrinciple(body)
+      principleId = res.id
+      form.code = res.code ?? form.code
     }
+    markSaved()
+    markSavedOk()
+    if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listRouteLocation.value)
+      return true
+    }
+    if (!isEdit.value) await router.replace(routeWithListSearch(`/decisions/principle/${principleId}/edit`))
+    return true
   } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
-    throw e
-  } finally {
-    saving.value = false
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
+    return false
   }
 }
 
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
 useUnsavedGuard(
   computed(() => canWrite.value && isDirty.value),
-  () => submit({ skipNavigate: true })
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
 )
 </script>
 

@@ -6,7 +6,7 @@
     </div>
 
     <div v-if="loading" class="loading">Загрузка...</div>
-    <form v-else-if="form" class="card form" @submit.prevent="submit">
+    <form v-else-if="form" class="card form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>domain:write</code>.</p>
       <fieldset class="form-fieldset" :disabled="!canWrite">
       <div class="form-grid">
@@ -56,13 +56,24 @@
         </div>
       </div>
       </fieldset>
-      <div v-if="submitError" class="error">{{ submitError }}</div>
-      <div class="actions actions-bottom">
-        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
-      </div>
     </form>
     <div v-else class="error">{{ error || 'Не найдено' }}</div>
+
+    <SaveBar
+      v-if="form"
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite"
+      :error="submitError"
+      show-save-and-close
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
+      </template>
+    </SaveBar>
   </div>
 </template>
 
@@ -71,8 +82,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { togafApi } from '../api'
+import SaveBar from '../components/SaveBar.vue'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
+import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,12 +103,22 @@ const formTitle = computed(() => {
 const form = ref(null)
 const loading = ref(true)
 const error = ref('')
-const submitError = ref('')
-const saving = ref(false)
 const statuses = ref([])
 const partners = ref([])
 const companies = ref([])
 const employees = ref([])
+
+/** Правки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty, markSaved } = useFormDirty(() => form.value)
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
 function formatDateForInput(value) {
   if (!value) return ''
@@ -150,14 +175,33 @@ async function load() {
     error.value = e.message || 'Ошибка загрузки'
     form.value = null
   } finally {
+    if (form.value) markSaved()
     loading.value = false
   }
 }
 
-async function submit() {
-  if (!canWrite.value) return
-  submitError.value = ''
-  saving.value = true
+/**
+ * Единая точка сохранения формы (issue #94).
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти в реестр;
+ *   по умолчанию — остаться; созданная запись превращается в карточку редактирования.
+ *
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если сохранение прошло без ошибок.
+ */
+async function submit(opts = {}) {
+  if (!canWrite.value || saving.value) return false
+  if (!form.value.name?.trim()) {
+    markError('Укажите домен — это обязательное поле.')
+    return false
+  }
+  if (!form.value.ar_domain_statuses_id) {
+    markError('Укажите статус домена — это обязательное поле.')
+    return false
+  }
+  startSaving()
   const payload = {
     name: form.value.name.trim(),
     ar_domain_statuses_id: form.value.ar_domain_statuses_id,
@@ -169,19 +213,39 @@ async function submit() {
     business_owner_ar_employees_id: form.value.business_owner_ar_employees_id || undefined,
   }
   try {
+    let domainId = id.value
     if (isEdit.value) {
       await api.updateDomain(id.value, payload)
-      router.push(listRouteLocation.value)
     } else {
       const res = await api.createDomain(payload)
-      router.push(routeWithListSearch(`/domains/${res.id}/edit`))
+      domainId = res.id
     }
+    markSaved()
+    markSavedOk()
+    if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listRouteLocation.value)
+      return true
+    }
+    if (!isEdit.value) await router.replace(routeWithListSearch(`/domains/${domainId}/edit`))
+    return true
   } catch (e) {
-    submitError.value = e.message || 'Ошибка сохранения'
-  } finally {
-    saving.value = false
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
+    return false
   }
 }
+
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
+)
 
 watch(() => route.params.id, load)
 onMounted(load)
@@ -210,5 +274,4 @@ onMounted(load)
 }
 .field-wide { grid-column: 1 / -1; }
 .req { color: #c0392b; }
-.actions-bottom { margin-top: 1.25rem; display: flex; gap: 0.75rem; }
 </style>

@@ -4,7 +4,7 @@
       <h1>{{ formTitle }}</h1>
       <router-link :to="listRouteLocation" class="btn">Назад</router-link>
     </div>
-    <form v-if="form" class="form" @submit.prevent="submit">
+    <form v-if="form" class="form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>metamodel_relation:write</code>.</p>
       <p v-if="isManagedIntegrationProjection" class="banner">
         Проекция интеграционного потока (поток id {{ form.reference_to_baserow }}). Редактируйте запись в
@@ -81,14 +81,26 @@
         <textarea v-model="form.description" rows="2" :disabled="isManagedRelation"></textarea>
       </div>
       </fieldset>
-      <p v-if="submitError" class="msg error">{{ submitError }}</p>
-      <div class="form-actions">
-        <button v-if="canWrite && !isManagedRelation" type="submit" class="btn btn-primary">Сохранить</button>
-        <router-link :to="listRouteLocation" class="btn">{{ canWrite ? 'Отмена' : 'Назад к списку' }}</router-link>
-      </div>
     </form>
     <div v-else-if="loading" class="msg">Загрузка...</div>
     <div v-else class="msg error">{{ error || 'Не найдено' }}</div>
+
+    <SaveBar
+      v-if="form"
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite && !isManagedRelation"
+      :error="submitError"
+      show-save-and-close
+      max-width="500px"
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'Назад к списку' }}</router-link>
+      </template>
+    </SaveBar>
   </div>
 </template>
 
@@ -97,12 +109,16 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { togafApi } from '../api'
 import { loadEntityList } from '../api/graphApi'
+import SaveBar from '../components/SaveBar.vue'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
+import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 
 const route = useRoute()
 const router = useRouter()
-const { listRouteLocation } = useFormListReturn('/metamodel-relations')
+const { listRouteLocation, routeWithListSearch } = useFormListReturn('/metamodel-relations')
 const { canWrite, hasPermission } = usePermissions('metamodel_relation')
 const id = computed(() => route.params.id)
 const isEdit = computed(() => !!id.value && id.value !== 'new')
@@ -113,9 +129,20 @@ const formTitle = computed(() => {
 const form = ref(null)
 const loading = ref(true)
 const error = ref('')
-const submitError = ref('')
 const entityTypes = ref([])
 const relationTypes = ref([])
+
+/** Правки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty, markSaved } = useFormDirty(() => form.value)
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
 /**
  * Объекты концов связи: в модель по-прежнему пишется числовой id (структура хранения не меняется),
@@ -315,19 +342,31 @@ async function load() {
     // Для новой связи тип по умолчанию выбираем уже с учётом выбранной пары типов концов.
     if (!isEdit.value) syncRelationTypeForPair()
   }
+  markSaved()
   loading.value = false
 }
 
-async function submit() {
-  if (!canWrite.value) return
-  if (isManagedRelation.value) return
-  submitError.value = ''
+/**
+ * Единая точка сохранения формы (issue #94).
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти в список;
+ *   по умолчанию — остаться; созданная запись превращается в карточку редактирования.
+ *
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если сохранение прошло без ошибок.
+ */
+async function submit(opts = {}) {
+  if (!canWrite.value || saving.value) return false
+  if (isManagedRelation.value) return false
   const fromId = toIdOrNull(form.value.from_entity_id)
   const toId = toIdOrNull(form.value.to_entity_id)
   if (fromId == null || toId == null) {
-    submitError.value = 'Выберите объекты «От» и «К».'
-    return
+    markError('Выберите объекты «От» и «К».')
+    return false
   }
+  startSaving()
   const payload = {
     from_entity_type: form.value.from_entity_type,
     from_entity_id: fromId,
@@ -338,16 +377,41 @@ async function submit() {
     description: form.value.description || undefined,
   }
   try {
+    let relationId = id.value
     if (isEdit.value) {
       await togafApi.updateRelation(id.value, payload)
     } else {
-      await togafApi.createRelation(payload)
+      const created = await togafApi.createRelation(payload)
+      relationId = created?.id ?? null
     }
-    router.push(listRouteLocation.value)
+    markSaved()
+    markSavedOk()
+    if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listRouteLocation.value)
+      return true
+    }
+    if (!isEdit.value && relationId != null) {
+      await router.replace(routeWithListSearch(`/metamodel-relations/${relationId}/edit`))
+    }
+    return true
   } catch (e) {
-    error.value = e.message || 'Ошибка сохранения'
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
+    return false
   }
 }
+
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value && !isManagedRelation.value),
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
+)
 
 onMounted(load)
 watch(id, load)
@@ -397,11 +461,6 @@ watch(id, load)
   border: 1px solid var(--ar-border);
   border-radius: var(--ar-radius-sm);
   background: var(--ar-surface);
-}
-.form-actions {
-  margin-top: 1.25rem;
-  display: flex;
-  gap: 0.75rem;
 }
 .msg {
   padding: 1rem;

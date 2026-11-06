@@ -174,7 +174,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { togafApi } from '../api'
@@ -186,6 +186,8 @@ import { nodeId } from '../utils/entityTypeConfig'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
 import { useCollectionDraft } from '../composables/useCollectionDraft'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useAiPrefill } from '../composables/useAiPrefill'
 
@@ -201,20 +203,13 @@ const formTitle = computed(() => {
 })
 
 const loading = ref(true)
-const saving = ref(false)
-/** Кратковременная отметка «Сохранено ✓» в панели сохранения. */
-const savedOk = ref(false)
-const submitError = ref('')
 /**
  * id созданной записи до перехода на маршрут редактирования: нужен, чтобы применить
  * черновик вкладки «Связи» в том же сохранении (issue #94).
  */
 const createdId = ref(null)
 const effectiveId = computed(() => id.value || createdId.value || null)
-/** Изменена ли шапка формы относительно последнего сохранения/загрузки. */
-const headerDirty = ref(false)
 const nameInput = ref(null)
-let savedTimer = null
 const form = ref({
   code: '',
   name: '',
@@ -234,6 +229,9 @@ const gapTypes = ref([])
 const impactLevelTypes = ref([])
 const gapStates = ref([])
 const adrStatuses = ref([])
+
+/** Правки шапки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty: headerDirty, markSaved: markHeaderSaved } = useFormDirty(() => form.value)
 
 /**
  * Черновик ИИ-архитектора (`prefill_form`, docs/ai-architect.md §7) — тот же контракт `?payload=`.
@@ -264,13 +262,17 @@ const entityTypes = ref([])
 const relationTypes = ref([])
 const showRelationPicker = ref(false)
 
-/** Снимок шапки формы: по нему определяем «есть несохранённые изменения». */
-const savedSnapshot = ref('')
-function formSnapshot() {
-  return JSON.stringify(form.value)
-}
 /** Есть несохранённые изменения: шапка формы или черновик вкладки. */
 const isDirty = computed(() => headerDirty.value || relationsDraftDirty.value)
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
 /** Строки таблицы связей с подставленными видимыми именами */
 const relationRows = ref([])
@@ -363,7 +365,7 @@ async function load() {
       submitError.value = e.message || 'Не удалось загрузить'
     }
   }
-  savedSnapshot.value = formSnapshot()
+  markHeaderSaved()
   loading.value = false
   // Черновик ИИ-архитектора применяем после загрузки: данные НЕ сохраняются — пользователь сохраняет сам.
   applyAiPrefill()
@@ -383,15 +385,19 @@ async function validateHeader() {
 
 /**
  * Единая точка сохранения страницы (issue #94): шапка формы + черновик вкладки «Связи».
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти в реестр (в т.ч. сразу после создания записи);
+ *   по умолчанию — остаться; созданная запись превращается в карточку редактирования.
+ *
  * @param {{ close?: boolean, skipNavigate?: boolean }} opts
  * @returns {Promise<boolean>} true, если всё сохранилось без ошибок.
  */
 async function submit(opts = {}) {
   if (!canWrite.value || saving.value) return false
-  submitError.value = ''
-  savedOk.value = false
   if (!(await validateHeader())) return false
-  saving.value = true
+  startSaving()
   const body = {
     name: form.value.name,
     description: form.value.description,
@@ -417,33 +423,30 @@ async function submit(opts = {}) {
 
     // Вкладка «Связи»: применяем накопленный черновик (в режиме создания — уже с реальным id).
     const { failures, failedAdds } = await applyRelationsDraft(effectiveId.value)
-    savedSnapshot.value = formSnapshot()
-    headerDirty.value = false
+    markHeaderSaved()
     if (failures.length) {
       // Частичный успех: перечитываем применённое, неприменённое возвращаем в черновик.
       await loadRelations({ force: true })
       for (const row of failedAdds) relationsDraft.add(row)
       await enrichRelationRows()
-      submitError.value = `Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`
+      markError(`Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`)
       return false
     }
     await loadRelations({ force: true })
-    savedOk.value = true
-    clearTimeout(savedTimer)
-    savedTimer = setTimeout(() => { savedOk.value = false }, 2500)
+    markSavedOk()
     if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listRouteLocation.value)
+      return true
+    }
     if (wasCreated) {
       // Остаёмся на форме: дальше это карточка редактирования с уже доступными вкладками.
       await router.replace(routeWithListSearch(`/architecture-debt/${effectiveId.value}/edit`))
-      return true
     }
-    if (opts.close) router.push(listRouteLocation.value)
     return true
   } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
     return false
-  } finally {
-    saving.value = false
   }
 }
 
@@ -529,15 +532,10 @@ watch(
   }
 )
 
-/** «Есть несохранённые изменения» по шапке формы (вкладка «Связи» считается отдельно). */
-watch(form, () => {
-  headerDirty.value = formSnapshot() !== savedSnapshot.value
-  savedOk.value = false
-}, { deep: true })
-
-/** Любая правка вкладки «Связи» снимает отметку «Сохранено ✓». */
-watch(relationsDraftDirty, () => { savedOk.value = false })
-
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
 useUnsavedGuard(
   computed(() => canWrite.value && isDirty.value),
   async () => {
@@ -545,8 +543,6 @@ useUnsavedGuard(
     if (!ok) throw new Error('Не сохранено')
   },
 )
-
-onBeforeUnmount(() => clearTimeout(savedTimer))
 
 onMounted(load)
 watch(id, load)
@@ -577,11 +573,6 @@ watch(id, load)
 }
 .field input.readonly {
   background: var(--ar-table-head-bg);
-}
-.actions-bottom {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--ar-border);
 }
 .error {
   margin-top: 0.5rem;

@@ -6,7 +6,7 @@
     </div>
 
     <div v-if="loading && isEdit" class="loading">Загрузка...</div>
-    <form v-else class="card form" @submit.prevent="submit">
+    <form v-else class="card form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>integration_flow:write</code>.</p>
       <p v-if="prefillNotice" class="readonly-banner prefill-banner">{{ prefillNotice }}</p>
       <fieldset class="form-fieldset" :disabled="!canWrite">
@@ -53,12 +53,22 @@
         </div>
       </div>
       </fieldset>
-      <div v-if="submitError" class="error">{{ submitError }}</div>
-      <div class="actions">
-        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К списку' }}</router-link>
-      </div>
     </form>
+
+    <SaveBar
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite"
+      :error="submitError"
+      show-save-and-close
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К списку' }}</router-link>
+      </template>
+    </SaveBar>
   </div>
 </template>
 
@@ -68,8 +78,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
+import { useFormDirty } from '../composables/useFormDirty'
+import { useSaveStatus } from '../composables/useSaveStatus'
 import { useAiPrefill } from '../composables/useAiPrefill'
 import { api } from '../api/client'
+import SaveBar from '../components/SaveBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,10 +96,6 @@ const formTitle = computed(() => {
 })
 
 const loading = ref(false)
-const saving = ref(false)
-const submitError = ref('')
-const isDirty = ref(false)
-const initialLoadDone = ref(false)
 const systems = ref([])
 const eventTypes = ref([])
 const flowStatuses = ref([])
@@ -111,21 +120,24 @@ const form = reactive({
   ar_integration_flow_statuses_id: null,
 })
 
-function formSnapshot() {
-  return {
-    source_ar_systems_id: form.source_ar_systems_id,
-    target_ar_systems_id: form.target_ar_systems_id,
-    ar_integration_flow_event_types_id: form.ar_integration_flow_event_types_id,
-    transferred_data: form.transferred_data,
-    transfer_method: form.transfer_method,
-    periodicity: form.periodicity,
-    ar_integration_flow_statuses_id: form.ar_integration_flow_statuses_id,
-  }
-}
+/** Правки формы: снимок берётся после загрузки записи и после сохранения (issue #94). */
+const { isDirty, markSaved } = useFormDirty(() => form)
+/** Состояние панели сохранения: «сохранение → сохранено → ошибка» + текст ошибки. */
+const {
+  saving,
+  savedOk,
+  submitError,
+  startSaving,
+  markSaved: markSavedOk,
+  markError,
+} = useSaveStatus({ dirty: isDirty })
 
-const lastLoadedSnapshot = ref(null)
-
-onMounted(async () => {
+/**
+ * Загрузка карточки: справочники + запись. Вызывается при открытии и при смене `id`
+ * (в т.ч. после создания записи: форма сама становится карточкой редактирования).
+ */
+async function load() {
+  submitError.value = ''
   const [sys, ev, st] = await Promise.all([
     api.getSystems(),
     api.getIntegrationFlowEventTypes(),
@@ -146,37 +158,37 @@ onMounted(async () => {
       form.periodicity = row.periodicity ?? ''
       form.ar_integration_flow_statuses_id = row.ar_integration_flow_statuses_id ?? null
     } catch (e) {
-      submitError.value = e.message || 'Ошибка загрузки'
+      markError(e.body?.error || e.message || 'Ошибка загрузки')
     } finally {
       loading.value = false
     }
   }
-  lastLoadedSnapshot.value = formSnapshot()
+  markSaved()
   // Черновик применяем после снятия снимка: форма помечается изменённой (guard несохранённых данных).
   applyAiPrefill()
-  initialLoadDone.value = true
-})
-
-function isFormChanged() {
-  const cur = formSnapshot()
-  const prev = lastLoadedSnapshot.value
-  if (!prev) return false
-  return Object.keys(cur).some(k => String(cur[k] ?? '') !== String(prev[k] ?? ''))
 }
 
-watch(() => ({ ...form }), () => {
-  if (!initialLoadDone.value) return
-  isDirty.value = isFormChanged()
-}, { deep: true })
+onMounted(load)
+watch(id, load)
 
+/**
+ * Единая точка сохранения формы (issue #94).
+ *
+ * Навигация после успешного сохранения:
+ *   skipNavigate — остаться (сохранение перед уходом со страницы, guard);
+ *   close        — «Сохранить и закрыть»: уйти в реестр;
+ *   по умолчанию — остаться; созданная запись превращается в карточку редактирования.
+ *
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если сохранение прошло без ошибок.
+ */
 async function submit(opts = {}) {
-  if (!canWrite.value) return
-  submitError.value = ''
+  if (!canWrite.value || saving.value) return false
   if (form.source_ar_systems_id == null || form.target_ar_systems_id == null) {
-    submitError.value = 'Укажите систему источник и систему получатель'
-    return
+    markError('Укажите систему источник и систему получатель')
+    return false
   }
-  saving.value = true
+  startSaving()
   try {
     const body = {
       source_ar_systems_id: form.source_ar_systems_id,
@@ -187,28 +199,38 @@ async function submit(opts = {}) {
       periodicity: form.periodicity || undefined,
       ar_integration_flow_statuses_id: form.ar_integration_flow_statuses_id || undefined,
     }
+    let flowId = id.value
     if (isEdit.value) {
       await api.updateIntegrationFlow(id.value, body)
-      lastLoadedSnapshot.value = formSnapshot()
-      isDirty.value = false
-      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       const res = await api.createIntegrationFlow(body)
-      lastLoadedSnapshot.value = formSnapshot()
-      isDirty.value = false
-      if (!opts.skipNavigate) router.push(routeWithListSearch(`/integrations/${res.id}/edit`))
+      flowId = res.id
     }
+    markSaved()
+    markSavedOk()
+    if (opts.skipNavigate) return true
+    if (opts.close) {
+      await router.push(listRouteLocation.value)
+      return true
+    }
+    if (!isEdit.value) await router.replace(routeWithListSearch(`/integrations/${flowId}/edit`))
+    return true
   } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
-    throw e
-  } finally {
-    saving.value = false
+    markError(e.body?.error || e.message || 'Ошибка сохранения')
+    return false
   }
 }
 
+/**
+ * Выход со страницы с несохранёнными правками: guard предлагает сохранить.
+ * При ошибке сохранения `submit` возвращает `false` — переход отменяется, данные не теряются.
+ */
 useUnsavedGuard(
   computed(() => canWrite.value && isDirty.value),
-  () => submit({ skipNavigate: true })
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
 )
 </script>
 

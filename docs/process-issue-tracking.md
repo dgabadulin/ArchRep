@@ -27,6 +27,7 @@
 | `table-column-filters-spec.md` | Фильтрация по колонкам в табличных формах (Excel-подобная) | [#72](https://github.com/dgabadulin/ArchRep/issues/72) |
 | — (драфт: `github-issue-drafts/dev-changes-audit.md`) | Аудит изменений: журнал кто/когда/что изменил (реестры, ADR, статусы) | [#77](https://github.com/dgabadulin/ArchRep/issues/77) |
 | `ai-architect.md` | ИИ-архитектор: встроенный ИИ-агент (панель, агентный цикл, открытие форм) | [#78](https://github.com/dgabadulin/ArchRep/issues/78) |
+| `form-save-mechanism.md` | Единый механизм сохранения экранных форм: «Сохранить» / «Сохранить и закрыть», dirty-guard | [#111](https://github.com/dgabadulin/ArchRep/issues/111) |
 
 **Закрытые (справочно):** страница **Настройки → Сервисные операции** и перенос пересборки потоков — [#39](https://github.com/dgabadulin/ArchRep/issues/39) (закрыт).
 

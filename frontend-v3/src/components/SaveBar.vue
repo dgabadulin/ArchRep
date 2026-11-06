@@ -1,5 +1,5 @@
 <template>
-  <div class="save-bar">
+  <div class="save-bar" :style="maxWidth ? { maxWidth } : null">
     <div class="save-bar__status" aria-live="polite">
       <span v-if="error" class="save-bar__msg save-bar__msg--error">{{ error }}</span>
       <span v-else-if="saving" class="save-bar__msg save-bar__msg--muted">Сохранение…</span>
@@ -25,6 +25,7 @@
       >
         Сохранить и закрыть
       </button>
+      <slot name="extra" />
       <slot name="cancel" />
     </div>
   </div>
@@ -53,6 +54,8 @@ defineProps({
   showSaveAndClose: { type: Boolean, default: false },
   /** Текст ошибки сохранения; показывается слева от кнопок. */
   error: { type: String, default: '' },
+  /** Ограничение ширины панели: узкие формы (max-width 500px) не растягивают панель на весь экран. */
+  maxWidth: { type: String, default: '' },
 })
 
 defineEmits(['save', 'save-and-close'])
