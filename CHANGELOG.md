@@ -10,6 +10,13 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.3.1](https://github.com/dgabadulin/ArchRep/compare/v4.3.0...v4.3.1) (2026-11-06)
+
+
+### Исправлено
+
+* **deploy:** секреты demo-стенда вне git и проверка пароля БД до сборки ([611b865](https://github.com/dgabadulin/ArchRep/commit/611b8651042c7a4473e9f70fd0ea4005b94cc898))
+
 ## [4.3.0](https://github.com/dgabadulin/ArchRep/compare/v4.2.0...v4.3.0) (2026-11-06)
 
 
