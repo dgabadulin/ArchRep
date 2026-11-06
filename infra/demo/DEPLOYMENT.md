@@ -40,9 +40,44 @@ cd REPO
 
 Ниже — **полный перечень** настраиваемых значений для типичного сценария «Windows → Linux по SSH». Порты API и Draw.io по умолчанию заданы в `docker-compose.yml` (**3000** и **8080**); чтобы их сменить, отредактируйте `infra/demo/docker-compose.yml` (секции `ports:`).
 
-### 3.1. Файл `infra/demo/env.demo`
+### 3.1. Секреты и адреса стенда — `.env.demo.secret` (вне git)
 
-Этот файл участвует в **`docker compose --env-file`** и подключается к контейнеру Postgres как `env_file`. Его нужно привести в соответствие с **реальным хостом** (IP или DNS) и паролями **до** деплоя (или отредактировать на сервере после `scp` и перезапустить стек).
+Реальные значения (**пароль БД**, ключ LLM, адреса хоста) **не хранятся в репозитории**. Они лежат в файле
+**`.env.demo.secret`** в корне рабочей копии. Он в `.gitignore`, в архив деплоя (`deploy_stage.tar.gz`) не
+попадает, на сервере оказывается только по `scp`:
+
+1. `infra\demo\deploy.bat` копирует его в **`~/<DEPLOY_REMOTE_DIR>/.env.demo.secret`**;
+2. `remote_demo_deploy.sh` **склеивает** его с **`infra/demo/env.demo`** на сервере: из шаблона удаляются строки с теми же ключами, затем дописывается файл секретов — в итоговом `env.demo` дублей нет, значения из `.env.demo.secret` побеждают плейсхолдеры;
+3. без этого файла деплой останавливается **до сборки образа** с сообщением «`POSTGRES_PASSWORD` не задан (или равен `CHANGE_ME`)».
+
+Минимальный состав (по одной паре `KEY=VALUE` на строку, без кавычек):
+
+```dotenv
+# База данных
+POSTGRES_PASSWORD=<пароль роли БД>
+
+# ИИ-архитектор (issue #78): ключ и модель только здесь
+SYS_AI_ENABLED=true
+SYS_AI_MODEL=deepseek-reasoner
+AI_BASE_URL=https://api.deepseek.com
+AI_API_KEY=<ключ LLM>
+
+# Адреса стенда
+CORS_ORIGIN=http://<DEMO_HOST>:3000
+DRAWIO_EMBED_BASE=http://<DEMO_HOST>:8080
+
+# Опционально: авторизация (AUTH_ENABLED=true) и перезапуск API
+# JWT_SECRET=<секрет подписи JWT>
+# AUTH_BOOTSTRAP_DEMO_PASSWORD=<пароль login demo>
+# AUTH_BOOTSTRAP_ARADMIN_PASSWORD=<пароль login aradmin>
+# ADMIN_API_RESTART_SECRET=<секрет для UI «Сервисные операции → Перезапуск API»>
+```
+
+> Признак того, что файла нет: `[demo] WARN: .env.demo.secret не найден` в выводе деплоя.
+
+### 3.2. Шаблон `infra/demo/env.demo`
+
+Этот файл участвует в **`docker compose --env-file`** и подключается к контейнеру Postgres как `env_file`. В репозитории он содержит **плейсхолдеры** (`CHANGE_ME`, `DEMO_HOST`); на сервере при деплое он **генерируется заново** из этого шаблона + `.env.demo.secret` (см. п. 3.1), поэтому править его на сервере вручную нельзя — правки затрутся следующим деплоем.
 
 | Переменная | Обязательность | Назначение |
 |------------|----------------|------------|
@@ -194,6 +229,7 @@ call "%~dp0infra\demo\deploy.bat"
    Скрипт:
 
   - копирует на сервер в `~/%DEPLOY_REMOTE_DIR%/` каталоги **`backend`**, **`frontend-v3`**, **`infra`**, **`db`**, **`DB`**, а также **`package.json`**, **`package-lock.json`**, **`.dockerignore`**, **`pgmrc.json`**;
+   - передаёт на сервер **`.env.demo.secret`** (если файл есть локально) — реальные секреты и адреса стенда, см. п. 3.1;
    - нормализует CR/LF у `remote_demo_deploy.sh` и `env.demo` на сервере;
   - запускает **`remote_demo_deploy.sh`** в выбранном режиме:
     - `full`: Postgres + Draw.io → ожидание готовности → роль `postgres` для совместимости с дампом → (только при `ALLOW_DB_RESEED=true`) `DROP DATABASE archrep` → импорт `DB/schema/demo/dump-archrep.sql` → `npm install --include=dev` + `node-pg-migrate up` → запуск API;
@@ -223,6 +259,15 @@ call "%~dp0infra\demo\deploy.bat"
 - Повторный запуск в режиме **`full`** (например `deploy_demo_full.bat`) пересоздаёт БД **`archrep`** и снова импортирует дамп.
 - Повторный запуск в режиме **`api-only`** (например `deploy_demo_api.bat`) БД не пересоздаёт.
 - В обоих режимах перед запуском API выполняется `npm run db:migrate` (`node-pg-migrate up`) против БД `archrep`.
+- На сервере `infra/demo/env.demo` **генерируется** при каждом деплое (шаблон из репозитория + `.env.demo.secret`, см. п. 3.1): значения из файла секретов перекрывают плейсхолдеры шаблона.
+- **`POSTGRES_PASSWORD` действует только при первом `initdb`** (пустой том). Если том `pgdata_demo` уже создан с другим паролем, деплой останавливается на шаге проверки аутентификации (`28P01`). Пароль роли синхронизируют так — локальный сокет внутри контейнера работает по `trust`, старый пароль не нужен:
+
+  ```bash
+  cd ~/isar
+  docker compose -f infra/demo/docker-compose.yml --env-file infra/demo/env.demo exec -T postgres \
+    psql -U isar -d postgres -c "ALTER ROLE isar WITH PASSWORD '<пароль из .env.demo.secret>';"
+  ```
+
 - Чтобы сбросить **том Postgres** (полное удаление данных кластера в demo), на сервере из каталога проекта:
 
   ```bash
@@ -242,14 +287,14 @@ call "%~dp0infra\demo\deploy.bat"
 infra\demo\up_local_demo.bat
 ```
 
-Перед этим настройте **`infra/demo/env.demo`** (те же переменные, что в п. 3.1; для localhost часто `http://localhost:3000` и `http://localhost:8080`).
+Перед этим настройте **`infra/demo/env.demo`** (те же переменные, что в п. 3.2; для localhost часто `http://localhost:3000` и `http://localhost:8080`). Локальный запуск **не** читает `.env.demo.secret` (его применяет только `remote_demo_deploy.sh`) — значения либо вписывают в `env.demo` (файл отслеживается, правки не коммитить), либо дописывают из файла секретов: `type .env.demo.secret >> infra\demo\env.demo`.
 
 ---
 
 ## 9. Краткий чеклист перед первым продакшен-деплоем demo
 
 - [ ] Репозиторий склонирован, ветка актуальна.
-- [ ] В **`infra/demo/env.demo`** заданы пароль, `CORS_ORIGIN`, `DRAWIO_EMBED_BASE` под ваш хост.
+- [ ] Заполнен **`.env.demo.secret`** в корне рабочей копии (пароль БД, ключ LLM, `CORS_ORIGIN`, `DRAWIO_EMBED_BASE` под ваш хост) — см. п. 3.1.
 - [ ] Заданы **`DEPLOY_SSH_USER`**, **`DEPLOY_SSH_TARGET_HOST`** (и при необходимости **`DEPLOY_SSH_JUMP_HOST`**, **`DEPLOY_REMOTE_DIR`**).
 - [ ] SSH-доступ и (желательно) ключ **`%USERPROFILE%\.ssh\id_ed25519_isar`**.
 - [ ] На сервере установлены Docker и Compose, пользователь в группе `docker`.

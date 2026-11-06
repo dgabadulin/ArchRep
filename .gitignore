@@ -36,6 +36,11 @@ deploy_demo.bat
 deploy_demo_full.bat
 deploy_demo_api.bat
 
+# Реальные значения demo-стенда (пароль БД, ключ LLM, адреса хоста).
+# Доставляется на сервер по scp из infra/demo/deploy.bat, в архив деплоя и в git не попадает.
+# Уже покрыт правилом `.env.*` выше — строка оставлена как явный маркер.
+.env.demo.secret
+
 # Временные файлы / экспорты графа
 temp/
 

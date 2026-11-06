@@ -157,6 +157,20 @@ if not "!SCP_RC!"=="0" (
 
 
 
+rem Секреты demo-стенда: реальные значения (пароль БД, ключ LLM, адреса) живут вне git в
+rem .env.demo.secret. Раньше их приходилось править на сервере, а каждый деплой затирал
+rem infra/demo/env.demo шаблоном с CHANGE_ME — из-за этого db:migrate падал с 28P01.
+if exist "!LOCAL_DIR!\.env.demo.secret" (
+  echo [2/3] Передача секретов стенда ^(.env.demo.secret^)...
+  scp !SSH_OPTS! "!LOCAL_DIR!\.env.demo.secret" "%REMOTE%:%DEPLOY_REMOTE_DIR%/.env.demo.secret"
+  if !ERRORLEVEL! neq 0 (
+    echo [ERROR] Не удалось передать .env.demo.secret
+    exit /b 1
+  )
+) else (
+  echo [2/3] .env.demo.secret не найден — стенд получит плейсхолдеры ^(db:migrate упадёт с 28P01^).
+)
+
 echo [2/3] Распаковка исходников, нормализация LF ^(CRLF с Windows^) и запуск удалённого скрипта demo ^(%DEPLOY_MODE%, reseed=%ALLOW_DB_RESEED%^)...
 
 ssh !SSH_OPTS! "%REMOTE%" "cd ~/%DEPLOY_REMOTE_DIR% && tar -xzf deploy_stage.tar.gz && rm -f deploy_stage.tar.gz && rm -rf frontend-v3/node_modules frontend-v3-dist && sed -i 's/\r$//' ~/%DEPLOY_REMOTE_DIR%/infra/demo/remote_demo_deploy.sh ~/%DEPLOY_REMOTE_DIR%/infra/demo/env.demo ~/%DEPLOY_REMOTE_DIR%/infra/demo/env.demo.example && ISAR_REMOTE_DIR=%DEPLOY_REMOTE_DIR% DEPLOY_MODE=%DEPLOY_MODE% ALLOW_DB_RESEED=%ALLOW_DB_RESEED% bash ~/%DEPLOY_REMOTE_DIR%/infra/demo/remote_demo_deploy.sh"

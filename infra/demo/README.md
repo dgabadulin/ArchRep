@@ -102,4 +102,8 @@ docker compose -f infra/demo/docker-compose.yml --env-file infra/demo/env.demo u
 
 - Скрипт `remote_demo_deploy.sh` должен иметь LF-окончания строк; при копировании с Windows деплой-скрипт выполняет `sed -i 's/\r$//' …` на сервере.
 
+- **Секреты и адреса стенда** — в файле **`.env.demo.secret`** в корне рабочей копии (он в `.gitignore`, в архив деплоя не попадает): `deploy.bat` передаёт его по `scp`, `remote_demo_deploy.sh` склеивает его с `infra/demo/env.demo` (ключи из файла секретов **заменяют** одноимённые в шаблоне, дублей в итоговом файле нет). Состав и порядок — `DEPLOYMENT.md` п. 3.1.
+
+- **`POSTGRES_PASSWORD` действует только при первом `initdb`**: при уже созданном томе `pgdata_demo` пароль роли меняют через `ALTER ROLE` (команда — `DEPLOYMENT.md` §7). Готовность Postgres проверяется реальным коннектом (`psql -h postgres … -c 'select 1'`), а не `pg_isready`, поэтому плейсхолдер `CHANGE_ME` отсекается до сборки образа, а не на `db:migrate` с `28P01`.
+
 
