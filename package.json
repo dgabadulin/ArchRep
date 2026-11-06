@@ -1,6 +1,6 @@
 {
   "name": "archrep",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Архитектурный репозиторий (ИСАР): BFF + PostgreSQL + Vue 3 для корпоративных и системных архитекторов.",
   "main": "backend/index.js",
   "scripts": {
