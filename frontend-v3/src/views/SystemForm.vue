@@ -6,16 +6,24 @@
       <router-link v-else :to="listRouteLocation" class="btn btn-secondary">← К списку</router-link>
     </div>
 
-    <template v-if="isEdit">
-      <div class="tabs">
-        <button :class="['tab', { active: activeTab === 'data' }]" @click="activeTab = 'data'">Данные системы</button>
-        <button :class="['tab', { active: activeTab === 'tech' }]" @click="activeTab = 'tech'; loadTechStack()">Технологический стек</button>
-        <button :class="['tab', { active: activeTab === 'integrations' }]" @click="activeTab = 'integrations'; loadIntegrationFlows()">Интеграции</button>
-      </div>
-    </template>
+    <div class="tabs">
+      <button :class="['tab', { active: activeTab === 'data' }]" @click="activeTab = 'data'">
+        Данные системы<span v-if="headerDirty" class="tab-dot" title="Есть несохранённые изменения">•</span>
+      </button>
+      <button :class="['tab', { active: activeTab === 'tech' }]" @click="activeTab = 'tech'; loadTechStack()">
+        Технологический стек<span
+          v-if="techDraftDirty"
+          class="tab-dot"
+          :title="`Изменений без сохранения: ${techDraftCount}`"
+        >•</span>
+      </button>
+      <button :class="['tab', { active: activeTab === 'integrations' }]" @click="activeTab = 'integrations'; loadIntegrationFlows()">
+        Интеграции
+      </button>
+    </div>
 
-    <div v-if="loading && isEdit && activeTab === 'data'" class="loading">Загрузка...</div>
-    <form v-else-if="activeTab === 'data' || !isEdit" class="card form" @submit.prevent="submit">
+    <div v-if="loading && activeTab === 'data'" class="loading">Загрузка...</div>
+    <form v-else-if="activeTab === 'data'" class="card form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
       <!-- Черновик ИИ-архитектора (issue #78): применяется только к новой системе, НЕ сохраняется -->
       <p v-if="prefillNotice" class="readonly-banner prefill-banner">{{ prefillNotice }}</p>
@@ -23,11 +31,11 @@
       <div class="form-grid">
         <div class="field">
           <label>Код <span class="req">*</span></label>
-          <input v-model="form.code" required :maxlength="sysCodeMaxLen" placeholder="Напр. SUD3" />
+          <input ref="codeInput" v-model="form.code" required :maxlength="sysCodeMaxLen" placeholder="Напр. SUD3" />
         </div>
         <div class="field">
           <label>Краткое наименование <span class="req">*</span></label>
-          <input v-model="form.name" required placeholder="Напр. СУД.Keycloak" />
+          <input ref="nameInput" v-model="form.name" required placeholder="Напр. СУД.Keycloak" />
         </div>
         <div class="field field-wide">
           <label>Полное наименование</label>
@@ -110,27 +118,10 @@
         </div>
       </div>
       </fieldset>
-      <div v-if="submitError" class="error">{{ submitError }}</div>
-      <div class="actions">
-        <button
-          v-if="canWrite"
-          type="submit"
-          class="btn btn-primary"
-          :disabled="saving"
-        >
-          {{ saving ? 'Сохранение...' : 'Сохранить' }}
-        </button>
-        <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">
-          {{ canWrite ? 'Отмена' : 'Назад' }}
-        </router-link>
-        <router-link v-else :to="listRouteLocation" class="btn btn-secondary">
-          {{ canWrite ? 'Отмена' : 'К списку' }}
-        </router-link>
-      </div>
     </form>
 
     <!-- Вкладка "Технологический стек" — срез карточки ИС (system:read / system:write) -->
-    <div v-else-if="isEdit && activeTab === 'tech'" class="card tech-stack">
+    <div v-else-if="activeTab === 'tech'" class="card tech-stack">
       <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
       <EntityLinksTableGraph
         :loading="techStackLoading"
@@ -141,6 +132,9 @@
         <template #hint>
           Технологический стек из метамодели. На графе отображаются только связи из таблицы слева; тип связи задаётся
           на сервере (корневая ИС / модуль).
+          <template v-if="techDraftDirty">
+            Изменений без сохранения: {{ techDraftCount }} — они применятся по кнопке «Сохранить» внизу страницы.
+          </template>
         </template>
         <template #toolbar>
           <div v-if="canWrite" class="tech-add">
@@ -148,8 +142,8 @@
               <option value="">— Выберите технологию —</option>
               <option v-for="t in availableTechnologies" :key="t.id" :value="t.id">{{ t.display_name || t.name }}</option>
             </select>
-            <button type="button" class="btn btn-primary btn-sm" :disabled="!selectedTechnologyId || techSaving" @click="addTechnologyLink">
-              {{ techSaving ? 'Добавление...' : 'Добавить связь' }}
+            <button type="button" class="btn btn-primary btn-sm" :disabled="!selectedTechnologyId" @click="addTechnologyLink">
+              Добавить связь
             </button>
           </div>
         </template>
@@ -165,7 +159,7 @@
               <tr v-for="link in systemTechnologies" :key="link.id">
                 <td>{{ link.technology_name }}</td>
                 <td v-if="canWrite">
-                  <button type="button" class="btn-link danger" @click="removeTechnologyLink(link.id)">Удалить</button>
+                  <button type="button" class="btn-link danger" @click="removeTechnologyLink(link)">Удалить</button>
                 </td>
               </tr>
             </tbody>
@@ -179,12 +173,15 @@
     </div>
 
     <!-- Вкладка "Интеграции" — срез карточки ИС (system:read); переход в карточку потока — integration_flow:* -->
-    <div v-else-if="isEdit && activeTab === 'integrations'" class="card integrations-tab">
+    <div v-else-if="activeTab === 'integrations'" class="card integrations-tab">
       <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>system:write</code>.</p>
       <p class="tab-hint">Интеграционные потоки, где эта система — источник или получатель.</p>
-      <div v-if="integrationFlowsError" class="error integration-flows-err">{{ integrationFlowsError }}</div>
-      <div v-else-if="integrationsLoading" class="loading">Загрузка...</div>
-      <table v-else class="table">
+      <p v-if="!isEdit" class="empty">
+        Список появится после сохранения системы: интеграционный поток — отдельная сущность со своей карточкой.
+      </p>
+      <div v-if="isEdit && integrationFlowsError" class="error integration-flows-err">{{ integrationFlowsError }}</div>
+      <div v-else-if="isEdit && integrationsLoading" class="loading">Загрузка...</div>
+      <table v-else-if="isEdit" class="table">
         <thead>
           <tr>
             <th>Система источник</th>
@@ -221,14 +218,34 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="!integrationsLoading && integrationFlows.length === 0" class="empty">Нет интеграционных потоков с участием этой системы.</p>
+      <p v-if="isEdit && !integrationsLoading && integrationFlows.length === 0" class="empty">Нет интеграционных потоков с участием этой системы.</p>
     </div>
+
+    <SaveBar
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite"
+      :error="submitError"
+      show-save-and-close
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link v-if="returnToConclusion" :to="returnConclusionPath" class="btn btn-secondary">
+          {{ canWrite ? 'Отмена' : 'Назад' }}
+        </router-link>
+        <router-link v-else :to="listRouteLocation" class="btn btn-secondary">
+          {{ canWrite ? 'Отмена' : 'К списку' }}
+        </router-link>
+      </template>
+    </SaveBar>
 
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
@@ -237,6 +254,8 @@ import { api } from '../api/client'
 import { getConfig } from '@/config/params'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
 import PartnerSelectField from '../components/PartnerSelectField.vue'
+import SaveBar from '../components/SaveBar.vue'
+import { useCollectionDraft } from '../composables/useCollectionDraft'
 import { nodeId } from '../utils/entityTypeConfig'
 import { useAiPrefill } from '../composables/useAiPrefill'
 
@@ -265,9 +284,15 @@ const returnConclusionPath = computed(() => {
 
 const loading = ref(false)
 const saving = ref(false)
+/** Кратковременная отметка «Сохранено ✓» в панели сохранения. */
+const savedOk = ref(false)
 const submitError = ref('')
-const isDirty = ref(false)
+/** Изменена ли шапка формы относительно последнего сохранения/загрузки. */
+const headerDirty = ref(false)
 const initialLoadDone = ref(false)
+const codeInput = ref(null)
+const nameInput = ref(null)
+let savedTimer = null
 const parentSystems = ref([])
 const statuses = ref([])
 const vendors = ref([])
@@ -286,16 +311,22 @@ const hostingTypes = ref([])
 const employees = ref([])
 
 const activeTab = ref('data')
-const systemTechnologies = ref([])
+
+/**
+ * Технологический стек — локальный черновик (issue #94): вкладку можно заполнять до
+ * сохранения системы, накопленные связи применяются вместе с формой.
+ */
+const techDraft = useCollectionDraft()
+const systemTechnologies = techDraft.items
+const techDraftDirty = techDraft.isDirty
+const techDraftCount = techDraft.dirtyCount
 const allTechnologies = ref([])
 const techStackLoading = ref(false)
-const techSaving = ref(false)
 const selectedTechnologyId = ref('')
-const newTechModal = ref(false)
-const newTechForm = ref({ name: '', vendor_ar_partners_id: null })
-const newTechSaving = ref(false)
-const newTechError = ref('')
 const integrationFlows = ref([])
+
+/** Есть несохранённые изменения: шапка формы или черновик вкладки. */
+const isDirty = computed(() => headerDirty.value || techDraftDirty.value)
 const integrationsLoading = ref(false)
 const integrationFlowsError = ref('')
 
@@ -400,10 +431,10 @@ const { prefillNotice, applyAiPrefill } = useAiPrefill({
     comment: 'string',
     external_system: 'boolean',
   },
-  // Поля `technologies` в форме нет: связи добавляются вручную после сохранения системы.
+  // Поля `technologies` в форме нет: связи добавляются на вкладке «Технологический стек».
   manualHints: {
     technologies: (value) =>
-      `Технологии (${value}) нужно связать вручную на вкладке «Технологический стек» после сохранения системы.`,
+      `Технологии (${value}) добавьте на вкладке «Технологический стек» — они сохранятся вместе с формой.`,
   },
   // Код системы в черновике не приходит: на форме создания его нужно заполнить самому.
   unsavedHint: () =>
@@ -463,23 +494,31 @@ function isFormChanged() {
 
 watch(() => ({ ...form }), () => {
   if (!initialLoadDone.value) return
-  isDirty.value = isFormChanged()
+  headerDirty.value = isFormChanged()
+  savedOk.value = false
 }, { deep: true })
+
+/** Любая правка вкладки снимает отметку «Сохранено ✓». */
+watch(techDraftDirty, () => { savedOk.value = false })
 
 watch(id, () => { if (!isEdit.value) emptyForm() })
 
-async function loadTechStack() {
-  if (!isEdit.value || !id.value) return
+/**
+ * Каталог технологий нужен и в режиме создания (вкладка доступна без сохранения);
+ * связи подгружаются только когда у системы уже есть `id`.
+ */
+async function loadTechStack({ force = false } = {}) {
   techStackLoading.value = true
   try {
-    const [links, techs] = await Promise.all([
-      api.getSystemsTechnologies({ system_id: id.value }),
+    const [techs, links] = await Promise.all([
       api.getTechnologies(),
+      isEdit.value && id.value ? api.getSystemsTechnologies({ system_id: id.value }) : Promise.resolve([]),
     ])
-    systemTechnologies.value = links
     allTechnologies.value = techs
+    // Черновик не затираем: незаписанные связи должны пережить переключение вкладок.
+    if (force || !techDraft.isDirty.value) techDraft.reset(links)
   } catch (e) {
-    submitError.value = e.message || 'Ошибка загрузки технологий'
+    submitError.value = e.body?.error || e.message || 'Ошибка загрузки технологий'
   } finally {
     techStackLoading.value = false
   }
@@ -500,29 +539,48 @@ async function loadIntegrationFlows() {
   }
 }
 
-async function addTechnologyLink() {
-  if (!canWrite.value || !selectedTechnologyId.value || !id.value) return
-  techSaving.value = true
-  try {
-    await api.createSystemTechnology({ systems_id: id.value, technologies_id: selectedTechnologyId.value })
-    selectedTechnologyId.value = ''
-    await loadTechStack()
-  } catch (e) {
-    submitError.value = e.body?.error || e.message || 'Ошибка добавления связи'
-  } finally {
-    techSaving.value = false
-  }
+/** Добавление связи — только в локальный черновик: в API уйдёт вместе с формой. */
+function addTechnologyLink() {
+  if (!canWrite.value || !selectedTechnologyId.value) return
+  const tech = allTechnologies.value.find((t) => String(t.id) === String(selectedTechnologyId.value))
+  if (!tech) return
+  techDraft.add({ technologies_id: tech.id, technology_name: tech.display_name || tech.name })
+  selectedTechnologyId.value = ''
 }
 
-async function removeTechnologyLink(linkId) {
-  if (!canWrite.value) return
-  if (!confirm('Удалить связь с технологией?')) return
-  try {
-    await api.deleteSystemTechnology(linkId)
-    await loadTechStack()
-  } catch (e) {
-    submitError.value = e.message || 'Ошибка удаления'
+/** Удаление связи: существующая помечается на удаление, добавленная локально — просто убирается. */
+function removeTechnologyLink(link) {
+  if (!canWrite.value || !link) return
+  if (!link._local && !confirm('Удалить связь с технологией? Изменение применится после сохранения формы.')) return
+  techDraft.remove(link)
+}
+
+/**
+ * Применить черновик вкладки после сохранения шапки: сначала удаления, затем добавления.
+ * Возвращает неприменённые операции — форма показывает их как частичный успех и даёт повторить.
+ */
+async function applyTechDraft(systemId) {
+  const { added, removedIds } = techDraft.diff()
+  const failures = []
+  const failedAdds = []
+  for (const linkId of removedIds) {
+    try {
+      await api.deleteSystemTechnology(linkId)
+    } catch (e) {
+      failures.push(`не удалена связь #${linkId} (${e.body?.error || e.message || 'ошибка'})`)
+    }
   }
+  for (const row of added) {
+    try {
+      await api.createSystemTechnology({ systems_id: systemId, technologies_id: row.technologies_id })
+    } catch (e) {
+      failedAdds.push(row)
+      failures.push(
+        `не добавлена технология «${row.technology_name || '#' + row.technologies_id}» (${e.body?.error || e.message || 'ошибка'})`,
+      )
+    }
+  }
+  return { failures, failedAdds }
 }
 
 /** Для FK в API: пустой выбор → null (иначе node-pg падает на undefined после JSON.stringify) */
@@ -532,9 +590,31 @@ function fkOrNull(v) {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Проверка обязательных полей шапки. Если чего-то не хватает — показываем вкладку
+ * «Данные системы» и ставим фокус на пустое поле (вкладки при этом не блокируются).
+ */
+async function validateHeader() {
+  if (form.code.trim() && form.name.trim()) return true
+  activeTab.value = 'data'
+  submitError.value = 'Заполните обязательные поля: код и краткое наименование системы.'
+  await nextTick()
+  ;(form.code.trim() ? nameInput.value : codeInput.value)?.focus()
+  return false
+}
+
+/**
+ * Единая точка сохранения страницы (issue #94): шапка формы + черновик вкладки.
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ *   close — «Сохранить и закрыть» (вернуться к списку/заключению);
+ *   skipNavigate — сохранение перед уходом со страницы (guard), без перехода.
+ * @returns {Promise<boolean>} true, если всё сохранилось без ошибок.
+ */
 async function submit(opts = {}) {
-  if (!canWrite.value) return
+  if (!canWrite.value || saving.value) return false
   submitError.value = ''
+  savedOk.value = false
+  if (!(await validateHeader())) return false
   saving.value = true
   try {
     const body = {
@@ -555,36 +635,64 @@ async function submit(opts = {}) {
       external_system: form.external_system,
       technologies: '', // поле убрано с формы, передаём пустую строку для API
     }
+    let systemId = isEdit.value ? id.value : null
     if (isEdit.value) {
       await api.updateSystem(id.value, body)
-      isDirty.value = false
-      lastLoadedSnapshot.value = formSnapshot()
-      if (!opts.skipNavigate) router.push(listRouteLocation.value)
     } else {
       const res = await api.createSystem(body)
-      isDirty.value = false
-      if (!opts.skipNavigate) {
-        if (returnToConclusion.value && route.query.payload != null) {
-          const q = { payload: route.query.payload }
-          if (route.query.appliedId) q.appliedId = route.query.appliedId
-          q.newSystemId = res.id
-          const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
-          router.push({ path, query: q })
-        } else {
-          router.push(routeWithListSearch(`/systems/${res.id}/edit`))
-        }
-      }
+      systemId = res.id
     }
+
+    // Вкладки: применяем накопленный черновик (в режиме создания — уже с реальным id).
+    const { failures, failedAdds } = await applyTechDraft(systemId)
+    headerDirty.value = false
+    lastLoadedSnapshot.value = formSnapshot()
+    if (failures.length) {
+      // Частичный успех: перечитываем применённое, неприменённое возвращаем в черновик.
+      await loadTechStack({ force: true })
+      for (const row of failedAdds) {
+        techDraft.add({ technologies_id: row.technologies_id, technology_name: row.technology_name })
+      }
+      submitError.value = `Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`
+      return false
+    }
+    await loadTechStack({ force: true })
+    savedOk.value = true
+    clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => { savedOk.value = false }, 2500)
+    if (opts.skipNavigate) return true
+    if (!isEdit.value) {
+      if (returnToConclusion.value && route.query.payload != null) {
+        const q = { payload: route.query.payload }
+        if (route.query.appliedId) q.appliedId = route.query.appliedId
+        q.newSystemId = systemId
+        const path = route.query.appliedId ? `/decisions/applied/${route.query.appliedId}/edit` : '/decisions/applied/new'
+        router.push({ path, query: q })
+        return true
+      }
+      // Остаёмся на форме: дальше это карточка редактирования с уже доступными вкладками.
+      await router.replace(routeWithListSearch(`/systems/${systemId}/edit`))
+      return true
+    }
+    if (opts.close) {
+      router.push(returnToConclusion.value ? returnConclusionPath.value : listRouteLocation.value)
+    }
+    return true
   } catch (e) {
-    submitError.value = e.message || e.body?.error || 'Ошибка сохранения'
-    throw e
+    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    return false
   } finally { saving.value = false }
 }
 
 useUnsavedGuard(
   computed(() => canWrite.value && isDirty.value),
-  () => submit({ skipNavigate: true })
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
 )
+
+onBeforeUnmount(() => clearTimeout(savedTimer))
 </script>
 
 <style scoped>
@@ -637,6 +745,15 @@ useUnsavedGuard(
 
 .empty {
   color: var(--ar-muted);
+}
+/* Отметка на вкладке: есть изменения, которые ещё не ушли в API (issue #94). */
+.tab-dot {
+  color: var(--ar-danger);
+  font-weight: 700;
+  margin-left: 0.25rem;
+}
+.tab.active .tab-dot {
+  color: var(--ar-text-on-accent);
 }
 .tab-hint {
   font-size: 0.9rem;

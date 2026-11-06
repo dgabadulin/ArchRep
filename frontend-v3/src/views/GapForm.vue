@@ -5,15 +5,21 @@
       <router-link :to="listRouteLocation" class="btn btn-secondary">← К реестру</router-link>
     </div>
 
-    <template v-if="isEdit">
-      <div class="tabs">
-        <button :class="['tab', { active: activeTab === 'data' }]" @click="activeTab = 'data'">Архитектурный долг</button>
-        <button :class="['tab', { active: activeTab === 'relations' }]" @click="activeTab = 'relations'; loadRelations()">Связи</button>
-      </div>
-    </template>
+    <div class="tabs">
+      <button :class="['tab', { active: activeTab === 'data' }]" @click="activeTab = 'data'">
+        Архитектурный долг<span v-if="headerDirty" class="tab-dot" title="Есть несохранённые изменения">•</span>
+      </button>
+      <button :class="['tab', { active: activeTab === 'relations' }]" @click="activeTab = 'relations'; loadRelations()">
+        Связи<span
+          v-if="relationsDraftDirty"
+          class="tab-dot"
+          :title="`Изменений без сохранения: ${relationsDraftCount}`"
+        >•</span>
+      </button>
+    </div>
 
-    <div v-if="loading && (activeTab === 'data' || !isEdit)" class="loading">Загрузка...</div>
-    <form v-else-if="activeTab === 'data' || !isEdit" class="card form" @submit.prevent="submit">
+    <div v-if="loading && activeTab === 'data'" class="loading">Загрузка...</div>
+    <form v-else-if="activeTab === 'data'" class="card form" @submit.prevent="submit()">
       <p v-if="isEdit && !canWrite" class="readonly-banner">Режим просмотра: нет права <code>gap:write</code>.</p>
       <p v-if="prefillNotice" class="readonly-banner prefill-banner">{{ prefillNotice }}</p>
       <fieldset class="form-fieldset" :disabled="!canWrite">
@@ -24,7 +30,7 @@
         </div>
         <div class="field">
           <label>Название <span class="req">*</span></label>
-          <input v-model="form.name" required placeholder="Краткое описание долга" />
+          <input ref="nameInput" v-model="form.name" required placeholder="Краткое описание долга" />
         </div>
         <div class="field field-wide">
           <label>Описание</label>
@@ -84,15 +90,10 @@
         </div>
       </div>
       </fieldset>
-      <div v-if="submitError" class="error">{{ submitError }}</div>
-      <div class="actions actions-bottom">
-        <button v-if="canWrite" type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
-      </div>
     </form>
 
-    <!-- Вкладка «Связи» — host slice (gap:read / gap:write) -->
-    <div v-else-if="isEdit && activeTab === 'relations'" class="card relations-tab">
+    <!-- Вкладка «Связи» — host slice (gap:read / gap:write). Доступна и до сохранения: правки идут в черновик. -->
+    <div v-else-if="activeTab === 'relations'" class="card relations-tab">
       <p v-if="!canWrite" class="readonly-banner">Режим просмотра: нет права <code>gap:write</code>.</p>
       <RelationPickerModal
         v-model="showRelationPicker"
@@ -104,7 +105,7 @@
       />
       <EntityLinksTableGraph
         :loading="relationsLoading"
-        :relations="relations"
+        :relations="graphRelations"
         :center-node-id="gapCenterNodeId"
         :relation-types="relationTypes"
         graph-height="780px"
@@ -112,16 +113,18 @@
         <template #hint>
           Связи данного архитектурного долга с системами, технологиями и другими сущностями (метамодель). На графе —
           только строки из таблицы слева.
+          <template v-if="relationsDraftDirty">
+            Изменений без сохранения: {{ relationsDraftCount }} — они применятся по кнопке «Сохранить» внизу страницы.
+          </template>
         </template>
         <template #toolbar>
           <button
             v-if="canWrite"
             type="button"
             class="btn btn-primary btn-sm"
-            :disabled="relationsSaving"
             @click="showRelationPicker = true"
           >
-            {{ relationsSaving ? 'Добавление...' : 'Добавить связь' }}
+            Добавить связь
           </button>
         </template>
         <template #table>
@@ -140,7 +143,7 @@
                 <td>{{ r._relLabel }}</td>
                 <td>{{ r._toLabel }}</td>
                 <td v-if="canWrite" class="col-actions">
-                  <button type="button" class="btn-link danger" @click="removeRelation(r.id)">Удалить</button>
+                  <button type="button" class="btn-link danger" @click="removeRelation(r)">Удалить</button>
                 </td>
               </tr>
             </tbody>
@@ -152,20 +155,38 @@
         </template>
       </EntityLinksTableGraph>
     </div>
+
+    <SaveBar
+      :saving="saving"
+      :saved="savedOk"
+      :dirty="isDirty"
+      :can-save="canWrite"
+      :error="submitError"
+      show-save-and-close
+      @save="submit()"
+      @save-and-close="submit({ close: true })"
+    >
+      <template #cancel>
+        <router-link :to="listRouteLocation" class="btn btn-secondary">{{ canWrite ? 'Отмена' : 'К реестру' }}</router-link>
+      </template>
+    </SaveBar>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { togafApi } from '../api'
 import RelationPickerModal from '../components/RelationPickerModal.vue'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
+import SaveBar from '../components/SaveBar.vue'
 import { fetchEntity } from '../api/graphApi'
 import { nodeId } from '../utils/entityTypeConfig'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
+import { useCollectionDraft } from '../composables/useCollectionDraft'
+import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useAiPrefill } from '../composables/useAiPrefill'
 
 const route = useRoute()
@@ -181,7 +202,19 @@ const formTitle = computed(() => {
 
 const loading = ref(true)
 const saving = ref(false)
+/** Кратковременная отметка «Сохранено ✓» в панели сохранения. */
+const savedOk = ref(false)
 const submitError = ref('')
+/**
+ * id созданной записи до перехода на маршрут редактирования: нужен, чтобы применить
+ * черновик вкладки «Связи» в том же сохранении (issue #94).
+ */
+const createdId = ref(null)
+const effectiveId = computed(() => id.value || createdId.value || null)
+/** Изменена ли шапка формы относительно последнего сохранения/загрузки. */
+const headerDirty = ref(false)
+const nameInput = ref(null)
+let savedTimer = null
 const form = ref({
   code: '',
   name: '',
@@ -220,17 +253,32 @@ const { prefillNotice, applyAiPrefill } = useAiPrefill({
 })
 
 const activeTab = ref('data')
-const relations = ref([])
+
+/** Связи — локальный черновик (issue #94): вкладку можно заполнять до сохранения долга. */
+const relationsDraft = useCollectionDraft()
+const relations = relationsDraft.items
+const relationsDraftDirty = relationsDraft.isDirty
+const relationsDraftCount = relationsDraft.dirtyCount
 const relationsLoading = ref(false)
-const relationsSaving = ref(false)
 const entityTypes = ref([])
 const relationTypes = ref([])
 const showRelationPicker = ref(false)
 
+/** Снимок шапки формы: по нему определяем «есть несохранённые изменения». */
+const savedSnapshot = ref('')
+function formSnapshot() {
+  return JSON.stringify(form.value)
+}
+/** Есть несохранённые изменения: шапка формы или черновик вкладки. */
+const isDirty = computed(() => headerDirty.value || relationsDraftDirty.value)
+
 /** Строки таблицы связей с подставленными видимыми именами */
 const relationRows = ref([])
 
-const gapCenterNodeId = computed(() => (isEdit.value && id.value ? nodeId('gap', Number(id.value)) : null))
+const gapCenterNodeId = computed(() => (effectiveId.value ? nodeId('gap', Number(effectiveId.value)) : null))
+
+/** Связи для графа: в режиме создания id ещё нет, поэтому граф не строим (таблица работает на черновике). */
+const graphRelations = computed(() => (effectiveId.value ? relations.value : []))
 
 const gapRelationTypes = computed(() => {
   return relationTypes.value.filter(rt => rt.from_entity_type_code === 'gap')
@@ -253,7 +301,7 @@ function relationTypeLabel(r) {
 
 async function enrichRelationRows() {
   const fromLabel =
-    form.value.name?.trim() || form.value.code?.trim() || (id.value ? `Долг #${id.value}` : '—')
+    form.value.name?.trim() || form.value.code?.trim() || (effectiveId.value ? `Долг #${effectiveId.value}` : '—')
   const rows = relations.value
   const enriched = await Promise.all(
     rows.map(async (r) => {
@@ -315,15 +363,35 @@ async function load() {
       submitError.value = e.message || 'Не удалось загрузить'
     }
   }
+  savedSnapshot.value = formSnapshot()
   loading.value = false
   // Черновик ИИ-архитектора применяем после загрузки: данные НЕ сохраняются — пользователь сохраняет сам.
   applyAiPrefill()
 }
 
-async function submit() {
-  if (!canWrite.value) return
-  saving.value = true
+/**
+ * Проверка обязательных полей шапки: переключаемся на «Данные» и ставим фокус.
+ */
+async function validateHeader() {
+  if (form.value.name?.trim()) return true
+  activeTab.value = 'data'
+  submitError.value = 'Укажите название долга — это обязательное поле.'
+  await nextTick()
+  nameInput.value?.focus()
+  return false
+}
+
+/**
+ * Единая точка сохранения страницы (issue #94): шапка формы + черновик вкладки «Связи».
+ * @param {{ close?: boolean, skipNavigate?: boolean }} opts
+ * @returns {Promise<boolean>} true, если всё сохранилось без ошибок.
+ */
+async function submit(opts = {}) {
+  if (!canWrite.value || saving.value) return false
   submitError.value = ''
+  savedOk.value = false
+  if (!(await validateHeader())) return false
+  saving.value = true
   const body = {
     name: form.value.name,
     description: form.value.description,
@@ -338,67 +406,120 @@ async function submit() {
     responsible_person: form.value.responsible_person?.trim() || '',
     source: form.value.source,
   }
+  const wasCreated = !effectiveId.value
   try {
-    if (isEdit.value) {
-      await api.updateGap(id.value, body)
-    } else {
+    if (wasCreated) {
       const res = await api.createGap(body)
-      router.push(routeWithListSearch(`/architecture-debt/${res.id}/edit`))
-      return
+      createdId.value = res.id
+    } else {
+      await api.updateGap(effectiveId.value, body)
     }
+
+    // Вкладка «Связи»: применяем накопленный черновик (в режиме создания — уже с реальным id).
+    const { failures, failedAdds } = await applyRelationsDraft(effectiveId.value)
+    savedSnapshot.value = formSnapshot()
+    headerDirty.value = false
+    if (failures.length) {
+      // Частичный успех: перечитываем применённое, неприменённое возвращаем в черновик.
+      await loadRelations({ force: true })
+      for (const row of failedAdds) relationsDraft.add(row)
+      await enrichRelationRows()
+      submitError.value = `Сохранено частично: ${failures.join('; ')}. Повторите сохранение.`
+      return false
+    }
+    await loadRelations({ force: true })
+    savedOk.value = true
+    clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => { savedOk.value = false }, 2500)
+    if (opts.skipNavigate) return true
+    if (wasCreated) {
+      // Остаёмся на форме: дальше это карточка редактирования с уже доступными вкладками.
+      await router.replace(routeWithListSearch(`/architecture-debt/${effectiveId.value}/edit`))
+      return true
+    }
+    if (opts.close) router.push(listRouteLocation.value)
+    return true
   } catch (e) {
-    submitError.value = e.message || e.body?.error || 'Ошибка сохранения'
+    submitError.value = e.body?.error || e.message || 'Ошибка сохранения'
+    return false
   } finally {
     saving.value = false
   }
 }
 
-async function loadRelations() {
-  if (!isEdit.value) return
+/** Справочники связей нужны и до сохранения; сами связи читаем только при наличии id. */
+async function loadRelations({ force = false } = {}) {
   relationsLoading.value = true
   try {
     entityTypes.value = await togafApi.entityTypes()
     relationTypes.value = await togafApi.relationTypes()
-    relations.value = await api.getGapRelations(id.value)
+    const gapRelations = effectiveId.value ? await api.getGapRelations(effectiveId.value) : []
+    // Черновик не затираем: незаписанные связи должны пережить переключение вкладок.
+    if (force || !relationsDraft.isDirty.value) relationsDraft.reset(gapRelations)
     await enrichRelationRows()
   } catch (e) {
-    relations.value = []
+    relationsDraft.reset([])
     relationRows.value = []
+    submitError.value = e.body?.error || e.message || 'Ошибка загрузки связей'
   } finally {
     relationsLoading.value = false
   }
 }
 
+/**
+ * Применить черновик связей после сохранения шапки: сначала удаления, затем добавления.
+ * Возвращает неприменённые операции — форма покажет их и даст повторить.
+ */
+async function applyRelationsDraft(gapId) {
+  const { added, removedIds } = relationsDraft.diff()
+  const failures = []
+  const failedAdds = []
+  for (const relId of removedIds) {
+    try {
+      await togafApi.deleteRelation(relId)
+    } catch (e) {
+      failures.push(`не удалена связь #${relId} (${e.body?.error || e.message || 'ошибка'})`)
+    }
+  }
+  for (const row of added) {
+    try {
+      await api.addGapRelation(gapId, {
+        to_entity_type: row.to_entity_type,
+        to_entity_id: row.to_entity_id,
+        relation_type: row.relation_type,
+        name: row.name || undefined,
+      })
+    } catch (e) {
+      failedAdds.push(row)
+      failures.push(
+        `не добавлена связь «${relationTypeLabel(row)}» (${e.body?.error || e.message || 'ошибка'})`,
+      )
+    }
+  }
+  return { failures, failedAdds }
+}
+
+/** Добавление связи — в локальный черновик: в API уйдёт вместе с формой. */
 async function onRelationPicked(payload) {
   if (!canWrite.value) return
   if (!payload.to_entity_type || !payload.to_entity_id || !payload.relation_type) return
-  relationsSaving.value = true
-  try {
-    await api.addGapRelation(id.value, {
-      to_entity_type: payload.to_entity_type,
-      to_entity_id: payload.to_entity_id,
-      relation_type: payload.relation_type,
-      name: payload.name || undefined,
-    })
-    relations.value = await api.getGapRelations(id.value)
-    await enrichRelationRows()
-  } catch (e) {
-    alert(e.message || 'Ошибка добавления связи')
-  } finally {
-    relationsSaving.value = false
-  }
+  relationsDraft.add({
+    from_entity_type: 'gap',
+    from_entity_id: effectiveId.value ? Number(effectiveId.value) : null,
+    to_entity_type: payload.to_entity_type,
+    to_entity_id: payload.to_entity_id,
+    relation_type: payload.relation_type,
+    name: payload.name || undefined,
+  })
+  await enrichRelationRows()
 }
 
-async function removeRelation(relId) {
-  if (!canWrite.value) return
-  if (!confirm('Удалить связь?')) return
-  try {
-    await togafApi.deleteRelation(relId)
-    relations.value = await api.getGapRelations(id.value)
-    await enrichRelationRows()
-  } catch (e) {
-    alert(e.message || 'Ошибка удаления')
-  }
+/** Удаление связи: существующая помечается на удаление, добавленная локально — просто убирается. */
+async function removeRelation(row) {
+  if (!canWrite.value || !row) return
+  if (!row._local && !confirm('Удалить связь? Изменение применится после сохранения формы.')) return
+  relationsDraft.remove(row)
+  await enrichRelationRows()
 }
 
 watch(
@@ -407,6 +528,25 @@ watch(
     if (activeTab.value === 'relations' && relations.value.length) enrichRelationRows()
   }
 )
+
+/** «Есть несохранённые изменения» по шапке формы (вкладка «Связи» считается отдельно). */
+watch(form, () => {
+  headerDirty.value = formSnapshot() !== savedSnapshot.value
+  savedOk.value = false
+}, { deep: true })
+
+/** Любая правка вкладки «Связи» снимает отметку «Сохранено ✓». */
+watch(relationsDraftDirty, () => { savedOk.value = false })
+
+useUnsavedGuard(
+  computed(() => canWrite.value && isDirty.value),
+  async () => {
+    const ok = await submit({ skipNavigate: true })
+    if (!ok) throw new Error('Не сохранено')
+  },
+)
+
+onBeforeUnmount(() => clearTimeout(savedTimer))
 
 onMounted(load)
 watch(id, load)
@@ -461,5 +601,14 @@ watch(id, load)
 }
 .empty {
   color: var(--ar-muted);
+}
+/* Отметка на вкладке: есть изменения, которые ещё не ушли в API (issue #94). */
+.tab-dot {
+  color: var(--ar-danger);
+  font-weight: 700;
+  margin-left: 0.25rem;
+}
+.tab.active .tab-dot {
+  color: var(--ar-text-on-accent);
 }
 </style>
