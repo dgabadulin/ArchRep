@@ -10,6 +10,13 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.3.0](https://github.com/dgabadulin/ArchRep/compare/v4.2.0...v4.3.0) (2026-11-06)
+
+
+### Новое
+
+* **frontend:** «Сохранить и закрыть» закрывает форму во всех реестрах ([#111](https://github.com/dgabadulin/ArchRep/issues/111)) ([8c210ec](https://github.com/dgabadulin/ArchRep/commit/8c210eccd2f986793b046de951d587772cca10c2))
+
 ## [4.2.0](https://github.com/dgabadulin/ArchRep/compare/v4.1.0...v4.2.0) (2026-11-06)
 
 
