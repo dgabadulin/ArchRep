@@ -173,7 +173,14 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 
-echo [3/3] Готово. См. вывод выше. Точки входа: http://%REMOTE_HOST_ECHO%:3000 и :8080
+echo [3/3] Готово. См. вывод выше.
+if not "%DEPLOY_PUBLIC_URL%"=="" (
+  echo Точка входа: %DEPLOY_PUBLIC_URL%/   ^(API: %DEPLOY_PUBLIC_URL%/api/health^)
+) else (
+  echo Точки входа: http://%REMOTE_HOST_ECHO%:3000 и :8080
+  echo Если порты не открыты с рабочей машины ^(сетевой ACL^), используй ssh-туннель:
+  echo   ssh -L 3000:127.0.0.1:3000 -L 8080:127.0.0.1:8080 %REMOTE%
+)
 
 exit /b 0
 

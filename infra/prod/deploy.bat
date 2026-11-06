@@ -9,6 +9,7 @@ rem   set DEPLOY_SSH_JUMP_HOST=your_jump_or_realm_host
 rem   set DEPLOY_SSH_TARGET_HOST=your_app_server_hostname
 rem Опционально:
 rem   set DEPLOY_REMOTE_DIR=isar
+rem   set DEPLOY_PUBLIC_URL=https://isar.st.tech  (внешний адрес для итогового вывода)
 rem Строка подключения: %DEPLOY_SSH_USER%@%DEPLOY_SSH_JUMP_HOST%@%DEPLOY_SSH_TARGET_HOST%
 rem (формат OpenSSH ProxyJump/доменной схемы вашей организации — подставьте свои значения)
 rem =============================================================================
@@ -171,6 +172,8 @@ echo [2/3] Подготовка скрипта сборки и запуска...
 scp !SSH_OPTS! "%LOCAL_DIR%\remote_script.sh" "%REMOTE%:~/tmp/remote_script.sh"
 if %ERRORLEVEL% neq 0 (
     echo Ошибка передачи скрипта.
+    rem Убираем временный файл: иначе он остаётся в дереве и попадает в git status.
+    del "%LOCAL_DIR%\remote_script.sh" 2>nul
     exit /b 1
 )
 
@@ -184,5 +187,15 @@ if %ERRORLEVEL% neq 0 (
 
 del "%LOCAL_DIR%\remote_script.sh" 2>nul
 echo.
-echo Деплой завершён. Открой: http://%DEPLOY_SSH_TARGET_HOST%:3000
-echo Проверка API: http://%DEPLOY_SSH_TARGET_HOST%:3000/api/health  (доступность БД: /api/health/db)
+if not "%DEPLOY_PUBLIC_URL%"=="" (
+    echo Деплой завершён. Открой: %DEPLOY_PUBLIC_URL%/
+    echo Проверка API: %DEPLOY_PUBLIC_URL%/api/health  ^(БД: /api/health/db^)
+    echo Прямой порт приложения ^(из внутренней сети или через ssh-туннель^): http://%DEPLOY_SSH_TARGET_HOST%:3000
+) else (
+    echo Деплой завершён. Открой: http://%DEPLOY_SSH_TARGET_HOST%:3000
+    echo Проверка API: http://%DEPLOY_SSH_TARGET_HOST%:3000/api/health  ^(доступность БД: /api/health/db^)
+    echo Если порт 3000 не открыт с рабочей машины ^(сетевой ACL^), пробрось его по SSH:
+    echo   ssh -L 3000:127.0.0.1:3000 %REMOTE%
+    echo   затем открой http://127.0.0.1:3000
+    echo Либо задай DEPLOY_PUBLIC_URL ^(например, https://isar.st.tech^) - скрипт выведет внешний адрес.
+)
