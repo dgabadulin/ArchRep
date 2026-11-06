@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = 'Continue'
 $fail = @()
 $warn = @()
-$allow = @('temp/', 'frontend-v3-dist/', 'docs/exports/')
+$allow = @('temp/', 'frontend-v3-dist/', 'docs/exports/', 'remote_script.sh')
 
 # Safe git output (PowerShell returns $null when the command writes nothing).
 function GitOut([string[]]$gitArgs) {
@@ -124,12 +124,20 @@ if ($fail.Count -eq 0) {
         if ($state -eq 'dirty') { $version = "$version+dirty.$commit" }
     }
 
-    $expectedPkg = if ($aheadCommits -gt 0) { $baseTag -replace '^v', '' } else { $version }
+    # package.json ведёт Release Please и всегда равен базовой версии тега (docs/versioning.md §4:
+    # "package.json.version != базовый тег" - стоп во всех режимах). Суффиксы деплоя
+    # (+N.g<sha>, +dirty.<sha>) в package.json не пишутся: это метка сборки, а не версия продукта.
+    $expectedPkg = $baseTag -replace '^v', ''
     $pkgPath = Join-Path $RepoRoot 'package.json'
     if (Test-Path $pkgPath) {
         $pkgVersion = [string](Get-Content -Raw -Encoding UTF8 $pkgPath | ConvertFrom-Json).version
         if ($pkgVersion -ne $expectedPkg) {
-            $fail += "package.json version ($pkgVersion) != expected ($expectedPkg) - merge the release PR first"
+            if ($pkgVersion -match '[+-]') {
+                # Суффикс сборки (+N.g<sha>, +dirty.<sha>) ставит только деплой - в package.json его быть не должно.
+                $fail += "package.json version ($pkgVersion) must be the plain release version ($expectedPkg) - remove the build suffix"
+            } else {
+                $fail += "package.json version ($pkgVersion) != expected ($expectedPkg) - merge the release PR first"
+            }
         }
     }
 }
