@@ -5,6 +5,13 @@
 из conventional commits (`feat`, `fix`, `feat!`, `BREAKING CHANGE`); вручную правим только формулировки
 в релизном PR (утверждение release notes — на владельце продукта).
 
+## [4.1.0](https://github.com/dgabadulin/ArchRep/compare/v4.0.1...v4.1.0) (2026-11-06)
+
+
+### Новое
+
+* **deploy:** гейт с режимами ahead/dirty и состояние деплоя в /api/version и «О системе» ([a5957fe](https://github.com/dgabadulin/ArchRep/commit/a5957fe52ae342994255053d19f1ca06e4c51fc4))
+
 ## [4.0.1](https://github.com/dgabadulin/ArchRep/compare/v4.0.0...v4.0.1) (2026-11-05)
 
 
