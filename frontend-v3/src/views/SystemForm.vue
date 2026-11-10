@@ -251,6 +251,7 @@ import { useUnsavedGuard } from '../composables/useUnsavedGuard'
 import { useFormListReturn } from '../composables/useFormListReturn'
 import { usePermissions } from '../composables/usePermissions'
 import { api } from '../api/client'
+import { togafApi } from '../api'
 import { getConfig } from '@/config/params'
 import EntityLinksTableGraph from '../components/EntityLinksTableGraph.vue'
 import PartnerSelectField from '../components/PartnerSelectField.vue'
@@ -316,6 +317,8 @@ const techDraftDirty = techDraft.isDirty
 const techDraftCount = techDraft.dirtyCount
 const allTechnologies = ref([])
 const techStackLoading = ref(false)
+/** Справочник типов связей: нужен для подписи строк стека, которые ещё не сохранены (issue #94). */
+const techRelationTypes = ref([])
 const selectedTechnologyId = ref('')
 const integrationFlows = ref([])
 
@@ -327,24 +330,51 @@ const availableTechnologies = computed(() => {
   return allTechnologies.value.filter(t => !linkedIds.has(t.id))
 })
 
-/** Связи для графа (только строки таблицы стека; формат метамодели). */
+/**
+ * Тип конца «система» в связях стека: сервер выбирает его по наличию родителя
+ * (`system` — корневая ИС, `subsystem` — модуль, issues #44/#45). Для строк черновика
+ * берём тип из сохранённых строк, а если их нет — из формы.
+ */
+const systemTechFromType = computed(() => {
+  const known = systemTechnologies.value.find((l) => l.from_entity_type)
+  if (known) return known.from_entity_type
+  return form.parent_ar_systems_id != null ? 'subsystem' : 'system'
+})
+
+/** Тип связи «система → технология» из справочника — только когда он однозначен. */
+const systemTechRelationType = computed(() => {
+  const candidates = techRelationTypes.value.filter(
+    (rt) => rt.from_entity_type_code === systemTechFromType.value && rt.to_entity_type_code === 'technology'
+  )
+  return candidates.length === 1 ? candidates[0] : null
+})
+
+/**
+ * Связи для графа (только строки таблицы стека; формат метамодели).
+ * У строк черновика (issue #94) нет `systems_id` / `from_entity_type` / `relation_type_name`:
+ * конец «система» и подпись связи берём из формы и справочника, иначе граф рисовал
+ * фантомный узел `system:NaN` отдельно от центральной ИС и код типа вместо «Использует».
+ */
 const techStackGraphRelations = computed(() => {
-  if (!id.value || !systemTechnologies.value.length) return []
+  const systemId = Number(id.value)
+  if (!Number.isFinite(systemId) || !systemTechnologies.value.length) return []
+  const fromType = systemTechFromType.value
+  const refType = systemTechRelationType.value
   return systemTechnologies.value.map((l) => ({
     id: l.id,
-    from_entity_type: l.from_entity_type || 'system',
-    from_entity_id: Number(l.systems_id),
+    from_entity_type: l.from_entity_type || fromType,
+    from_entity_id: Number(l.systems_id ?? systemId),
     to_entity_type: 'technology',
     to_entity_id: Number(l.technologies_id),
-    relation_type: l.relation_type || 'system_technology',
-    relation_type_name: l.relation_type_name,
+    relation_type: l.relation_type || refType?.code || 'system_technology',
+    relation_type_name: l.relation_type_name || refType?.name || '',
   }))
 })
 
 const systemTechGraphCenterNodeId = computed(() => {
-  if (!id.value) return null
-  const ft = systemTechnologies.value[0]?.from_entity_type || (form.parent_ar_systems_id != null ? 'subsystem' : 'system')
-  return nodeId(ft, Number(id.value))
+  const systemId = Number(id.value)
+  if (!Number.isFinite(systemId)) return null
+  return nodeId(systemTechFromType.value, systemId)
 })
 
 const form = reactive({
@@ -478,11 +508,14 @@ watch(id, load)
 async function loadTechStack({ force = false } = {}) {
   techStackLoading.value = true
   try {
-    const [techs, links] = await Promise.all([
+    const [techs, links, relationTypes] = await Promise.all([
       api.getTechnologies(),
       isEdit.value && id.value ? api.getSystemsTechnologies({ system_id: id.value }) : Promise.resolve([]),
+      // Подписи связей для строк черновика: недоступность справочника не блокирует вкладку.
+      togafApi.relationTypes().catch(() => []),
     ])
     allTechnologies.value = techs
+    techRelationTypes.value = Array.isArray(relationTypes) ? relationTypes : []
     // Черновик не затираем: незаписанные связи должны пережить переключение вкладок.
     if (force || !techDraft.isDirty.value) techDraft.reset(links)
   } catch (e) {
