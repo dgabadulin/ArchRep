@@ -160,17 +160,27 @@ function validateMxfile(xml, opts = {}) {
 }
 
 /**
- * Тело ответа `POST/PUT .../full` для модуля: модуль читает `increment_id` (§16.6 #4).
+ * Тело ответа `POST/PUT .../full` для палитры диаграммы: клиенту нужны `increment_id`
+ * (куда сохранять `.drawio`) и соответствие «локальный ключ → id» для перекодирования
+ * черновых ячеек `draft-sys-*` / `draft-rel-*` в `sys-{id}` / `rel-{id}` перед сохранением схемы.
+ *
  * @param {{appliedId:number|string, code?:string|null,
- *   increments?:Array<{id:number, order_index?:number, name?:string}>}} data
+ *   increments?:Array<{id:number, order_index?:number, name?:string}>,
+ *   systems?:Array<{local_key:string, id:number}>,
+ *   relations?:Array<{local_key:string, id:number}>}} data
  */
-function buildFullSaveResponse({ appliedId, code = null, increments = [] }) {
+function buildFullSaveResponse({ appliedId, code = null, increments = [], systems = [], relations = [] }) {
   const list = Array.isArray(increments) ? increments : [];
+  const keyed = (rows) => (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && row.local_key != null && row.id != null)
+    .map((row) => ({ local_key: String(row.local_key).trim(), id: row.id }));
   return {
     id: appliedId,
     code,
     increment_id: list.length ? list[0].id : null,
     increments: list.map((inc) => ({ id: inc.id, order_index: inc.order_index, name: inc.name })),
+    systems: keyed(systems),
+    relations: keyed(relations),
   };
 }
 

@@ -65,6 +65,7 @@
           class="ai-toggle"
           :class="{ active: aiState.open }"
           :title="aiTitle"
+          :aria-pressed="aiState.open"
           @click="aiToggle"
         >
           <Sparkles :size="16" :stroke-width="1.9" class="nav-icon nav-icon-svg" />
@@ -336,7 +337,9 @@ function toggleGroup(label) {
 }
 .sidebar-footer {
   flex-shrink: 0;
-  padding: 0.5rem 0.6rem;
+  /* Нижний отступ ~= высоте браузерной плашки с URL (появляется в левом нижнем углу окна
+     при наведении на ссылку меню и иначе перекрывает кнопку «ИИ-архитектор»). */
+  padding: 0.5rem 0.6rem 1.9rem;
   border-top: 1px solid var(--ar-border);
 }
 .ai-toggle {
@@ -344,24 +347,30 @@ function toggleGroup(label) {
   align-items: center;
   gap: 0.5rem;
   width: 100%;
+  /* Не нажата — бирюзовая (issue #95, п.2). */
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--ar-border);
+  border: 1px solid var(--ar-accent);
   border-radius: var(--ar-radius);
-  background: var(--ar-surface);
-  color: var(--ar-text);
+  background: var(--ar-accent);
+  color: var(--ar-text-on-accent);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .ai-toggle:hover {
-  background: var(--ar-accent-soft);
+  background: var(--ar-accent-hover);
+  border-color: var(--ar-accent-hover);
+  color: var(--ar-text-on-accent);
+}
+.ai-toggle.active {
+  /* Панель открыта — белая с акцентной рамкой. */
+  background: var(--ar-surface);
   border-color: var(--ar-accent);
   color: var(--ar-link);
 }
-.ai-toggle.active {
-  background: var(--ar-accent);
-  border-color: var(--ar-accent);
-  color: var(--ar-text-on-accent);
+.ai-toggle.active:hover {
+  background: var(--ar-accent-soft);
+  border-color: var(--ar-accent-hover);
 }
 </style>

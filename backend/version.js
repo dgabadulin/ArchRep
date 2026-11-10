@@ -131,13 +131,44 @@ async function readSchemaState(pool) {
 }
 
 /**
+ * Фактически действующий адрес draw.io для embed-режима.
+ *
+ * Приоритет тот же, что у `GET /api/config`: параметр `DRAWIO_EMBED_BASE` из
+ * `ar_settings_parameters` → override из env. Значение не секретное (оно и так уходит
+ * во фронт), но нужно для диагностики «схема не открывается»: администратор видит,
+ * что именно отдаёт backend, не заглядывая в БД и не гадая про кэши.
+ *
+ * @param {object} [env] — окружение (по умолчанию process.env)
+ * @param {(code:string, def:any)=>any} [getParam]
+ * @returns {{drawio_embed_base: string|null, drawio_configured: boolean}}
+ */
+function resolveDrawioConfig(env, getParam) {
+  const e = env || {};
+  let value = '';
+  if (typeof getParam === 'function') {
+    const v = getParam('DRAWIO_EMBED_BASE', '');
+    value = v == null ? '' : String(v).trim();
+  }
+  const fromEnv = String(e.DRAWIO_EMBED_BASE == null ? '' : e.DRAWIO_EMBED_BASE).trim();
+  if (fromEnv) value = fromEnv;
+  return {
+    drawio_embed_base: value || null,
+    drawio_configured: Boolean(value),
+  };
+}
+
+/**
  * Публичный объект `GET /api/version`.
  *
  * `deploy` (docs/versioning.md §4) — состояние деплоя: `release` (HEAD на теге) |
  * `ahead` (деплой впереди тега) | `dirty` (есть код вне git). Поля аддитивные,
  * формат остальных секций не меняется.
  *
- * @param {{pool?:object, env?:object, warnMode?:string, deployWarnMode?:string}} [opts]
+ * `config.drawio_*` — фактический адрес draw.io (env → параметр БД), чтобы отличать
+ * «параметр задан, но backend его не видит» от «параметр пуст».
+ *
+ * @param {{pool?:object, env?:object, warnMode?:string, deployWarnMode?:string,
+ *   getParam?:(code:string, def:any)=>any}} [opts]
  */
 async function getVersionInfo(opts = {}) {
   const env = opts.env || process.env;
@@ -171,6 +202,7 @@ async function getVersionInfo(opts = {}) {
       dirty_files: Number.isFinite(dirtyRaw) && dirtyRaw > 0 ? dirtyRaw : 0,
       warn_mode: String(opts.deployWarnMode || 'admin').trim().toLowerCase(),
     },
+    config: resolveDrawioConfig(env, opts.getParam),
   };
 }
 
@@ -182,5 +214,6 @@ module.exports = {
   readMigrationPrefixes,
   pendingFrom,
   readSchemaState,
+  resolveDrawioConfig,
   getVersionInfo,
 };

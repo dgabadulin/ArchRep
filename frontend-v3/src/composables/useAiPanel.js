@@ -8,6 +8,7 @@ import { computed, reactive } from 'vue'
 import { getConfig } from '../config/params'
 import { authStore } from '../auth/authStore'
 import { aiApi } from '../api/aiClient'
+import { limitsFromConfig, readAttachment, toPayload, toMeta, totalChars } from '../utils/aiAttachments'
 
 const STORAGE_KEY = 'ar-ai-panel-v1'
 const MIN_WIDTH = 360
@@ -47,6 +48,10 @@ const state = reactive({
   messages: [],
   conversations: [],
   draft: '',
+  /** Вложения текущего сообщения (issue #95): живут в памяти до отправки. */
+  attachments: [],
+  attaching: false,
+  attachError: '',
   historyOpen: false,
   streaming: false,
   loadingHistory: false,
@@ -86,7 +91,8 @@ function mapStoredMessages(rows) {
     const role = String((row && row.role) || '')
     const text = String((row && row.content) || '')
     if (role === 'user') {
-      out.push({ id: nextId(), role: 'user', text })
+      const attachments = row && row.payload && Array.isArray(row.payload.attachments) ? row.payload.attachments : []
+      out.push({ id: nextId(), role: 'user', text, attachments })
     } else if (role === 'assistant') {
       out.push({ id: nextId(), role: 'assistant', text })
       const actions = row && row.payload && Array.isArray(row.payload.actions) ? row.payload.actions : []
@@ -155,7 +161,57 @@ const available = computed(() => getConfig().SYS_AI_ENABLED === true && authStor
 const aiTitle = computed(() => String(getConfig().SYS_AI_TITLE || 'ИИ-архитектор'))
 const panelWidth = computed(() => `${state.width}px`)
 const hasMessages = computed(() => state.messages.length > 0)
-const canSend = computed(() => !state.streaming && String(state.draft || '').trim().length > 0)
+const attachmentLimits = computed(() => limitsFromConfig())
+const canAttach = computed(() => attachmentLimits.value.enabled && !state.streaming)
+const canSend = computed(
+  () => !state.streaming && (String(state.draft || '').trim().length > 0 || state.attachments.length > 0),
+)
+
+/** Добавить файлы: чтение в браузере + лимиты (сервер проверит повторно). */
+async function addFiles(files) {
+  const list = Array.from(files || [])
+  if (!list.length || state.streaming) return
+  const limits = limitsFromConfig()
+  if (!limits.enabled) {
+    state.attachError = 'Вложения отключены администратором (SYS_AI_ATTACHMENTS_ENABLED=false).'
+    return
+  }
+  state.attachError = ''
+  state.attaching = true
+  try {
+    const room = limits.maxFiles - state.attachments.length
+    if (room <= 0) {
+      state.attachError = `Не более ${limits.maxFiles} вложений на сообщение.`
+      return
+    }
+    if (list.length > room) {
+      state.attachError = `Добавлены первые ${room}: лимит ${limits.maxFiles} вложений на сообщение.`
+    }
+    for (const file of list.slice(0, room)) {
+      const item = await readAttachment(file, limits)
+      state.attachments.push(item)
+      if (totalChars(state.attachments) > limits.maxChars) {
+        state.attachError = `Текст вложений больше ${limits.maxChars} символов — сервер обрежет его при отправке.`
+      }
+    }
+  } catch (err) {
+    state.attachError = (err && err.message) || 'Не удалось прикрепить файл'
+  } finally {
+    state.attaching = false
+  }
+}
+
+function removeAttachment(index) {
+  const i = Number(index)
+  if (!Number.isInteger(i) || i < 0) return
+  state.attachments.splice(i, 1)
+  state.attachError = ''
+}
+
+function clearAttachments() {
+  state.attachments = []
+  state.attachError = ''
+}
 
 function toggle() {
   state.open = !state.open
@@ -188,6 +244,8 @@ function startNewConversation() {
   state.conversationId = null
   state.messages = []
   state.draft = ''
+  state.attachments = []
+  state.attachError = ''
   state.notice = ''
   state.error = ''
   state.historyOpen = false
@@ -248,10 +306,15 @@ function cancelStream() {
   }
 }
 
-/** Отправка реплики: SSE-поток, накопление ответа, карточки инструментов и действий. */
+/**
+ * Отправка реплики: SSE-поток, накопление ответа, карточки инструментов и действий.
+ * Вложения (issue #95) уходят вместе с сообщением; сервер проверяет их повторно.
+ */
 async function sendMessage(rawText) {
   const text = String(rawText == null ? state.draft : rawText).trim()
-  if (!text || state.streaming) return
+  if (state.streaming) return
+  const pending = Array.isArray(state.attachments) ? [...state.attachments] : []
+  if (!text && !pending.length) return
   if (!available.value) {
     state.error = 'ИИ-архитектор недоступен: функция выключена или нет права ai_architect:use.'
     return
@@ -264,7 +327,10 @@ async function sendMessage(rawText) {
   state.error = ''
   state.notice = ''
   state.draft = ''
-  pushMessage({ role: 'user', text })
+  state.attachments = []
+  state.attachError = ''
+  const shownText = text || 'Проанализируй вложение.'
+  pushMessage({ role: 'user', text: shownText, attachments: toMeta(pending) })
   const assistant = pushMessage({ role: 'assistant', text: '', streaming: true })
 
   const controller = new AbortController()
@@ -274,10 +340,13 @@ async function sendMessage(rawText) {
     await aiApi.chatStream({
       message: text,
       conversationId: state.conversationId,
+      attachments: toPayload(pending),
       signal: controller.signal,
       onEvent: (evt) => applyEvent(evt, assistant),
     })
   } catch (err) {
+    // Вложения возвращаем в композер, чтобы можно было повторить отправку.
+    if (pending.length && !state.attachments.length) state.attachments = pending
     if (err && (err.name === 'AbortError' || err.code === 'AI_ABORTED')) {
       state.notice = 'Запрос прерван.'
       if (!assistant.text) assistant.text = '(ответ прерван)'
@@ -310,6 +379,11 @@ export function useAiPanel() {
     panelWidth,
     hasMessages,
     canSend,
+    canAttach,
+    attachmentLimits,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
     toggle,
     openPanel,
     closePanel,

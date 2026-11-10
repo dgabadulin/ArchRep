@@ -194,7 +194,15 @@
                 >
                   Создать схему решения
                 </button>
-                <!-- Точки расширения модулей удалены вместе с модульным слоем (v4.0.0). -->
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="diagramsBusy"
+                  title="Открыть редактор схемы с палитрой: системы, функции и потоки решения"
+                  @click="requestDiagramAction({ kind: 'palette' })"
+                >
+                  Заполнить из диаграммы
+                </button>
               </div>
               <p v-if="!isFormReadOnly && formHasUnsavedChanges" class="hint">
                 Схема строится по сохранённым данным: перед её формированием будет предложено сохранить заключение.
@@ -739,6 +747,10 @@ function requestDiagramAction(action) {
 
 async function runDiagramAction(action) {
   if (!action) return
+  if (action.kind === 'palette') {
+    await openDiagramPalette()
+    return
+  }
   if (action.kind === 'merge') {
     // После сохранения заключения строки схем пересоздаются — ищем схему по id, затем по номеру версии.
     const row = incrementDiagrams.value.find((d) => d.id === action.rowId)
@@ -827,6 +839,7 @@ async function createIncrementDiagram() {
 }
 
 async function mergeIncrementDiagramRow(row) {
+  if (!ensureDrawioConfigured()) return
   if (!selectedIncrementId.value) return
   if (!row?.id) {
     submitError.value = 'Схема не найдена: обновите список схем и повторите действие.'
@@ -845,6 +858,7 @@ async function mergeIncrementDiagramRow(row) {
 }
 
 function openDiagramEditorTab(row) {
+  if (!ensureDrawioConfigured()) return
   if (!selectedIncrementId.value || !row?.id || !id.value) return
   // _t: уникальный query, иначе браузер может сфокусировать уже открытую вкладку с тем же URL —
   // Vue не перемонтирует экран и iframe не перезагружает mxfile (после «Обновить» / повторного «Открыть»).
@@ -860,6 +874,77 @@ function openDiagramEditorTab(row) {
     },
   }).href
   // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API схем.
+  const w = window.open(url, '_blank')
+  if (w) {
+    try { w.opener = null } catch (_) { /* ignore */ }
+  }
+}
+
+/**
+ * Проверка «схемы доступны»: без адреса draw.io (`DRAWIO_EMBED_BASE` из `/api/config`)
+ * редактор бесполезен. Раньше вкладка открывалась и показывала техническую ошибку —
+ * теперь предупреждаем прямо на форме.
+ * @returns {boolean} true, если адрес задан
+ */
+function ensureDrawioConfigured() {
+  const base = String(getConfig().DRAWIO_EMBED_BASE || '').trim()
+  if (base) return true
+  submitError.value =
+    'Схемы недоступны: не настроен адрес draw.io. Задайте параметр DRAWIO_EMBED_BASE ' +
+    '(Настройки → Параметры, группа «Draw.io») или переменную окружения API и перезагрузите страницу.'
+  return false
+}
+
+/**
+ * «Заполнить из диаграммы»: открыть редактор схемы в режиме палитры (новая вкладка).
+ * Схема решения нужна как контейнер `.drawio` — при отсутствии создаётся.
+ */
+async function openDiagramPalette() {
+  if (!ensureDrawioConfigured()) return
+  if (!canManageIncrements.value) {
+    submitError.value = 'Сохраните заключение: состав решения вводится по сохранённому решению.'
+    return
+  }
+  if (!selectedIncrementId.value) {
+    submitError.value = 'Добавьте решение в заключение, чтобы заполнить его из диаграммы.'
+    return
+  }
+  diagramsBusy.value = true
+  try {
+    let rows = incrementDiagrams.value || []
+    if (!rows.length) {
+      await api.createIncrementDiagram(selectedIncrementId.value, {})
+      await loadIncrementDiagrams()
+      rows = incrementDiagrams.value || []
+    }
+    const latest = [...rows].sort((a, b) => (Number(b.version_no) || 0) - (Number(a.version_no) || 0))[0]
+    if (!latest?.id) {
+      submitError.value = 'Не удалось подготовить схему решения.'
+      return
+    }
+    openDiagramPaletteTab(latest)
+  } catch (e) {
+    submitError.value = messageFromApiError(e?.status, e?.body, e?.message) || 'Не удалось открыть палитру'
+  } finally {
+    diagramsBusy.value = false
+  }
+}
+
+/** Новая вкладка редактора схемы в режиме палитры (`palette=1`). */
+function openDiagramPaletteTab(row) {
+  if (!selectedIncrementId.value || !row?.id || !id.value) return
+  const url = router.resolve({
+    name: 'decision-applied-diagram-editor',
+    query: {
+      incrementId: String(selectedIncrementId.value),
+      diagramId: String(row.id),
+      appliedId: String(id.value),
+      palette: '1',
+      _t: String(Date.now()),
+      schemeLabel: diagramDisplayName(row),
+    },
+  }).href
+  // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API.
   const w = window.open(url, '_blank')
   if (w) {
     try { w.opener = null } catch (_) { /* ignore */ }

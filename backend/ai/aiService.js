@@ -126,6 +126,43 @@ function toLlmHistory(rows) {
   return out;
 }
 
+/**
+ * Дополнить последнее пользовательское сообщение вложениями (issue #95, п.3).
+ *
+ * Текст вложений идёт ПЕРЕД вопросом отдельным блоком (`--- Вложение: … ---`), чтобы модель
+ * трактовала его как материал, а не как инструкцию. Изображения добавляются частями
+ * `image_url` (только при SYS_AI_VISION_ENABLED=true).
+ *
+ * В историю БД попадает лишь вопрос пользователя: вложения не «утяжеляют» следующие ходы,
+ * а в `payload` сообщения сохраняются только их метаданные.
+ *
+ * @param {Array} messages — llmMessages (мутируется)
+ * @param {{text?:string, images?:Array<{dataUrl:string}>}} [attachments]
+ */
+function applyAttachmentsToLastUser(messages, attachments) {
+  if (!Array.isArray(messages) || !attachments) return;
+  const block = String(attachments.text || '');
+  const images = Array.isArray(attachments.images) ? attachments.images : [];
+  if (!block && !images.length) return;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg || msg.role !== 'user') continue;
+    if (images.length) {
+      const parts = [];
+      if (block) parts.push({ type: 'text', text: block });
+      parts.push({ type: 'text', text: String(msg.content || '') });
+      for (const img of images) {
+        if (!img || !img.dataUrl) continue;
+        parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+      }
+      msg.content = parts;
+    } else {
+      msg.content = `${block}\n\n${msg.content || ''}`;
+    }
+    return;
+  }
+}
+
 function toOpenAiToolCall(call) {
   return {
     id: call.id,
@@ -212,7 +249,7 @@ async function executeToolCall({ runner, pool, conversationId, emitEvent, action
  * @param {{ pool, queries, user, permissions, roles, conversationId, message, emit, signal }} params
  * @returns {Promise<{conversationId:number, message:string, actions:Array, finishReason:string}>}
  */
-async function runAgent({ pool, queries, user, permissions, roles, conversationId, message, emit, signal }) {
+async function runAgent({ pool, queries, user, permissions, roles, conversationId, message, attachments, emit, signal }) {
   const cfg = getAiConfig();
   const emitEvent = typeof emit === 'function' ? emit : () => {};
   const text = String(message == null ? '' : message).trim();
@@ -226,7 +263,13 @@ async function runAgent({ pool, queries, user, permissions, roles, conversationI
     created,
     model: cfg.model,
   });
-  await conversations.appendMessage(pool, conversation.id, { role: 'user', content: text });
+  const attachmentMeta = attachments && Array.isArray(attachments.meta) ? attachments.meta : [];
+  await conversations.appendMessage(pool, conversation.id, {
+    role: 'user',
+    content: text,
+    // В БД — только метаданные вложений (base64 изображений не сохраняем).
+    payload: attachmentMeta.length ? { attachments: attachmentMeta } : null,
+  });
 
   const runner = createToolRunner({ pool, queries, permissions });
   const promptBase = {
@@ -240,6 +283,8 @@ async function runAgent({ pool, queries, user, permissions, roles, conversationI
     { role: 'system', content: buildSystemPrompt(promptBase) },
     ...toLlmHistory(history),
   ];
+  // Вложения применяем к последнему пользовательскому сообщению (issue #95, п.3).
+  applyAttachmentsToLastUser(llmMessages, attachments);
 
   const actions = [];
   const relationsEntities = [];
@@ -381,6 +426,7 @@ module.exports = {
   runAgent,
   parseFallbackJson,
   toLlmHistory,
+  applyAttachmentsToLastUser,
   summarizeToolResult,
   executeToolCall,
   wantsDependencyFocus,

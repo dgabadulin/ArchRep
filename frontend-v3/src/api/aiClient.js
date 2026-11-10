@@ -82,13 +82,17 @@ export function parseSseFrame(frame) {
 
 /**
  * Потоковый вызов агента. `onEvent({ event, data })` — на каждое SSE-событие.
+ * `attachments` (issue #95) — уже прочитанные в браузере файлы: `[{name, mime, kind, text?, dataBase64?}]`.
  * @returns {Promise<void>}
  */
-export async function aiChatStream({ message, conversationId = null, onEvent, signal } = {}) {
+export async function aiChatStream({ message, conversationId = null, attachments = null, onEvent, signal } = {}) {
+  const body = { message, conversation_id: conversationId }
+  const list = Array.isArray(attachments) ? attachments : []
+  if (list.length) body.attachments = list
   const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify(body),
     signal,
   })
   if (!res.ok) {

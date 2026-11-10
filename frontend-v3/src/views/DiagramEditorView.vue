@@ -14,11 +14,23 @@
         >Открыть заключение</router-link>
       </p>
       <p v-if="!drawioBase" class="error">
-        В конфигурации API не задан DRAWIO_EMBED_BASE (базовый URL Draw.io, например https://сервер/drawio).
+        Схемы недоступны: в конфигурации API не задан адрес Draw.io.
+        Администратору: задайте параметр <code>DRAWIO_EMBED_BASE</code> (Настройки → Параметры,
+        группа «Draw.io») или переменную окружения API — например
+        <code>https://сервер/drawio</code> — и перезагрузите страницу.
       </p>
     </div>
 
     <div class="diagram-editor-body">
+
+      <DiagramPalette
+        v-if="paletteMode"
+        :applied-id="appliedId"
+        :increment-id="incrementId"
+        :increment-name="schemeDisplayName"
+        :load-xml="pushXml"
+        :get-xml="exportXml"
+      />
 
       <iframe
         v-if="drawioBase && mxfile !== null && !loadError"
@@ -40,11 +52,18 @@ import { useRoute } from 'vue-router'
 import { getConfig } from '@/config/params'
 import { api } from '../api/client'
 import { messageFromApiError } from '../utils/apiErrors'
+import DiagramPalette from '../components/DiagramPalette.vue'
 
 const route = useRoute()
 const isMinimal = computed(() => Boolean(route.meta.minimalLayout))
-
 /**
+ * Режим палитры «Заполнить из диаграммы» (`?palette=1`): слева ввод состава решения,
+ * справа draw.io. Сохранение выполняет палитра (состав + `.drawio` одной операцией),
+ * поэтому автосохранение ядра в этом режиме отключено.
+ */
+const paletteMode = computed(() => String(route.query.palette || '') === '1')
+
+/** Состояние редактора: ссылка на iframe, XML схемы, флаги сохранения. */
 const iframeRef = ref(null)
 const mxfile = ref(null)
 const loadError = ref('')
@@ -79,7 +98,7 @@ const schemeDisplayName = computed(() => {
 
 const drawioFileTitle = computed(() => `${schemeDisplayName.value}.drawio`)
 
-/**
+/** Базовый URL draw.io из GET /api/config (пусто — схемы не настроены). */
 const drawioBase = computed(() => {
   const b = (getConfig().DRAWIO_EMBED_BASE || '').trim()
   return b
@@ -163,6 +182,49 @@ function postToIframe(data) {
   win.postMessage(data, '*')
 }
 
+/**
+ * Запрос текущего XML у draw.io (`action: 'export'`). Ответ приходит событием `export`
+ * и раздаётся ожидающим промисам; таймаут — фолбэк на последний известный XML.
+ */
+const pendingExports = []
+function resolveExport(xml) {
+  while (pendingExports.length) {
+    const resolve = pendingExports.shift()
+    try {
+      resolve(xml)
+    } catch (_) { /* ignore */ }
+  }
+}
+
+function exportXml(timeout = 4000) {
+  return new Promise((resolve) => {
+    const win = iframeRef.value?.contentWindow
+    // Редактор ещё не получил схему — отдаём загруженное из БД, не ждём таймаут.
+    if (!win || !diagramXmlPushedToDrawio.value) {
+      resolve(mxfile.value || lastKnownXml.value || '')
+      return
+    }
+    pendingExports.push(resolve)
+    postToIframe(JSON.stringify({ action: 'export', format: 'xml' }))
+    setTimeout(() => {
+      const idx = pendingExports.indexOf(resolve)
+      if (idx >= 0) {
+        pendingExports.splice(idx, 1)
+        resolve(lastKnownXml.value || '')
+      }
+    }, timeout)
+  })
+}
+
+/** Загрузить в draw.io схему, собранную палитрой. */
+function pushXml(xml) {
+  if (!xml) return
+  mxfile.value = xml
+  lastKnownXml.value = xml
+  diagramXmlPushedToDrawio.value = false
+  sendLoadToIframe()
+}
+
 function sendLoadLegacyRawToIframe() {
   if (diagramXmlPushedToDrawio.value || mxfile.value == null) return
   const xml = typeof mxfile.value === 'string' ? mxfile.value : String(mxfile.value)
@@ -242,12 +304,16 @@ function handleMessage(ev) {
     const xml = typeof msg.xml === 'string' ? msg.xml : typeof msg.data === 'string' ? msg.data : null
     if (xml) {
       lastKnownXml.value = xml
+      // Ответ на запрос палитры (`exportXml`) — до автосохранения, чтобы не терять его в palette-режиме.
+      resolveExport(xml)
       persistMxfile(xml)
     }
   }
 }
 
 async function persistMxfile(xml) {
+  // В режиме палитры сохранение выполняет она сама (состав + .drawio), автосохранение ядра отключено.
+  if (paletteMode.value) return
   if (!incrementId.value || !diagramId.value || saving.value) return
   saving.value = true
   try {

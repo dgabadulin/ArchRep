@@ -299,9 +299,12 @@ ALTER TABLE archrep.ar_system_statuses ADD CONSTRAINT ar_system_statuses_code_un
 
 ---
 
-## 6. Модуль DrawIO Pro (ссылка)
+## 6. Палитра диаграммы (реализовано в ядре)
 
-Роль модуля — «переводчик диаграмма → формуляр» по описанному контракту. Палитра, полные формы, изолированность, парсинг mxfile — в спецификации модуля (приватный репозиторий `isarDiagramEditor`).
+Роль палитры — «переводчик» диаграмма ⇄ формуляр. Модульный слой удалён в v4.0.0
+(`docs/adr-single-core.md`), поэтому функциональность перенесена в ядро:
+`docs/diagram-to-adr-save.md` — палитра `DiagramPalette`, модель `diagramModel.js`, черновик
+`useDiagramDraft`. Сохранение идёт теми же `full`-эндпоинтами с `increments_mode: 'merge'`.
 
 ---
 

@@ -7,6 +7,7 @@ const {
   normalizeVersion,
   pendingFrom,
   readSchemaState,
+  resolveDrawioConfig,
   getVersionInfo,
   readMigrationPrefixes,
 } = require('../version');
@@ -119,6 +120,42 @@ test('getVersionInfo: форма ответа /api/version', async () => {
   assert.equal(info.db.source, 'unknown');
   assert.equal(info.db.warn_mode, 'off');
   assert.equal('modules' in info, false, 'секции modules больше нет (единое ядро, v4.0.0)');
+});
+
+test('resolveDrawioConfig: параметр БД → override из env (как в /api/config)', () => {
+  // пусто везде → схемы не настроены
+  assert.deepEqual(resolveDrawioConfig({}, () => ''), { drawio_embed_base: null, drawio_configured: false });
+  assert.deepEqual(resolveDrawioConfig({}, () => undefined), { drawio_embed_base: null, drawio_configured: false });
+
+  // только параметр БД
+  assert.deepEqual(
+    resolveDrawioConfig({}, (code, def) => (code === 'DRAWIO_EMBED_BASE' ? 'https://host/drawio' : def)),
+    { drawio_embed_base: 'https://host/drawio', drawio_configured: true },
+  );
+
+  // env важнее параметра БД
+  assert.deepEqual(
+    resolveDrawioConfig({ DRAWIO_EMBED_BASE: 'http://localhost:8080' }, () => 'https://host/drawio'),
+    { drawio_embed_base: 'http://localhost:8080', drawio_configured: true },
+  );
+
+  // пустой/пробельный env не перекрывает параметр БД
+  assert.equal(
+    resolveDrawioConfig({ DRAWIO_EMBED_BASE: '   ' }, () => 'https://host/drawio').drawio_embed_base,
+    'https://host/drawio',
+  );
+});
+
+test('getVersionInfo: config.drawio_* показывает фактическое значение (диагностика схем)', async () => {
+  const info = await getVersionInfo({
+    env: { APP_VERSION: '4.3.0' },
+    warnMode: 'off',
+    getParam: (code, def) => (code === 'DRAWIO_EMBED_BASE' ? 'https://isar.st.tech/drawio' : def),
+  });
+  assert.deepEqual(info.config, {
+    drawio_embed_base: 'https://isar.st.tech/drawio',
+    drawio_configured: true,
+  });
 });
 
 test('getVersionInfo: deploy=release по умолчанию (канал stable)', async () => {

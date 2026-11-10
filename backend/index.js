@@ -280,6 +280,8 @@ app.get('/api/version', async (req, res) => {
   try {
     const info = await getVersionInfo({
       pool,
+      // Фактический адрес draw.io (env → параметр БД) — для диагностики схем.
+      getParam,
       warnMode: String(getParam('SYS_DB_SCHEMA_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
       deployWarnMode: String(getParam('SYS_DEPLOY_WARN_MODE', 'admin') || 'admin').trim().toLowerCase(),
     });
@@ -389,6 +391,9 @@ const PUBLIC_CONFIG_DEFAULTS = {
   ...AI_PUBLIC_CONFIG_DEFAULTS,
 };
 app.get('/api/config', (req, res) => {
+  // Конфиг читается один раз при старте SPA; кэширование на прокси/в браузере дало бы
+  // «залипшее» значение после изменения параметров (например DRAWIO_EMBED_BASE).
+  res.set('Cache-Control', 'no-store');
   const out = {};
   for (const [code, def] of Object.entries(PUBLIC_CONFIG_DEFAULTS)) {
     const v = getParam(code, def);
@@ -1236,6 +1241,8 @@ app.post('/api/decisions/applied/full', async (req, res) => {
     const appliedId = r.rows[0].id;
     // Ключи новых систем заключения (local_key → id) — для связей интеграций (issue #74).
     const systemKeyMap = new Map();
+    // Ключи черновых связей (local_key → id) — палитра диаграммы перекодирует draft-rel-* → rel-{id}.
+    const relationKeyMap = new Map();
     for (let i = 0; i < increments.length; i++) {
       const inc = increments[i];
       const incR = await client.query(queries.adr_increments_insert, [
@@ -1285,6 +1292,7 @@ app.post('/api/decisions/applied/full', async (req, res) => {
           rel.transferred_data || null, rel.transfer_method || null, rel.periodicity || null,
           rel.ar_integration_flow_event_types_id || null,
         ]);
+        if (rel.local_key) relationKeyMap.set(String(rel.local_key).trim(), relRow.rows[0].id);
         // Поток реестра: выбранный существующий — обновляем; иначе создаём/находим и привязываем (issue #74).
         await syncFlowFromRelation(client, appliedId, relRow.rows[0].id, {
           ...rel,
@@ -1297,8 +1305,15 @@ app.post('/api/decisions/applied/full', async (req, res) => {
     }
     await client.query('COMMIT');
     client.release();
-    // Ответ расширен (contract §16.6 #4): модуль читает result.increment_id, чтобы сохранить .drawio.
-    res.status(201).json(buildFullSaveResponse({ appliedId, code: r.rows[0].code, increments: createdIncrements }));
+    // Ответ расширен (contract §16.6 #4): палитра читает `increment_id` (куда сохранить .drawio)
+    // и карты «local_key → id», чтобы перекодировать черновые ячейки диаграммы.
+    res.status(201).json(buildFullSaveResponse({
+      appliedId,
+      code: r.rows[0].code,
+      increments: createdIncrements,
+      systems: [...systemKeyMap].map(([local_key, id]) => ({ local_key, id })),
+      relations: [...relationKeyMap].map(([local_key, id]) => ({ local_key, id })),
+    }));
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     client.release();
@@ -1621,6 +1636,8 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       }
       // Ключи новых систем заключения (local_key → id) — для связей интеграций (issue #74).
       const systemKeyMap = new Map();
+      // Ключи черновых связей (local_key → id) — палитра перекодирует draft-rel-* → rel-{id}.
+      const relationKeyMap = new Map();
       // Ключи пересозданных решений (порядок|наименование → id) — для восстановления схем.
       const incKeyMap = new Map();
       for (let i = 0; i < increments.length; i++) {
@@ -1674,6 +1691,7 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
             rel.transferred_data || null, rel.transfer_method || null, rel.periodicity || null,
             rel.ar_integration_flow_event_types_id || null,
           ]);
+          if (rel.local_key) relationKeyMap.set(String(rel.local_key).trim(), relRow.rows[0].id);
           // Поток реестра: выбранный существующий — обновляем; иначе создаём/находим и привязываем (issue #74).
           await syncFlowFromRelation(client, appliedId, relRow.rows[0].id, {
             ...rel,
@@ -1709,8 +1727,14 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
 
     await client.query('COMMIT');
     client.release();
-    // increment_id: модуль сохраняет .drawio по id решения (contract §16.6 #4).
-    res.json(buildFullSaveResponse({ appliedId, code: currentRow.code, increments: createdIncrements }));
+    // increment_id: палитра сохраняет .drawio по id решения; systems/relations — карты для remap.
+    res.json(buildFullSaveResponse({
+      appliedId,
+      code: currentRow.code,
+      increments: createdIncrements,
+      systems: [...systemKeyMap].map(([local_key, id]) => ({ local_key, id })),
+      relations: [...relationKeyMap].map(([local_key, id]) => ({ local_key, id })),
+    }));
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     client.release();
@@ -3398,6 +3422,10 @@ app.post('/api/settings-parameters', async (req, res) => {
       if (!vr.ok) return res.status(400).json({ error: vr.error });
     }
     const r = await pool.query(queries.settings_parameters_insert, [code, b.description || '', value, b.value_type || 'string', b.group || '', b.is_secret === true, b.read_only === true]);
+    // Кэш настроечных параметров читается при старте (settingsParams.loadParams) — перечитываем
+    // сразу после изменения, иначе GET /api/config и серверные проверки видят старое значение
+    // до перезапуска API (например DRAWIO_EMBED_BASE).
+    await loadParams(pool);
     res.status(201).json(maskSecretParam(r.rows[0]));
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
@@ -3415,6 +3443,8 @@ app.put('/api/settings-parameters/:id', async (req, res) => {
       if (!vr.ok) return res.status(400).json({ error: vr.error });
     }
     const r = await pool.query(queries.settings_parameters_update, [req.params.id, b.description ?? rGet.rows[0].description, value, b.value_type ?? rGet.rows[0].value_type, b.group != null ? b.group : rGet.rows[0].group, b.is_secret !== undefined ? b.is_secret : rGet.rows[0].is_secret, b.read_only !== undefined ? b.read_only : rGet.rows[0].read_only]);
+    // Перечитываем кэш параметров: изменение применяется сразу, без перезапуска API.
+    await loadParams(pool);
     res.json(maskSecretParam(r.rows[0]));
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -3425,6 +3455,8 @@ app.delete('/api/settings-parameters/:id', async (req, res) => {
     if (rGet.rows[0].read_only) return res.status(400).json({ error: 'Cannot delete read-only parameter' });
     const r = await pool.query(queries.settings_parameters_delete, [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    // Удаление тоже меняет действующие значения: перечитываем кэш параметров.
+    await loadParams(pool);
     res.status(204).send();
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -3943,6 +3975,11 @@ app.delete('/api/togaf/business-functions/:id', async (req, res) => {
 
   try {
     await loadParams(pool);
+    // Диагностика схем: в логе видно, какой адрес draw.io реально действует (env → параметр БД).
+    // Если пусто — «Заполнить из диаграммы» покажет подсказку вместо редактора.
+    const drawioFromEnv = String(process.env.DRAWIO_EMBED_BASE || '').trim();
+    const drawioEffective = drawioFromEnv || String(getParam('DRAWIO_EMBED_BASE', '') || '').trim();
+    console.log(`[config] DRAWIO_EMBED_BASE: ${drawioEffective || '(не задан — схемы не откроются)'}${drawioFromEnv ? ' (env)' : ''}`);
   } finally {
     mountFrontendStatic();
   }

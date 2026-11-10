@@ -35,6 +35,17 @@ const PUBLIC_DEFAULTS = {
   SYS_AI_PREFILL_MAX_JSON_CHARS: 5000,
   /** Максимум id в фокусе экрана «Анализ зависимостей» (диплинк `?entity=&ids=`) — согласован с фронтом. */
   SYS_AI_FOCUS_MAX_IDS: 50,
+  /**
+   * Вложения в чате (issue #95, п.3). Текстовые файлы читаются в браузере и приходят
+   * текстом; изображения — только при `SYS_AI_VISION_ENABLED=true` (подтверждается
+   * `scripts/ai-vision-probe.js`: модель должна принимать `image_url`).
+   */
+  SYS_AI_ATTACHMENTS_ENABLED: true,
+  SYS_AI_VISION_ENABLED: false,
+  SYS_AI_MAX_ATTACHMENTS: 3,
+  SYS_AI_MAX_ATTACHMENT_MB: 1,
+  SYS_AI_MAX_IMAGE_MB: 5,
+  SYS_AI_MAX_ATTACHMENT_CHARS: 30000,
 };
 
 /** Серверные дефолты (только env). */
@@ -78,6 +89,12 @@ function enabledFromEnv() {
   return raw === '' ? null : parseBool(raw, false);
 }
 
+/** Булево значение из env: null — переменная не задана. */
+function boolFromEnv(name) {
+  const raw = envStr(name);
+  return raw === '' ? null : parseBool(raw, false);
+}
+
 /** Функция включена (кнопка/панель/маршруты). Приоритет: env → БД → дефолт. */
 function isEnabled() {
   const env = enabledFromEnv();
@@ -116,6 +133,15 @@ function getAiConfig() {
     maxTokens: clamp(envNum('AI_MAX_TOKENS', ENV_DEFAULTS.AI_MAX_TOKENS), 256, 32768),
     temperature: clamp(envNum('AI_TEMPERATURE', ENV_DEFAULTS.AI_TEMPERATURE), 0, 2),
     maxIterations: clamp(envNum('AI_MAX_ITERATIONS', ENV_DEFAULTS.AI_MAX_ITERATIONS), 1, 12),
+    /** Лимиты вложений чата (issue #95) — читаются и на сервере, и фронтом через /api/ai/status. */
+    attachments: {
+      enabled: Boolean(getParam('SYS_AI_ATTACHMENTS_ENABLED', PUBLIC_DEFAULTS.SYS_AI_ATTACHMENTS_ENABLED)),
+      vision: Boolean(getParam('SYS_AI_VISION_ENABLED', PUBLIC_DEFAULTS.SYS_AI_VISION_ENABLED)),
+      maxFiles: clamp(getParam('SYS_AI_MAX_ATTACHMENTS', PUBLIC_DEFAULTS.SYS_AI_MAX_ATTACHMENTS), 1, 10),
+      maxFileMb: clamp(getParam('SYS_AI_MAX_ATTACHMENT_MB', PUBLIC_DEFAULTS.SYS_AI_MAX_ATTACHMENT_MB), 1, 10),
+      maxImageMb: clamp(getParam('SYS_AI_MAX_IMAGE_MB', PUBLIC_DEFAULTS.SYS_AI_MAX_IMAGE_MB), 1, 20),
+      maxChars: clamp(getParam('SYS_AI_MAX_ATTACHMENT_CHARS', PUBLIC_DEFAULTS.SYS_AI_MAX_ATTACHMENT_CHARS), 1000, 200000),
+    },
   };
 }
 
@@ -125,6 +151,11 @@ function aiPublicEnvOverrides(out) {
   if (env !== null) out.SYS_AI_ENABLED = env;
   const model = modelFromEnv();
   if (model) out.SYS_AI_MODEL = model;
+  // Вложения (issue #95): env перекрывает параметры БД, как и SYS_AI_ENABLED.
+  const attachments = boolFromEnv('SYS_AI_ATTACHMENTS_ENABLED');
+  if (attachments !== null) out.SYS_AI_ATTACHMENTS_ENABLED = attachments;
+  const vision = boolFromEnv('SYS_AI_VISION_ENABLED');
+  if (vision !== null) out.SYS_AI_VISION_ENABLED = vision;
   return out;
 }
 

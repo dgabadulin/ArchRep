@@ -6,6 +6,7 @@ const { getAiConfig } = require('./aiConfig');
 const { createToolRunner } = require('./tools');
 const conversationStore = require('./conversations');
 const { runAgent } = require('./aiService');
+const { normalizeAttachments } = require('./attachments');
 
 /**
  * HTTP-роутер ИИ-архитектора (issue #78, docs/ai-architect.md §3.1/§7).
@@ -49,6 +50,8 @@ function createAiRouter(pool, queries) {
       panel_width: cfg.panelWidth,
       history_limit: cfg.historyLimit,
       max_iterations: cfg.maxIterations,
+      /** Лимиты вложений (issue #95) — UI показывает только разрешённое. */
+      attachments: cfg.attachments,
       entity_types: runner.allowedTypes(),
       tools: runner.definitions.map((t) => (t.function && t.function.name) || t.name),
     });
@@ -107,8 +110,18 @@ function createAiRouter(pool, queries) {
     const cfg = getAiConfig();
     if (!cfg.enabled) return disabledResponse(res);
 
-    const message = String((req.body && req.body.message) || '').trim();
-    if (!message) return res.status(400).json({ error: 'Поле message обязательно', code: 'AI_EMPTY_MESSAGE' });
+    // Вложения (issue #95): валидация лимитов и типов — до обращения к модели.
+    const rawAttachments = Array.isArray(req.body && req.body.attachments) ? req.body.attachments : [];
+    const attachments = normalizeAttachments(rawAttachments, cfg.attachments);
+    if (!attachments.ok) {
+      return res.status(400).json({ error: attachments.error.message, code: attachments.error.code });
+    }
+
+    let message = String((req.body && req.body.message) || '').trim();
+    if (!message && !attachments.text && !attachments.images.length) {
+      return res.status(400).json({ error: 'Поле message обязательно', code: 'AI_EMPTY_MESSAGE' });
+    }
+    if (!message) message = 'Проанализируй вложение.';
     if (message.length > MAX_MESSAGE_CHARS) {
       return res.status(413).json({
         error: `Сообщение слишком длинное (максимум ${MAX_MESSAGE_CHARS} символов)`,
@@ -167,6 +180,7 @@ function createAiRouter(pool, queries) {
         roles: req.roles || [],
         conversationId: (req.body && req.body.conversation_id) || null,
         message,
+        attachments: { text: attachments.text, images: attachments.images, meta: attachments.meta },
         emit,
         signal: abort,
       });

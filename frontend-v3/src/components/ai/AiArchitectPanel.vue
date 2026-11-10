@@ -88,7 +88,15 @@
       </div>
 
       <template v-for="msg in state.messages" :key="msg.id">
-        <div v-if="msg.role === 'user'" class="ai-msg ai-msg--user">{{ msg.text }}</div>
+        <div v-if="msg.role === 'user'" class="ai-msg ai-msg--user">
+          <div v-if="msg.attachments && msg.attachments.length" class="ai-msg-files">
+            <span v-for="f in msg.attachments" :key="f.name" class="ai-file-chip">
+              <component :is="f.kind === 'image' ? ImageIcon : Paperclip" :size="12" />
+              <span class="ai-file-name">{{ f.name }}</span>
+            </span>
+          </div>
+          {{ msg.text }}
+        </div>
 
         <div v-else-if="msg.role === 'assistant'" class="ai-msg ai-msg--assistant">
           <div v-if="msg.text" class="help-markdown ai-markdown" v-html="renderMarkdown(msg.text)"></div>
@@ -106,7 +114,27 @@
       </template>
     </div>
 
-    <form class="ai-composer" @submit.prevent="submit">
+    <form
+      class="ai-composer"
+      :class="{ 'ai-composer--drag': dragging }"
+      @submit.prevent="submit"
+      @dragover.prevent="onDragOver"
+      @dragleave.prevent="onDragLeave"
+      @drop.prevent="onDrop"
+      @paste="onPaste"
+    >
+      <div v-if="state.attachments.length" class="ai-files">
+        <span v-for="(a, i) in state.attachments" :key="`${a.name}-${i}`" class="ai-file-chip">
+          <img v-if="a.kind === 'image'" :src="a.dataBase64" class="ai-file-thumb" :alt="a.name" />
+          <component v-else :is="FileText" :size="12" />
+          <span class="ai-file-name">{{ a.name }}</span>
+          <span class="ai-file-size">{{ formatSize(a.size) }}</span>
+          <button type="button" class="ai-file-del" title="Убрать вложение" @click="removeAttachment(i)">
+            <X :size="12" />
+          </button>
+        </span>
+      </div>
+      <p v-if="state.attachError" class="ai-attach-error">{{ state.attachError }}</p>
       <textarea
         v-model="state.draft"
         class="ai-input"
@@ -117,6 +145,24 @@
         @keydown.enter.exact.prevent="submit"
       ></textarea>
       <div class="ai-composer-actions">
+        <button
+          v-if="canAttach"
+          type="button"
+          class="ai-icon-btn ai-attach-btn"
+          title="Прикрепить файл: текст, CSV, Excel (изображения — если включено)"
+          :disabled="state.streaming || state.attaching"
+          @click="pickFiles"
+        >
+          <Paperclip :size="16" />
+        </button>
+        <input
+          ref="fileInput"
+          type="file"
+          multiple
+          class="ai-file-input"
+          :accept="acceptAttr(attachmentLimits)"
+          @change="onFilesPicked"
+        />
         <button v-if="state.streaming" type="button" class="btn btn-secondary btn-sm" @click="cancelStream">
           Остановить
         </button>
@@ -133,10 +179,11 @@
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { AlertCircle, CheckCircle2, History, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-vue-next'
+import { AlertCircle, CheckCircle2, FileText, History, Image as ImageIcon, Paperclip, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { marked } from 'marked'
 import AiActionCard from './AiActionCard.vue'
 import { useAiPanel } from '../../composables/useAiPanel'
+import { acceptAttr, extractPastedImages } from '../../utils/aiAttachments'
 import { canUseAiAction, resolveAiActionLocation } from '../../config/aiActions'
 
 marked.setOptions({ gfm: true, breaks: true })
@@ -156,6 +203,10 @@ const {
   panelWidth,
   hasMessages,
   canSend,
+  canAttach,
+  attachmentLimits,
+  addFiles,
+  removeAttachment,
   closePanel,
   setWidth,
   toggleHistory,
@@ -170,8 +221,68 @@ const {
 
 const scrollRef = ref(null)
 const overlay = ref(false)
+const fileInput = ref(null)
+const dragging = ref(false)
 let mediaQuery = null
 let resizing = false
+
+/** Вложения (issue #95): выбор файлов и drag&drop на композер. */
+function pickFiles() {
+  if (fileInput.value) fileInput.value.click()
+}
+
+async function onFilesPicked(event) {
+  const input = event && event.target
+  const files = input && input.files
+  await addFiles(files)
+  // Сброс значения, иначе повторный выбор того же файла не сработает.
+  if (input) input.value = ''
+}
+
+function onDragOver() {
+  if (!canAttach.value) return
+  dragging.value = true
+}
+
+function onDragLeave() {
+  dragging.value = false
+}
+
+async function onDrop(event) {
+  dragging.value = false
+  if (!canAttach.value) return
+  const files = event && event.dataTransfer ? event.dataTransfer.files : null
+  if (files && files.length) await addFiles(files)
+}
+
+/**
+ * Вставка из буфера обмена (issue #95): скриншот приходит не файлом в input,
+ * а элементом `clipboardData.items` с `kind: 'file'`.
+ *
+ * `preventDefault()` вызываем только когда в буфере нет текста — иначе вставка
+ * «текст + картинка» (например из Word) потеряет текст.
+ */
+async function onPaste(event) {
+  if (!canAttach.value) return
+  const clipboard = event && event.clipboardData
+  const files = extractPastedImages(clipboard)
+  if (!files.length) return
+  let hasText = false
+  try {
+    hasText = String((clipboard && clipboard.getData && clipboard.getData('text/plain')) || '').trim().length > 0
+  } catch (_) {
+    hasText = false
+  }
+  if (!hasText && event && typeof event.preventDefault === 'function') event.preventDefault()
+  await addFiles(files)
+}
+
+function formatSize(bytes) {
+  const n = Number(bytes) || 0
+  if (n < 1024) return `${n} Б`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`
+  return `${(n / (1024 * 1024)).toFixed(1)} МБ`
+}
 
 function renderMarkdown(text) {
   try {
@@ -618,8 +729,76 @@ onBeforeUnmount(() => {
 }
 .ai-composer-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
+}
+/* Вложения (issue #95): скрепка, чипы, drag&drop. */
+.ai-composer--drag {
+  background: var(--ar-accent-soft);
+  outline: 2px dashed var(--ar-accent);
+  outline-offset: -4px;
+}
+.ai-attach-btn {
+  margin-right: auto;
+}
+.ai-file-input {
+  display: none;
+}
+.ai-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.ai-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--ar-border);
+  border-radius: 999px;
+  background: var(--ar-surface);
+  color: var(--ar-text);
+  font-size: 0.72rem;
+}
+.ai-file-name {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-file-size {
+  color: var(--ar-muted);
+  flex-shrink: 0;
+}
+.ai-file-thumb {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.ai-file-del {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ar-muted);
+  cursor: pointer;
+  display: inline-flex;
+}
+.ai-file-del:hover {
+  color: var(--ar-danger);
+}
+.ai-attach-error {
+  margin: 0;
+  color: var(--ar-danger);
+  font-size: 0.75rem;
+}
+.ai-msg-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.3rem;
 }
 .ai-msg--failed {
   color: var(--ar-danger);

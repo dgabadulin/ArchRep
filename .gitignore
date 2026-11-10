@@ -8,6 +8,9 @@ yarn-error.log
 .env.*
 !.env.example
 
+# Локальные секреты (логин/пароль Ihor, доступ к серверу) — не коммитить
+env.secrets
+
 # PostgreSQL dumps / large exports
 *.dump
 dump-*.sql

@@ -50,6 +50,13 @@ const DEFAULTS = {
   SYS_AI_HISTORY_LIMIT: 20,
   /** Максимум id в фокусе экрана «Анализ зависимостей» (диплинк ИИ-архитектора `?entity=&ids=`). */
   SYS_AI_FOCUS_MAX_IDS: 50,
+  /** Вложения чата ИИ-архитектора (issue #95): дефолты совпадают с сидом DB/scripts. */
+  SYS_AI_ATTACHMENTS_ENABLED: true,
+  SYS_AI_VISION_ENABLED: false,
+  SYS_AI_MAX_ATTACHMENTS: 3,
+  SYS_AI_MAX_ATTACHMENT_MB: 1,
+  SYS_AI_MAX_IMAGE_MB: 5,
+  SYS_AI_MAX_ATTACHMENT_CHARS: 30000,
 }
 
 let config = null
