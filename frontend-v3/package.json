@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "vue": "^3.4.0",
-    "vue-router": "^4.2.0",
+    "vue-router": "^5.4.0",
     "v-network-graph": "^0.9.22",
     "lucide-vue-next": "^0.500.0",
     "marked": "^15.0.0",
