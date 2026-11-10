@@ -10,6 +10,19 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.4.0](https://github.com/dgabadulin/ArchRep/compare/v4.3.0...v4.4.0) (2026-11-10)
+
+
+### Новое
+
+* **core:** палитра диаграмм, вложения в чат ИИ и адрес draw.io ([#1](https://github.com/dgabadulin/ArchRep/issues/1), [#95](https://github.com/dgabadulin/ArchRep/issues/95)) ([62e58a5](https://github.com/dgabadulin/ArchRep/commit/62e58a5e65ed02bc8f2001dd73c2f7ef94cc7035))
+
+
+### Исправлено
+
+* **deploy:** секреты demo-стенда вне git и проверка пароля БД до сборки ([611b865](https://github.com/dgabadulin/ArchRep/commit/611b8651042c7a4473e9f70fd0ea4005b94cc898))
+* **frontend:** добавленная технология на графе стека связана с ИС, а не с фантомным узлом ([e39f0e3](https://github.com/dgabadulin/ArchRep/commit/e39f0e340d04c63d8864350012f3967bc22c33e8))
+
 ## [4.3.0](https://github.com/dgabadulin/ArchRep/compare/v4.2.0...v4.3.0) (2026-11-06)
 
 
