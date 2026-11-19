@@ -12,12 +12,10 @@ const {
   formatSysFuncLines,
 } = require('./sysFuncMarkers');
 const {
-  extractEdgeGeometryMap,
   layoutNodes,
   computeEdgeRoutes,
   formatPortStyle,
   formatEdgeGeometryXml,
-  routeFromSaved,
 } = require('./incrementDiagramLayout');
 
 function escapeXml(s) {
@@ -370,7 +368,6 @@ function buildMxfile(opts) {
     maxH = Math.max(maxH, z.height);
   }
 
-  const edgeGeometryMap = opts.edgeGeometryMap || null;
   const useLayeredLayout = !geometryMap || geometryMap.size === 0;
   const nodePositions = useLayeredLayout
     ? layoutNodes(sizes, relations, layout)
@@ -432,8 +429,11 @@ function buildMxfile(opts) {
     const label = escapeXml((r.name || r.description || 'Связь').slice(0, 500));
     const stroke = edgeStrokeColor(r, edgeStyle);
     const sw = 2;
-    const saved = edgeGeometryMap && edgeGeometryMap.get(rid);
-    const route = saved ? routeFromSaved(saved) : computedRoutes.get(rid);
+    // issue #93: маршруты рёбер всегда пересчитываются по актуальным координатам узлов.
+    // Сохранённая геометрия рёбер из предыдущей версии схемы могла быть построена старым
+    // генератором (без разведения потоков) и давала наложение; координаты вершин при merge
+    // по-прежнему сохраняются, поэтому ручная раскладка узлов не теряется.
+    const route = computedRoutes.get(rid);
     const portStyle = formatPortStyle(route);
     const style =
       `edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;` +
@@ -458,7 +458,6 @@ function buildMxfile(opts) {
  */
 function mergeMxfileWithData(previousMxfile, systems, relations, solutionName, versionLabel, getParam) {
   const geometryMap = extractVertexGeometryMap(previousMxfile);
-  const edgeGeometryMap = extractEdgeGeometryMap(previousMxfile);
   const drawio = getParam ? resolveDrawioStyles(getParam) : null;
   return buildMxfile({
     systems,
@@ -466,7 +465,6 @@ function mergeMxfileWithData(previousMxfile, systems, relations, solutionName, v
     solutionName,
     versionLabel,
     geometryMap,
-    edgeGeometryMap,
     drawio,
   });
 }
@@ -474,7 +472,6 @@ function mergeMxfileWithData(previousMxfile, systems, relations, solutionName, v
 module.exports = {
   escapeXml,
   extractVertexGeometryMap,
-  extractEdgeGeometryMap,
   buildMxfile,
   mergeMxfileWithData,
   resolveDrawioStyles,
