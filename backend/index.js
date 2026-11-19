@@ -28,6 +28,7 @@ const { isManagedRelationType } = require('./relationTypePolicy');
 const { buildHomeStats } = require('./homeDashboard');
 const { buildMxfile, mergeMxfileWithData } = require('./incrementDiagram');
 const { formatSysFuncComment } = require('./sysFuncMarkers');
+const { HttpError, withTransaction, sendTransactionError } = require('./dbTx');
 const {
   normalizeIncrementPayload,
   mergeAppliedHeader,
@@ -1229,9 +1230,9 @@ app.delete('/api/decisions/applied/:id', async (req, res) => {
 
 // Полное сохранение архитектурного заключения: основная запись + инкременты с системами и интеграциями
 app.post('/api/decisions/applied/full', async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    const result = await withTransaction(pool, async (client, stage) => {
+    stage('create-header');
     const b = req.body || {};
     const { task_name, task_link, conclusion, ar_adr_statuses_id, author } = b;
     // Нормализация ссылок payload решения (issue #74):
@@ -1245,6 +1246,7 @@ app.post('/api/decisions/applied/full', async (req, res) => {
     const systemKeyMap = new Map();
     // Ключи черновых связей (local_key → id) — палитра диаграммы перекодирует draft-rel-* → rel-{id}.
     const relationKeyMap = new Map();
+    stage('create-increments');
     for (let i = 0; i < increments.length; i++) {
       const inc = increments[i];
       const incR = await client.query(queries.adr_increments_insert, [
@@ -1305,22 +1307,21 @@ app.post('/api/decisions/applied/full', async (req, res) => {
         });
       }
     }
-    await client.query('COMMIT');
-    client.release();
+    stage('create-ready');
     // Ответ расширен (contract §16.6 #4): палитра читает `increment_id` (куда сохранить .drawio)
     // и карты «local_key → id», чтобы перекодировать черновые ячейки диаграммы.
-    res.status(201).json(buildFullSaveResponse({
+    return {
       appliedId,
       code: r.rows[0].code,
       increments: createdIncrements,
       systems: [...systemKeyMap].map(([local_key, id]) => ({ local_key, id })),
       relations: [...relationKeyMap].map(([local_key, id]) => ({ local_key, id })),
-    }));
+    };
+    }, { stage: 'create-full' });
+    res.status(201).json(buildFullSaveResponse(result));
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    client.release();
-    console.error(err);
-    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create' });
+    console.error('[POST /api/decisions/applied/full]', err);
+    sendTransactionError(res, err, 'Failed to create');
   }
 });
 
@@ -1562,9 +1563,9 @@ async function applyStatusMapsOnApproval(client, appliedId) {
 }
 
 app.put('/api/decisions/applied/:id/full', async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    const result = await withTransaction(pool, async (client, stage) => {
+    stage('update-header');
     const appliedId = req.params.id;
     const b = req.body || {};
     // Нормализация ссылок модулей (contract §16.6 #3) — до resolveRelationEndpoint().
@@ -1573,9 +1574,7 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
 
     const current = await client.query(queries.adrs_applied_get, [appliedId]);
     if (current.rows.length === 0) {
-      await client.query('ROLLBACK');
-      client.release();
-      return res.status(404).json({ error: 'Not found' });
+      throw new HttpError(404, 'Not found');
     }
     const currentRow = current.rows[0];
     // Шапка: отсутствующие в теле поля берём из БД, а не затираем пустыми строками
@@ -1595,6 +1594,11 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
     const isEditable = editableStatusCodes.includes(currentStatusCode);
 
     const payloadIsStatusOnly = b.increments === undefined;
+    // Карты для ответа палитре: объявлены до ветвления, потому что используются и в
+    // status-only ветке (пустые), и после сохранения состава. Раньше были внутри else —
+    // ReferenceError после COMMIT приводил к повторному release() и падению API.
+    const systemKeyMap = new Map();
+    const relationKeyMap = new Map();
     if (!isEditable || payloadIsStatusOnly) {
       // П.5: не в редактируемом статусе — только статус; или он редактируемый, но прислан только смена статуса
       // (без increments) — не затирать данные
@@ -1607,9 +1611,7 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
         appliedId,
       ]);
       if (upd.rowCount === 0) {
-        await client.query('ROLLBACK');
-        client.release();
-        return res.status(404).json({ error: 'Not found' });
+        throw new HttpError(404, 'Not found');
       }
     } else {
       const upd = await client.query(queries.adrs_applied_update, [
@@ -1621,14 +1623,13 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
         appliedId,
       ]);
       if (upd.rowCount === 0) {
-        await client.query('ROLLBACK');
-        client.release();
-        return res.status(404).json({ error: 'Not found' });
+        throw new HttpError(404, 'Not found');
       }
       // Схемы решения привязаны к строкам инкрементов (FK ON DELETE CASCADE): сохраняем их
       // и возвращаем после пересоздания инкрементов (issue #74).
       const savedDiagrams = (await client.query(queries.adr_increment_diagrams_by_applied, [appliedId])).rows;
       const incs = await client.query(queries.adr_increments_by_applied, [appliedId]);
+      stage('update-delete-increments');
       for (const inc of incs.rows) {
         // merge-режим (адаптер модуля): пересоздаём только целевое решение, остальные не трогаем.
         if (incrementsMode === 'merge' && targetIncrementId != null && Number(inc.id) !== targetIncrementId) continue;
@@ -1637,11 +1638,11 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
         await client.query(queries.adr_increments_delete, [inc.id]);
       }
       // Ключи новых систем заключения (local_key → id) — для связей интеграций (issue #74).
-      const systemKeyMap = new Map();
       // Ключи черновых связей (local_key → id) — палитра перекодирует draft-rel-* → rel-{id}.
-      const relationKeyMap = new Map();
+      // Сами карты объявлены выше (до if/else) — они нужны в ответе после COMMIT.
       // Ключи пересозданных решений (порядок|наименование → id) — для восстановления схем.
       const incKeyMap = new Map();
+      stage('update-recreate-increments');
       for (let i = 0; i < increments.length; i++) {
         const inc = increments[i];
         const incR = await client.query(queries.adr_increments_insert, [
@@ -1705,6 +1706,7 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
         }
       }
       // Вернуть сохранённые схемы решения к пересозданным инкрементам (сопоставление по порядку и наименованию).
+      stage('update-restore-diagrams');
       for (const d of savedDiagrams) {
         const newIncId = incKeyMap.get(`${d.order_index}|${d.increment_name || ''}`);
         if (newIncId == null) continue;
@@ -1725,26 +1727,26 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       const newCode = (st.code || getAdrStatusCodeById(newStatusId) || '').trim();
       const triggerFlows = Array.isArray(approvedCodes) && approvedCodes.map(String).includes(newCode);
       if (triggerFlows) {
+        stage('update-flows');
         await createFlowsFromConclusion(client, appliedId);
         await applyStatusMapsOnApproval(client, appliedId);
       }
     }
 
-    await client.query('COMMIT');
-    client.release();
+    stage('update-ready');
     // increment_id: палитра сохраняет .drawio по id решения; systems/relations — карты для remap.
-    res.json(buildFullSaveResponse({
+    return {
       appliedId,
       code: currentRow.code,
       increments: createdIncrements,
       systems: [...systemKeyMap].map(([local_key, id]) => ({ local_key, id })),
       relations: [...relationKeyMap].map(([local_key, id]) => ({ local_key, id })),
-    }));
+    };
+    }, { stage: 'update-full' });
+    res.json(buildFullSaveResponse(result));
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    client.release();
-    console.error(err);
-    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to update' });
+    console.error('[PUT /api/decisions/applied/:id/full]', err);
+    sendTransactionError(res, err, 'Failed to update');
   }
 });
 
@@ -2087,61 +2089,54 @@ app.get('/api/adr-increment-systems/:rowId/function-selection', async (req, res)
 });
 
 app.put('/api/adr-increment-systems/:rowId/function-selection', async (req, res) => {
-  const client = await pool.connect();
   try {
-    const rowId = req.params.rowId;
-    let orderedIds =
-      req.body && Array.isArray(req.body.ordered_function_ids)
-        ? req.body.ordered_function_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n))
-        : [];
-    const seen = new Set();
-    orderedIds = orderedIds.filter((id) => {
-      if (seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-    const rowQ = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
-    if (rowQ.rowCount === 0) {
-      client.release();
-      return res.status(404).json({ error: 'Not found' });
-    }
-    const row = rowQ.rows[0];
-    const sysId = row.ar_systems_id;
-    const statusMap =
-      req.body && Array.isArray(req.body.ordered_function_statuses)
-        ? new Map(req.body.ordered_function_statuses.map((e) => [Number(e.ar_system_functions_id), e.increment_sysfunc_status_code || null]))
-        : new Map();
-    await client.query('BEGIN');
-    await client.query(queries.adr_increment_system_functions_delete_by_row, [rowId]);
-    const entries = [];
-    for (let i = 0; i < orderedIds.length; i++) {
-      const fid = orderedIds[i];
-      const chk = await client.query(queries.system_functions_by_ids_system, [sysId, [fid]]);
-      if (chk.rowCount === 0) {
-        await client.query('ROLLBACK');
-        client.release();
-        return res.status(400).json({ error: `Функция id=${fid} не принадлежит этой системе` });
+    const out = await withTransaction(pool, async (client, stage) => {
+      stage('function-selection-header');
+      const rowId = req.params.rowId;
+      let orderedIds =
+        req.body && Array.isArray(req.body.ordered_function_ids)
+          ? req.body.ordered_function_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n))
+          : [];
+      const seen = new Set();
+      orderedIds = orderedIds.filter((id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      const rowQ = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
+      if (rowQ.rowCount === 0) {
+        throw new HttpError(404, 'Not found');
       }
-      const statusCode = statusMap.get(fid) || null;
-      entries.push({ name: chk.rows[0].name, increment_sysfunc_status_code: statusCode });
-      const statusId = statusCode ? getIncrSysFuncStatusIdByCode(statusCode) : null;
-      await client.query(queries.adr_increment_system_functions_insert_row, [rowId, fid, i, statusId]);
-    }
-    const comment = formatSystemFunctionsComment(entries);
-    await client.query(queries.adr_increment_systems_update_comment, [comment, rowId]);
-    await client.query('COMMIT');
-    const out = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
-    client.release();
-    res.json(out.rows[0]);
+      const row = rowQ.rows[0];
+      const sysId = row.ar_systems_id;
+      const statusMap =
+        req.body && Array.isArray(req.body.ordered_function_statuses)
+          ? new Map(req.body.ordered_function_statuses.map((e) => [Number(e.ar_system_functions_id), e.increment_sysfunc_status_code || null]))
+          : new Map();
+      stage('function-selection-rows');
+      await client.query(queries.adr_increment_system_functions_delete_by_row, [rowId]);
+      const entries = [];
+      for (let i = 0; i < orderedIds.length; i++) {
+        const fid = orderedIds[i];
+        const chk = await client.query(queries.system_functions_by_ids_system, [sysId, [fid]]);
+        if (chk.rowCount === 0) {
+          throw new HttpError(400, `Функция id=${fid} не принадлежит этой системе`);
+        }
+        const statusCode = statusMap.get(fid) || null;
+        entries.push({ name: chk.rows[0].name, increment_sysfunc_status_code: statusCode });
+        const statusId = statusCode ? getIncrSysFuncStatusIdByCode(statusCode) : null;
+        await client.query(queries.adr_increment_system_functions_insert_row, [rowId, fid, i, statusId]);
+      }
+      const comment = formatSystemFunctionsComment(entries);
+      await client.query(queries.adr_increment_systems_update_comment, [comment, rowId]);
+      stage('function-selection-read');
+      const updated = await client.query(queries.adr_increment_system_get_by_id, [rowId]);
+      return updated.rows[0];
+    }, { stage: 'function-selection' });
+    res.json(out);
   } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch (_) { /* */ }
-    try {
-      client.release();
-    } catch (_) { /* */ }
-    console.error(err);
-    res.status(500).json({ error: err.message || 'Failed to save' });
+    console.error('[PUT /api/adr-increment-systems/:rowId/function-selection]', err);
+    sendTransactionError(res, err, 'Failed to save');
   }
 });
 

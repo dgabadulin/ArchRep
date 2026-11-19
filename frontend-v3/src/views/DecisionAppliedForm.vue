@@ -860,8 +860,8 @@ async function mergeIncrementDiagramRow(row) {
 function openDiagramEditorTab(row) {
   if (!ensureDrawioConfigured()) return
   if (!selectedIncrementId.value || !row?.id || !id.value) return
-  // _t: уникальный query, иначе браузер может сфокусировать уже открытую вкладку с тем же URL —
-  // Vue не перемонтирует экран и iframe не перезагружает mxfile (после «Обновить» / повторного «Открыть»).
+  // _t: уникальный query, чтобы при повторном «Открыть»/«Обновить» роут перемонтировал экран
+  // и iframe перезагрузил mxfile (иначе Vue переиспользует тот же компонент).
   // schemeLabel: как в колонке «Имя файла» на форме (совпадает с именем при скачивании без .drawio).
   const url = router.resolve({
     name: 'decision-applied-diagram-editor',
@@ -873,11 +873,10 @@ function openDiagramEditorTab(row) {
       schemeLabel: diagramDisplayName(row),
     },
   }).href
-  // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API схем.
-  const w = window.open(url, '_blank')
-  if (w) {
-    try { w.opener = null } catch (_) { /* ignore */ }
-  }
+  // Открываем в той же вкладке: у новой вкладки в истории только схема, и браузерная
+  // кнопка «Назад» уходила на пустую страницу. Возврат — кнопка «← К заключению»
+  // в DiagramEditorView или обычный Back браузера.
+  router.push(url)
 }
 
 /**
@@ -930,7 +929,7 @@ async function openDiagramPalette() {
   }
 }
 
-/** Новая вкладка редактора схемы в режиме палитры (`palette=1`). */
+/** Редактор схемы в режиме палитры (`palette=1`), открывается в текущей вкладке. */
 function openDiagramPaletteTab(row) {
   if (!selectedIncrementId.value || !row?.id || !id.value) return
   const url = router.resolve({
@@ -944,11 +943,8 @@ function openDiagramPaletteTab(row) {
       schemeLabel: diagramDisplayName(row),
     },
   }).href
-  // Без noopener: иначе новая вкладка не получает копию sessionStorage (JWT) → 401/403 на API.
-  const w = window.open(url, '_blank')
-  if (w) {
-    try { w.opener = null } catch (_) { /* ignore */ }
-  }
+  // Та же вкладка, что и у обычной схемы: Back браузера возвращает на форму заключения.
+  router.push(url)
 }
 
 async function downloadDiagramRow(row) {

@@ -58,5 +58,8 @@ export function messageFromApiError(status, body, fallbackStatusText) {
   if (notFound) return notFound
   if (body && typeof body.error === 'string' && body.error.trim()) return body.error
   if (body && typeof body.message === 'string' && body.message.trim()) return body.message
+  if (status === 502 || status === 503 || status === 504) {
+    return 'Сервис временно недоступен. Сохранение не подтверждено — перечитайте запись и повторите действие.'
+  }
   return fallbackStatusText || 'Ошибка запроса'
 }

@@ -3,6 +3,15 @@
     class="diagram-editor-page"
     :class="{ 'diagram-editor-page--minimal': isMinimal }"
   >
+    <div v-if="appliedId" class="diagram-back-bar">
+      <router-link
+        :to="{ name: 'decision-applied-edit', params: { id: appliedId } }"
+        class="diagram-back-link"
+      >
+        ← К заключению
+      </router-link>
+    </div>
+
     <div v-if="saveNotice || loadError || !drawioBase" class="diagram-alerts">
       <p v-if="saveNotice" class="save-notice" role="status">{{ saveNotice }}</p>
       <p v-if="loadError" class="error">
@@ -377,6 +386,27 @@ onUnmounted(() => {
   min-height: 0;
   width: 100%;
   gap: 0.75rem;
+}
+
+.diagram-back-bar {
+  flex-shrink: 0;
+  padding: 0.35rem 1rem 0;
+}
+.diagram-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--ar-border, #ddd);
+  border-radius: var(--ar-radius-sm, 6px);
+  background: var(--ar-surface, #fff);
+  color: var(--ar-link, #1a56db);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.diagram-back-link:hover {
+  text-decoration: underline;
 }
 
 .diagram-alerts {

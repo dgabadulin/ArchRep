@@ -53,6 +53,8 @@ async function request(path, options = {}) {
   if (!res.ok) {
     const err = new Error(res.statusText || 'API error')
     err.status = res.status
+    err.path = path
+    err.method = rest.method || 'GET'
     const text = await res.text()
     try {
       const body = JSON.parse(text)
