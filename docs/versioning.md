@@ -34,15 +34,17 @@ git tag v3.0.1 ──► package.json (bump делает Release Please)
 ## 3. Процесс изменения (как это работает)
 
 1. Коммит в `main` в формате **Conventional Commits**:
-   `feat(ui): …`, `fix(registry): …`, `perf: …`, `docs: …`;
-   ломающее — `feat!:` или тело `BREAKING CHANGE: <что сломано и что делать>`.
+   `feat(ui): добавлена…`, `fix(registry): исправлена…`, `perf: ускорено…`, `docs: описано…`;
+   `subject` — свершившийся факт в прошедшем времени; ломающее — `feat!:` или тело
+   `BREAKING CHANGE: <что сломано и что делать>`.
 2. **CI** (`.github/workflows/ci.yml`): `npm test`, `npm run check:routes`, сборка фронта.
 3. **Release Please** (`.github/workflows/release-please.yml`) на push в `main`:
    - читает коммиты с последнего тега, определяет bump;
    - создаёт/обновляет **один** PR `chore: release X.Y.Z` с изменениями только в
      `CHANGELOG.md`, `package.json`, `frontend-v3/package.json`, `.release-please-manifest.json`.
-4. **Утверждение release notes (владелец продукта)**: правки формулировок прямо в PR,
-   для MAJOR — раздел «Что сделать администратору»; затем merge.
+4. **Утверждение release notes (владелец продукта)**: формулировки пунктов — `subject` коммитов
+   в виде **свершившегося факта в прошедшем времени** («добавлена…», «исправлена…», «устранено…»);
+   правки — прямо в PR, для MAJOR — раздел «Что сделать администратору»; затем merge.
 5. После merge Release Please ставит тег `vX.Y.Z` и создаёт GitHub Release;
    workflow `release-notes.yml` прикладывает к релизу `release-notes.md` (front-matter + секция CHANGELOG).
    В `release-please-config.json` зафиксировано `"include-v-in-tag": true` и
@@ -199,7 +201,8 @@ GET /api/version  → {
 
 Как собирается asset (`scripts/release-notes.js` + `.github/workflows/release-notes.yml`):
 
-* пункты notes = `subject`-ы коммитов (согласованы с владельцем до коммита, `.clinerules` §1 п.4);
+* пункты notes = `subject`-ы коммитов (согласованы с владельцем до коммита, `.clinerules` §1 п.4)
+  в форме **свершившегося факта в прошедшем времени** («добавлена…», «исправлена…», «устранено…»);
   текст asset берётся из **тела GitHub Release** (`--body-file`), куда владелец добавляет **дополнения**
   («Что сделать администратору», пояснения) — подменять сам пункт в теле вместо `subject` не практикуется;
   fallback — секция `CHANGELOG.md` на теге (`--from-release`/локальный запуск без gh — CHANGELOG);
@@ -217,7 +220,8 @@ GET /api/version  → {
 2. Дождаться PR от `github-actions[bot]` `chore: release X.Y.Z` (искать по метке `autorelease: pending`).
 3. Проверить bump и состав файлов PR (только версии + CHANGELOG).
 4. **Согласовать release notes — стоп-шаг: без «ок» владельца PR не мержить.** Текст notes = `scope` +
-   `subject` согласованных коммитов (`feat`/`fix`/`perf`, блок `BREAKING CHANGE`); согласование идёт
+   `subject` согласованных коммитов (`feat`/`fix`/`perf`, блок `BREAKING CHANGE`) в форме
+   свершившегося факта в прошедшем времени; согласование идёт
    **до** коммита — `.clinerules` §1 п.4 (после пуша сообщение не переписывается). На релизе показать
    секцию CHANGELOG из PR и сверить с этими `subject`-ами; для MAJOR — добавить «Что сделать администратору».
    `CHANGELOG.md` в PR правится только по просьбе владельца (после последнего прогона RP и сразу мерж),
