@@ -493,14 +493,18 @@ const configs = computed(() => ({
       strokeColor: '#00c4ae',
     },
     /**
-     * Активный узел (issue #116). Форму рисует слот #override-node, поэтому рамку и заливку
-     * задаём там же; здесь стиль нужен для состояний библиотеки (подписи, z-order).
+     * Активный узел (issue #116). Форму рисует слот #override-node, но геометрию (type/width/height)
+     * библиотека берёт отсюда — она нужна для обрезки рёбер; без неё в путях рёбер появляется NaN
+     * и связи выбранного узла пропадают. Поэтому стиль повторяет normal целиком.
      */
     selected: {
-      color: '#eef2fa',
-      strokeColor: '#1f3864',
-      strokeWidth: 3,
+      type: 'rect',
+      width: 48,
+      height: 48,
       borderRadius: 8,
+      color: '#eef2fa',
+      strokeWidth: 3,
+      strokeColor: '#1f3864',
     },
     /** Одновременно активен только один узел. */
     selectable: 1,
@@ -518,10 +522,14 @@ const configs = computed(() => ({
       width: (edge) => (edge?.bundled ? 4 : 2),
       color: (edge) => (edge?.bundled ? '#4a6b3a' : '#8b9a6b'),
     },
-    /** Активная связь — красная (issue #116, п.2). Стрелка наследует цвет линии. */
+    /** Активная связь — красная (issue #116, п.2). Стиль полный: библиотека не мержит с normal. */
     selected: {
-      color: '#d32f2f',
       width: 3.5,
+      color: '#d32f2f',
+      dasharray: 0,
+      linecap: 'butt',
+      animate: false,
+      animationSpeed: 50,
     },
     /** Одновременно активна только одна связь. */
     selectable: 1,
