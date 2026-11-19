@@ -10,6 +10,8 @@ const DEFAULTS = {
   ARR_FILTER_COOKIE: 'ar_filters_',
   ARR_COOKIE_MAX_DAYS: 365,
   ARR_SEARCH_PLACEHOLDER: 'Поиск по всем полям таблицы',
+  /** Количество строк на странице табличных реестров (issue #114). */
+  ARR_TABLE_PAGE_SIZE: 50,
   GRAPH_LAYOUT_DEF: 'star',
   GRAPH_MAX_NODES: 200,
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,

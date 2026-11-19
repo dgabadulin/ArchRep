@@ -240,7 +240,10 @@ button {
 /* ---------- Таблицы ---------- */
 .table-wrap {
   padding: 0;
-  overflow: hidden;
+  /* issue #114: при нехватке ширины таблица прокручивается по горизонтали, а не обрезается.
+     Колонка действий закреплена справа (.table .col-actions), поэтому «Изменить/Открыть» не уезжает. */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .table {
   width: 100%;
@@ -278,6 +281,23 @@ button {
 }
 .table th.th-with-filter {
   vertical-align: middle;
+}
+/* issue #114: колонка действий всегда видна при горизонтальной прокрутке реестра. */
+.table th.col-actions,
+.table td.col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  white-space: nowrap;
+  background: var(--ar-surface);
+  box-shadow: -6px 0 8px -6px rgba(0, 0, 0, 0.18);
+}
+.table th.col-actions {
+  z-index: 2;
+  background: var(--ar-table-head-bg);
+}
+.table tbody tr:hover td.col-actions {
+  background: var(--ar-row-hover);
 }
 
 .link {

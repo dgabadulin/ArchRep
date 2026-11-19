@@ -355,6 +355,8 @@ const PUBLIC_CONFIG_DEFAULTS = {
   ARR_SORT_COOKIE: 'ar_sort_',
   ARR_COOKIE_MAX_DAYS: 365,
   ARR_SEARCH_PLACEHOLDER: 'Поиск по всем полям таблицы',
+  /** Количество строк на странице табличных реестров (issue #114). 0/пусто — дефолт фронта. */
+  ARR_TABLE_PAGE_SIZE: 50,
   GRAPH_LAYOUT_DEF: 'star',
   GRAPH_MAX_NODES: 200,
   GRAPH_INTEGRATION_FLOW_VISIBLE_MAX: 10,
