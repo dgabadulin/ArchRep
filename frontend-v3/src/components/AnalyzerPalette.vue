@@ -26,32 +26,30 @@
           <div class="palette-row">
             <dt>Связи каскадно</dt>
             <dd>
-              <label
-                class="palette-switch"
-                :class="{ 'palette-switch--disabled': !cascadeAvailable }"
-                :title="cascadeAvailable ? '' : 'Доступно, когда граф построен по одному объекту'"
-              >
-                <input
-                  type="checkbox"
-                  :checked="showAllEdgesCascade"
+              <span :title="cascadeAvailable ? '' : 'Доступно, когда граф построен по одному объекту'">
+                <select
+                  class="palette-select"
+                  :value="showAllEdgesCascade ? '1' : '0'"
                   :disabled="!cascadeAvailable"
-                  @change="emit('update:showAllEdgesCascade', $event.target.checked)"
-                />
-                <span>{{ showAllEdgesCascade ? 'Да' : 'Нет' }}</span>
-              </label>
+                  @change="emit('update:showAllEdgesCascade', $event.target.value === '1')"
+                >
+                  <option value="1">Да</option>
+                  <option value="0">Нет</option>
+                </select>
+              </span>
             </dd>
           </div>
           <div class="palette-row">
             <dt>Показать легенду</dt>
             <dd>
-              <label class="palette-switch">
-                <input
-                  type="checkbox"
-                  :checked="showLegend"
-                  @change="emit('update:showLegend', $event.target.checked)"
-                />
-                <span>{{ showLegend ? 'Да' : 'Нет' }}</span>
-              </label>
+              <select
+                class="palette-select"
+                :value="showLegend ? '1' : '0'"
+                @change="emit('update:showLegend', $event.target.value === '1')"
+              >
+                <option value="1">Да</option>
+                <option value="0">Нет</option>
+              </select>
             </dd>
           </div>
           <div class="palette-row">
@@ -319,18 +317,6 @@ watch(
 .palette-row dd {
   margin: 0;
 }
-.palette-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  cursor: pointer;
-  font-size: 0.84rem;
-  white-space: nowrap;
-}
-.palette-switch--disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
 .palette-select {
   max-width: 152px;
   padding: 0.2rem 0.3rem;
@@ -339,6 +325,10 @@ watch(
   background: var(--ar-surface);
   color: var(--ar-text);
   font-size: 0.82rem;
+}
+.palette-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .palette-props {
   padding: 0.4rem 0.5rem 0.5rem;
