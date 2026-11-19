@@ -10,6 +10,13 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по просьбе
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.5.0](https://github.com/dgabadulin/ArchRep/compare/v4.4.0...v4.5.0) (2026-11-19)
+
+
+### Новое
+
+* **analyzer:** выделение объектов и палитра свойств ([#116](https://github.com/dgabadulin/ArchRep/issues/116)) ([f5e3e42](https://github.com/dgabadulin/ArchRep/commit/f5e3e42e13946869ee9f83f6148d553a36b1d2ee))
+
 ## [4.4.0](https://github.com/dgabadulin/ArchRep/compare/v4.3.0...v4.4.0) (2026-11-10)
 
 
