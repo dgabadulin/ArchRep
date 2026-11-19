@@ -1,32 +1,28 @@
 <template>
   <div class="analyzer-wrap" :class="{ 'analyzer-wrap--embed': isEmbed }" ref="containerRef">
-    <div v-if="effectiveShowToolbar" class="toolbar-left">
-      <label v-if="showCascadeToggle" class="toolbar-toggle">
-        <input type="checkbox" v-model="showAllEdgesCascadeLocal" />
-        <span>Показывать связи (каскадно)</span>
-      </label>
-      <label v-if="legendRows.length" class="toolbar-toggle">
-        <input type="checkbox" v-model="showLegend" />
-        <span>Показать легенду</span>
-      </label>
-      <div class="toolbar-layouts">
-        <button
-          v-for="opt in layoutOptions"
-          :key="opt.type"
-          type="button"
-          class="btn-layout"
-          :title="opt.label"
-          @click="emit('layout', opt.type)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
-    </div>
+    <AnalyzerPalette
+      v-if="effectiveShowPalette"
+      v-model:show-all-edges-cascade="showAllEdgesCascadeLocal"
+      v-model:show-legend="showLegend"
+      :cascade-available="showCascadeToggle"
+      :layout-type="lastLayoutType"
+      :layout-options="layoutOptions"
+      :selected-node-id="activeNodeId"
+      :selected-edge-id="activeEdgeId"
+      :nodes="nodes"
+      :edges="edges"
+      :relations="relations"
+      :relation-types="relationTypes"
+      @layout="onPaletteLayout"
+      @open-flows="openBundledFlows"
+    />
     <div class="analyzer-graph-wrap" :style="graphWrapStyle">
     <v-network-graph
       ref="graphRef"
       v-model:layouts="layouts"
       v-model:zoom-level="zoomLevel"
+      v-model:selected-nodes="selectedNodeIds"
+      v-model:selected-edges="selectedEdgeIds"
       :nodes="nodes"
       :edges="edges"
       :configs="configs"
@@ -35,7 +31,25 @@
     >
       <template #override-node="{ nodeId: nid }">
         <g class="node-custom">
-          <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#f8f9fb" stroke="#00c4ae" stroke-width="1" />
+          <rect
+            v-if="isNodeActive(nid)"
+            x="-27"
+            y="-27"
+            width="54"
+            height="54"
+            rx="10"
+            fill="rgba(31, 56, 100, 0.10)"
+          />
+          <rect
+            x="-24"
+            y="-24"
+            width="48"
+            height="48"
+            rx="8"
+            :fill="isNodeActive(nid) ? '#eef2fa' : '#f8f9fb'"
+            :stroke="isNodeActive(nid) ? '#1f3864' : '#00c4ae'"
+            :stroke-width="isNodeActive(nid) ? 3 : 1"
+          />
           <g transform="translate(-12, -12)">
             <component :is="getIconComponent(nid)" :size="24" stroke-width="1.5" />
           </g>
@@ -214,6 +228,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseNodeId, getEntityTypeConfig } from '../utils/entityTypeConfig'
+import AnalyzerPalette from './AnalyzerPalette.vue'
 import { fetchEntity, relationDisplayName, INTEGRATION_FLOW_METAMODEL_RELATION_TYPES } from '../api/graphApi'
 import { getConfig } from '@/config/params'
 import { downloadBlob } from '../utils/downloadBlob'
@@ -257,6 +272,11 @@ const props = defineProps({
    * Если не задано: embed → false, analyzer → true.
    */
   showToolbar: { type: Boolean, default: undefined },
+  /**
+   * Палитра свойств (issue #116). Если не задано — показывается вместе с полной панелью
+   * (`variant="analyzer"`); во встройке палитры нет.
+   */
+  showPalette: { type: Boolean, default: undefined },
   /**
    * Контекстное меню ПКМ: full — как в анализаторе; minimal — только «Просмотр»; off — отключено.
    * Если не задано: embed → minimal, analyzer → full.
@@ -326,6 +346,11 @@ const effectiveShowToolbar = computed(() =>
   props.showToolbar !== undefined ? props.showToolbar : !isEmbed.value
 )
 
+/** Палитра свойств: по умолчанию вместе с полной панелью анализатора (issue #116). */
+const effectiveShowPalette = computed(() =>
+  props.showPalette !== undefined ? props.showPalette : effectiveShowToolbar.value
+)
+
 /** @type {import('vue').ComputedRef<'full'|'minimal'|'off'>} */
 const effectiveContextMenu = computed(() => {
   if (props.contextMenu === 'full' || props.contextMenu === 'minimal' || props.contextMenu === 'off') {
@@ -387,6 +412,52 @@ const showAllEdgesCascadeLocal = computed({
 
 const showLegend = ref(false)
 
+/**
+ * Выделение на графе (issue #116). Библиотека ведёт узлы и связи отдельными наборами,
+ * поэтому «одновременно активен только один объект» обеспечивается вручную (см. selectOnly).
+ * Лимит одновременного выбора задан конфигом: node.selectable / edge.selectable = 1.
+ */
+const selectedNodeIds = ref([])
+const selectedEdgeIds = ref([])
+const activeNodeId = computed(() => selectedNodeIds.value[0] || null)
+const activeEdgeId = computed(() => selectedEdgeIds.value[0] || null)
+
+/** Активный узел: рамка рисуется в слоте #override-node (у него свой прямоугольник). */
+function isNodeActive(nodeId) {
+  return selectedNodeIds.value.includes(nodeId)
+}
+
+/** Сделать объект единственным активным: очищаем «чужой» набор (узлы ↔ связи). */
+function selectOnly(kind, id) {
+  if (!id) return
+  if (kind === 'node') {
+    if (selectedEdgeIds.value.length) selectedEdgeIds.value = []
+    if (selectedNodeIds.value.length !== 1 || selectedNodeIds.value[0] !== id) {
+      selectedNodeIds.value = [id]
+    }
+    return
+  }
+  if (selectedNodeIds.value.length) selectedNodeIds.value = []
+  if (selectedEdgeIds.value.length !== 1 || selectedEdgeIds.value[0] !== id) {
+    selectedEdgeIds.value = [id]
+  }
+}
+
+/** Сбросить выделение, если объект исчез с графа (скрытие, свёртка модулей, новый граф). */
+function pruneSelection() {
+  const visibleNodes = props.nodes || {}
+  const visibleEdges = props.edges || {}
+  if (selectedNodeIds.value.some((id) => !visibleNodes[id])) {
+    selectedNodeIds.value = selectedNodeIds.value.filter((id) => visibleNodes[id])
+  }
+  if (selectedEdgeIds.value.some((id) => !visibleEdges[id])) {
+    selectedEdgeIds.value = selectedEdgeIds.value.filter((id) => visibleEdges[id])
+  }
+}
+
+watch(() => Object.keys(props.nodes || {}).join('|'), pruneSelection)
+watch(() => Object.keys(props.edges || {}).join('|'), pruneSelection)
+
 const containerRef = ref(null)
 const graphRef = ref(null)
 const contextMenuRef = ref(null)
@@ -421,6 +492,18 @@ const configs = computed(() => ({
       strokeWidth: 1,
       strokeColor: '#00c4ae',
     },
+    /**
+     * Активный узел (issue #116). Форму рисует слот #override-node, поэтому рамку и заливку
+     * задаём там же; здесь стиль нужен для состояний библиотеки (подписи, z-order).
+     */
+    selected: {
+      color: '#eef2fa',
+      strokeColor: '#1f3864',
+      strokeWidth: 3,
+      borderRadius: 8,
+    },
+    /** Одновременно активен только один узел. */
+    selectable: 1,
     label: {
       visible: true,
       direction: 'south',
@@ -435,6 +518,13 @@ const configs = computed(() => ({
       width: (edge) => (edge?.bundled ? 4 : 2),
       color: (edge) => (edge?.bundled ? '#4a6b3a' : '#8b9a6b'),
     },
+    /** Активная связь — красная (issue #116, п.2). Стрелка наследует цвет линии. */
+    selected: {
+      color: '#d32f2f',
+      width: 3.5,
+    },
+    /** Одновременно активна только одна связь. */
+    selectable: 1,
     type: 'curve',
     gap: 12,
     marker: {
@@ -572,34 +662,43 @@ const contextMenuIntegrationFlowId = computed(() => {
   return integrationFlowRegistryId(props.edges?.[eid], eid)
 })
 
-const eventHandlers = computed(() => {
-  if (effectiveContextMenu.value === 'off') return {}
-  return {
-    'node:contextmenu': ({ node, event }) => {
-      event.preventDefault()
-      contextMenu.value = {
-        show: true,
-        type: 'node',
-        node,
-        edge: null,
-        x: event.clientX,
-        y: event.clientY,
-      }
-      nextTick(updateCtxSubmenuFlip)
-    },
-    'edge:contextmenu': ({ edge, event }) => {
-      event.preventDefault()
-      contextMenu.value = {
-        show: true,
-        type: 'edge',
-        node: null,
-        edge: Array.isArray(edge) ? edge[0] : edge,
-        x: event.clientX,
-        y: event.clientY,
-      }
-    },
-  }
-})
+const eventHandlers = computed(() => ({
+  /**
+   * Выделение работает всегда — в том числе когда контекстное меню отключено (`contextMenu: 'off'`).
+   * Библиотека сама ведёт наборы выбранных узлов/связей, но не очищает «чужой» набор:
+   * единственность активного объекта обеспечивает selectOnly (issue #116, п.1–3).
+   */
+  'node:click': ({ node }) => selectOnly('node', node),
+  'edge:click': ({ edge }) => selectOnly('edge', Array.isArray(edge) ? edge[0] : edge),
+  'node:contextmenu': ({ node, event }) => {
+    selectOnly('node', node)
+    if (effectiveContextMenu.value === 'off') return
+    event.preventDefault()
+    contextMenu.value = {
+      show: true,
+      type: 'node',
+      node,
+      edge: null,
+      x: event.clientX,
+      y: event.clientY,
+    }
+    nextTick(updateCtxSubmenuFlip)
+  },
+  'edge:contextmenu': ({ edge, event }) => {
+    const edgeId = Array.isArray(edge) ? edge[0] : edge
+    selectOnly('edge', edgeId)
+    if (effectiveContextMenu.value === 'off') return
+    event.preventDefault()
+    contextMenu.value = {
+      show: true,
+      type: 'edge',
+      node: null,
+      edge: edgeId,
+      x: event.clientX,
+      y: event.clientY,
+    }
+  },
+}))
 
 function closeContextMenu() {
   contextMenu.value.show = false
@@ -696,11 +795,9 @@ function onCtxOpenIntegrationInRegistry() {
   window.open(integrationEditHref(flowId), '_blank', 'noopener,noreferrer')
 }
 
-function onCtxShowBundledFlows() {
-  const edgeId = contextMenu.value.edge
-  if (!edgeId) { closeContextMenu(); return }
-  const edge = props.edges[edgeId]
-  closeContextMenu()
+/** Модалка «Список потоков данных» для свёрнутого пучка: ПКМ по связи или кнопка в палитре. */
+function openBundledFlows(edgeId) {
+  const edge = edgeId ? props.edges[edgeId] : null
   if (!edge?.bundled) return
   const fromLabel = nodeDisplayLabel(edge.source)
   const toLabel = nodeDisplayLabel(edge.target)
@@ -718,6 +815,18 @@ function onCtxShowBundledFlows() {
     title: `Потоки передачи данных (${fromLabel} -> ${toLabel})`,
     rows,
   }
+}
+
+function onCtxShowBundledFlows() {
+  const edgeId = contextMenu.value.edge
+  closeContextMenu()
+  if (edgeId) openBundledFlows(edgeId)
+}
+
+/** Смена топологии из палитры: применяет родитель (как и прежние кнопки раскладок). */
+function onPaletteLayout(layoutType) {
+  if (!layoutType) return
+  emit('layout', layoutType)
 }
 
 /** Минимальная длина ребра по подписям (в единицах графа). ~6 ед. на символ при fontSize 10 + отступ + 48 под узел. */
@@ -1373,43 +1482,6 @@ defineExpose({
 .analyzer-wrap--embed .analyzer-graph-wrap {
   height: 420px;
   min-height: 280px;
-}
-.toolbar-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  flex-shrink: 0;
-  padding: 0.5rem;
-  background: var(--ar-table-head-bg);
-  border: 1px solid var(--ar-border);
-  border-radius: var(--ar-radius);
-}
-.toolbar-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.toolbar-toggle input { flex-shrink: 0; }
-.toolbar-layouts {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.btn-layout {
-  padding: 0.4rem 0.6rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--ar-border);
-  border-radius: 4px;
-  background: var(--ar-surface);
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-}
-.btn-layout:hover {
-  background: var(--ar-row-hover);
 }
 .analyzer-graph-wrap {
   position: relative;
