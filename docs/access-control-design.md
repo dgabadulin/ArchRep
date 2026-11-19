@@ -238,7 +238,7 @@ Effective permissions = объединение permissions всех назнач
 | Permission | Ресурс |
 |------------|--------|
 | `system:read` / `write` / `delete` / `export` | Каталог ИС и модулей |
-| `system_function:read` / `write` / `delete` | Функции ИС |
+| `system_function:read` / `write` / `delete` / `export` | Функции ИС (реестр #76) |
 | `integration_flow:read` / `write` / `delete` / `export` | Реестр интеграций |
 | `web_resource:read` / `write` / `delete` / `export` | Реестр веб-ресурсов |
 | `domain:read` / `write` / `delete` / `export` | Реестр доменов (#67) |
@@ -316,7 +316,7 @@ Effective permissions = объединение permissions всех назнач
 | `goals:read` | R | R | R | R |
 | **Application** |
 | `system:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
-| `system_function:*` | R | R,W,D | R,W,D | R,W,D |
+| `system_function:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `integration_flow:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `web_resource:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
 | `domain:*` | R,E | R,W,D,E | R,W,D,E | R,W,D,E |
@@ -425,6 +425,8 @@ Effective permissions = объединение permissions всех назнач
 |-----|------------|
 | `/api/ar-systems`, add/update | `system:*` |
 | `/api/ar-systems/:id/system-functions` | `system_function:*` |
+| `/api/system-functions` (реестр #76, список/карточка/мутации) | `system_function:read` / `:write` / `:delete`; Excel → `:export` |
+| `GET /api/ar-systems` (lookup системы для функции) | **anyOf** `system_function:read` + другие FK-read |
 | `GET /api/integration-flows?system_id=` | **anyOf** `integration_flow:read` \| `system:read` (срез карточки ИС) |
 | `/api/integration-flows` (реестр / карточка потока) | `integration_flow:*` |
 | `/api/web-resources` | `web_resource:*` |

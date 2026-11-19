@@ -930,8 +930,13 @@ const ENTITY_TYPES = {
     get: 'system_functions_get_by_id',
     labelOf: (r) => r.name || `#${r.id}`,
     brief: (r) => pick(r, ['id', 'ar_systems_id', 'name', 'description', 'status_name']),
-    // Экранного реестра нет (функции правятся внутри формы системы) — только поиск и карточка.
-    prefillFields: [],
+    form: {
+      new: () => '/system-functions/new',
+      edit: (id) => `/system-functions/${id}/edit`,
+      view: (id) => `/system-functions/${id}/edit`,
+    },
+    listPath: '/system-functions',
+    prefillFields: ['name', 'description'],
   },
   /**
    * Каталог инфраструктуры из Netbox (read-only): формы нет, предзаполнение не поддерживается.

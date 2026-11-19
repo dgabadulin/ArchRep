@@ -76,6 +76,7 @@ function refLookup(prefix, ...hostReads) {
 
 const SYSTEM_FK_READS = [
   'system:read',
+  'system_function:read',
   'integration_flow:read',
   'web_resource:read',
   'adr_applied:read',
@@ -164,7 +165,7 @@ const RULES = [
   { methods: ['POST'], pattern: re('/api/systems-technologies'), permissions: ['system:write'] },
   { methods: ['DELETE'], pattern: re('/api/systems-technologies'), permissions: ['system:write'] },
 
-  ...crud('/api/system-functions', 'system_function', { withExport: false }),
+  ...crud('/api/system-functions', 'system_function'),
 
   {
     methods: ['GET'],
@@ -246,7 +247,7 @@ const RULES = [
   refLookup('/api/adr-system-statuses', 'adr_applied:read'),
   refLookup('/api/adr-relation-statuses', 'adr_applied:read'),
   refLookup('/api/adr-system-function-statuses', 'adr_applied:read'),
-  refLookup('/api/system-function-statuses', 'adr_applied:read'),
+  refLookup('/api/system-function-statuses', 'adr_applied:read', 'system_function:read', 'system:read'),
   refLookup('/api/integration-flow-event-types', 'integration_flow:read'),
   refLookup('/api/integration-flow-statuses', 'integration_flow:read'),
   refLookup('/api/ar-gap-types', 'gap:read'),

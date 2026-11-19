@@ -27,6 +27,7 @@ export const menuItems = [
     icon: 'desktop',
     children: [
       { label: 'Каталог ИС', path: '/systems', icon: 'list', requiredPermission: 'system:read' },
+      { label: 'Реестр функций ИС', path: '/system-functions', icon: 'function', requiredPermission: 'system_function:read' },
       { label: 'Реестр интеграций', path: '/integrations', icon: 'share', requiredPermission: 'integration_flow:read' },
       { label: 'Реестр веб-ресурсов', path: '/web-resources', icon: 'globe', requiredPermission: 'web_resource:read' },
       { label: 'Реестр доменов', path: '/domains', icon: 'globe', requiredPermission: 'domain:read' },

@@ -9,6 +9,7 @@ function buildQuery(params) {
   if (params?.excel) q.set('excel', '1')
   if (params?.vendor_id != null) q.set('vendor_id', params.vendor_id)
   if (params?.system_id != null) q.set('system_id', params.system_id)
+  if (params?.status_id != null) q.set('status_id', params.status_id)
   if (params?.source_id != null) q.set('source_id', params.source_id)
   if (params?.target_id != null) q.set('target_id', params.target_id)
   if (params?.exclude_modules) q.set('exclude_modules', '1')
@@ -169,6 +170,12 @@ export const api = {
   getSystemFunction: (id) => request(`/api/system-functions/${id}`),
   createSystemFunction: (systemId, body) =>
     request(`/api/ar-systems/${systemId}/system-functions`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Реестр функций ИС (issue #76): system_id/status_id — серверные фильтры списка. */
+  createSystemFunctionRegistry: (body) => request('/api/system-functions', { method: 'POST', body: JSON.stringify(body) }),
+  updateSystemFunctionRegistry: (id, body) =>
+    request(`/api/system-functions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** 409, если функция выбрана в ADR (тело: usages, adr_codes). */
+  deleteSystemFunctionRegistry: (id) => request(`/api/system-functions/${id}`, { method: 'DELETE' }),
   /** ids — массив id функций каталога; 409 если функции выбраны в ADR (тело: usages, adr_codes) */
   deleteSystemFunctions: (systemId, ids) =>
     request(`/api/ar-systems/${systemId}/system-functions`, {

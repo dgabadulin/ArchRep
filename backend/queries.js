@@ -462,10 +462,52 @@ module.exports = {
     WHERE ($1::text IS NULL OR trim($1::text) = '' OR sf.name ILIKE '%' || trim($1::text) || '%')
     ORDER BY lower(trim(sf.name)), sf.id
     LIMIT 300`,
+  /**
+   * Реестр функций ИС (issue #76): список для экрана `/system-functions`.
+   * $1 — поиск (наименование/примечание функции, код/наименование системы), $2 — система, $3 — статус в реестре.
+   * NULL/пусто в фильтре означает «без ограничения».
+   */
+  system_functions_registry_select: `
+    SELECT sf.id, sf.ar_systems_id, sf.name, sf.description,
+           sf.ar_system_function_statuses_id,
+           st.name AS status_name, st.code AS status_code,
+           s.code AS system_code, s.name AS system_name, s.fullname AS system_fullname,
+           (s.parent_ar_systems_id IS NOT NULL) AS system_is_module,
+           sf.created_at, sf.updated_at
+    FROM archrep.ar_system_functions sf
+    INNER JOIN archrep.ar_systems s ON s.id = sf.ar_systems_id
+    LEFT JOIN archrep.ar_system_function_statuses st ON st.id = sf.ar_system_function_statuses_id
+    WHERE (
+      $1::text IS NULL OR trim($1::text) = ''
+      OR sf.name ILIKE '%' || trim($1::text) || '%'
+      OR COALESCE(sf.description, '') ILIKE '%' || trim($1::text) || '%'
+      OR s.name ILIKE '%' || trim($1::text) || '%'
+      OR s.code ILIKE '%' || trim($1::text) || '%'
+    )
+      AND ($2::bigint IS NULL OR sf.ar_systems_id = $2::bigint)
+      AND ($3::bigint IS NULL OR sf.ar_system_function_statuses_id = $3::bigint)
+    ORDER BY lower(trim(s.name)), lower(trim(sf.name)), sf.id`,
+  /** Карточка функции реестра (issue #76): те же поля, что в списке. */
+  system_functions_registry_get: `
+    SELECT sf.id, sf.ar_systems_id, sf.name, sf.description,
+           sf.ar_system_function_statuses_id,
+           st.name AS status_name, st.code AS status_code,
+           s.code AS system_code, s.name AS system_name, s.fullname AS system_fullname,
+           (s.parent_ar_systems_id IS NOT NULL) AS system_is_module,
+           sf.created_at, sf.updated_at
+    FROM archrep.ar_system_functions sf
+    INNER JOIN archrep.ar_systems s ON s.id = sf.ar_systems_id
+    LEFT JOIN archrep.ar_system_function_statuses st ON st.id = sf.ar_system_function_statuses_id
+    WHERE sf.id = $1`,
   system_functions_insert: `INSERT INTO archrep.ar_system_functions (ar_systems_id, name, description) VALUES ($1, trim($2), NULLIF(trim($3),'')) RETURNING *`,
   system_functions_insert_with_status: `INSERT INTO archrep.ar_system_functions (ar_systems_id, name, description, ar_system_function_statuses_id) VALUES ($1, trim($2), NULLIF(trim($3),''), NULLIF($4,'')::BIGINT) RETURNING *`,
+  /** Создание функции из реестра (issue #76): система + наименование + примечание + статус реестра. */
+  system_functions_insert_registry: `INSERT INTO archrep.ar_system_functions (ar_systems_id, name, description, ar_system_function_statuses_id) VALUES ($1, trim($2), NULLIF(trim($3),''), NULLIF($4,'')::BIGINT) RETURNING id`,
+  /** Правка функции из реестра (issue #76): смена системы допустима, уникальность проверяет БД. */
+  system_functions_update_registry: `UPDATE archrep.ar_system_functions SET ar_systems_id = $1, name = trim($2), description = NULLIF(trim($3),''), ar_system_function_statuses_id = NULLIF($4,'')::BIGINT, updated_at = current_timestamp WHERE id = $5 RETURNING id`,
   system_function_status_update: `UPDATE archrep.ar_system_functions SET ar_system_function_statuses_id = NULLIF($1,'')::BIGINT, updated_at = current_timestamp WHERE id = $2 RETURNING *`,
   system_functions_delete_many: `DELETE FROM archrep.ar_system_functions WHERE ar_systems_id = $1 AND id = ANY($2::bigint[]) RETURNING id`,
+  system_functions_delete_by_id: `DELETE FROM archrep.ar_system_functions WHERE id = $1 RETURNING id`,
   /** Какие заключения (ADR) и инкременты ссылаются на данные функции каталога — до DELETE. */
   system_functions_increment_usage_for_delete: `
     SELECT DISTINCT
@@ -482,6 +524,24 @@ module.exports = {
     INNER JOIN archrep.ar_adr_increments inc ON ais.ar_adr_increment_id = inc.id
     INNER JOIN archrep.ar_adrs_applied a ON inc.ar_adrs_applied_id = a.id
     WHERE sf.ar_systems_id = $1 AND sf.id = ANY($2::bigint[])
+    ORDER BY a.code, inc.name, sf.name
+  `,
+  /** Использование одной функции в заключениях — карточка реестра (issue #76) и проверка перед DELETE. */
+  system_function_increment_usage: `
+    SELECT DISTINCT
+      a.id AS ar_adrs_applied_id,
+      a.code AS adr_code,
+      a.task_name AS adr_task_name,
+      inc.id AS ar_adr_increment_id,
+      inc.name AS increment_name,
+      sf.id AS ar_system_functions_id,
+      sf.name AS function_name
+    FROM archrep.ar_adr_increment_system_functions j
+    INNER JOIN archrep.ar_system_functions sf ON j.ar_system_functions_id = sf.id
+    INNER JOIN archrep.ar_adr_increment_systems ais ON j.ar_adr_increment_system_id = ais.id
+    INNER JOIN archrep.ar_adr_increments inc ON ais.ar_adr_increment_id = inc.id
+    INNER JOIN archrep.ar_adrs_applied a ON inc.ar_adrs_applied_id = a.id
+    WHERE sf.id = $1
     ORDER BY a.code, inc.name, sf.name
   `,
   adr_increment_system_functions_delete_by_row: `DELETE FROM archrep.ar_adr_increment_system_functions WHERE ar_adr_increment_system_id = $1`,

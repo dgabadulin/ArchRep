@@ -1822,11 +1822,39 @@ app.delete('/api/increments/:incrementId/systems/:rowId', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 
-/** Глобальный поиск функций ИС (метамодель / граф). */
+/**
+ * Ответ 409 при попытке удалить функции, выбранные в архитектурных заключениях (issue #76).
+ * Один формат для DELETE в контексте системы и DELETE из реестра: код ADR + сообщение.
+ */
+function buildSystemFunctionUsageConflict(usageRows) {
+  const usages = (usageRows || []).map((row) => ({
+    ar_adrs_applied_id: row.ar_adrs_applied_id,
+    adr_code: row.adr_code,
+    adr_task_name: row.adr_task_name,
+    ar_adr_increment_id: row.ar_adr_increment_id,
+    increment_name: row.increment_name,
+    ar_system_functions_id: row.ar_system_functions_id,
+    function_name: row.function_name,
+  }));
+  const adrCodes = [...new Set(usages.map((u) => String(u.adr_code || '').trim()).filter(Boolean))].sort();
+  const adrList =
+    adrCodes.length <= 5 ? adrCodes.join(', ') : `${adrCodes.slice(0, 5).join(', ')}… (+${adrCodes.length - 5})`;
+  return {
+    error:
+      'Удаление невозможно: выбранные функции используются в архитектурных заключениях. Сначала уберите их в форме соответствующего заключения (раздел систем инкремента).',
+    adr_codes: adrCodes,
+    usages,
+    message: `Обнаружено в ADR: ${adrList}.`,
+  };
+}
+
+/** Реестр функций ИС (issue #76): поиск + фильтры «система» и «статус». */
 app.get('/api/system-functions', async (req, res) => {
   try {
     const search = (req.query.search || '').trim();
-    const r = await pool.query(queries.system_functions_select_search, [search || null]);
+    const systemId = normalizeOptionalBigint(req.query.system_id);
+    const statusId = normalizeOptionalBigint(req.query.status_id);
+    const r = await pool.query(queries.system_functions_registry_select, [search || null, systemId, statusId]);
     res.json(r.rows);
   } catch (err) {
     console.error(err);
@@ -1834,14 +1862,129 @@ app.get('/api/system-functions', async (req, res) => {
   }
 });
 
+/** Карточка функции реестра: поля + связи метамодели + использование в ADR (issue #76). */
 app.get('/api/system-functions/:id', async (req, res) => {
   try {
-    const r = await pool.query(queries.system_functions_get_by_id, [req.params.id]);
+    const functionId = normalizeOptionalBigint(req.params.id);
+    if (functionId == null) return res.status(400).json({ error: 'Некорректный id функции' });
+    const r = await pool.query(queries.system_functions_registry_get, [functionId]);
     if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    res.json(r.rows[0]);
+    const row = r.rows[0];
+    const [outgoing, incoming, usages] = await Promise.all([
+      pool.query(queries.metamodel_relations_by_from, ['system_function', functionId]),
+      pool.query(queries.metamodel_relations_by_to, ['system_function', functionId]),
+      pool.query(queries.system_function_increment_usage, [functionId]),
+    ]);
+    const relationRows = [
+      ...(outgoing.rows || []).map((rel) => ({ ...rel, direction: 'out' })),
+      ...(incoming.rows || []).map((rel) => ({ ...rel, direction: 'in' })),
+    ];
+    const enriched = await enrichRelationRows(pool, relationRows);
+    // Подпись самой функции берём из карточки: общий справочник подписей ограничен LIMIT 300
+    // и на больших реестрах мог не вернуть текущую строку.
+    const relations = enriched.map((rel) => ({
+      ...rel,
+      from_entity_name:
+        rel.from_entity_type === 'system_function' && Number(rel.from_entity_id) === functionId
+          ? row.name
+          : rel.from_entity_name,
+      to_entity_name:
+        rel.to_entity_type === 'system_function' && Number(rel.to_entity_id) === functionId
+          ? row.name
+          : rel.to_entity_name,
+    }));
+    res.json({ ...row, relations, usages: usages.rows || [] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+/** Создание функции из реестра (issue #76). */
+app.post('/api/system-functions', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const systemId = normalizeOptionalBigint(b.ar_systems_id);
+    const name = String(b.name || '').trim();
+    if (systemId == null) return res.status(400).json({ error: 'Укажите систему функции (ar_systems_id)' });
+    if (!name) return res.status(400).json({ error: 'Укажите наименование функции' });
+    const statusId = normalizeOptionalBigint(b.ar_system_function_statuses_id);
+    const r = await pool.query(queries.system_functions_insert_registry, [
+      systemId,
+      name,
+      b.description,
+      statusId,
+    ]);
+    res.status(201).json({ id: r.rows[0].id });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Функция с таким названием уже существует для этой системы.' });
+    }
+    if (err.code === '23503') {
+      return res.status(400).json({ error: 'Система или статус не найдены.' });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to create' });
+  }
+});
+
+/** Правка функции из реестра (issue #76). */
+app.put('/api/system-functions/:id', async (req, res) => {
+  try {
+    const functionId = normalizeOptionalBigint(req.params.id);
+    if (functionId == null) return res.status(400).json({ error: 'Некорректный id функции' });
+    const b = req.body || {};
+    const systemId = normalizeOptionalBigint(b.ar_systems_id);
+    const name = String(b.name || '').trim();
+    if (systemId == null) return res.status(400).json({ error: 'Укажите систему функции (ar_systems_id)' });
+    if (!name) return res.status(400).json({ error: 'Укажите наименование функции' });
+    const statusId = normalizeOptionalBigint(b.ar_system_function_statuses_id);
+    const r = await pool.query(queries.system_functions_update_registry, [
+      systemId,
+      name,
+      b.description,
+      statusId,
+      functionId,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ id: r.rows[0].id });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Функция с таким названием уже существует для этой системы.' });
+    }
+    if (err.code === '23503') {
+      return res.status(400).json({ error: 'Система или статус не найдены.' });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to update' });
+  }
+});
+
+/** Удаление функции из реестра: занятость в заключениях проверяется до DELETE (issue #76). */
+app.delete('/api/system-functions/:id', async (req, res) => {
+  try {
+    const functionId = normalizeOptionalBigint(req.params.id);
+    if (functionId == null) return res.status(400).json({ error: 'Некорректный id функции' });
+    const exists = await pool.query(queries.system_functions_registry_get, [functionId]);
+    if (exists.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const usageQ = await pool.query(queries.system_function_increment_usage, [functionId]);
+    if (usageQ.rowCount > 0) {
+      return res.status(409).json(buildSystemFunctionUsageConflict(usageQ.rows));
+    }
+
+    const r = await pool.query(queries.system_functions_delete_by_id, [functionId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ deleted: r.rowCount, ids: r.rows.map((row) => row.id) });
+  } catch (err) {
+    if (err.code === '23503') {
+      return res.status(409).json({
+        error:
+          'Удаление невозможно: функция всё ещё связана с заключениями (ограничение в БД). Обновите страницу и проверьте выбор функций в ADR.',
+      });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to delete' });
   }
 });
 
@@ -1884,25 +2027,7 @@ app.delete('/api/ar-systems/:systemId/system-functions', async (req, res) => {
 
     const usageQ = await pool.query(queries.system_functions_increment_usage_for_delete, [systemId, ids]);
     if (usageQ.rowCount > 0) {
-      const usages = usageQ.rows.map((row) => ({
-        ar_adrs_applied_id: row.ar_adrs_applied_id,
-        adr_code: row.adr_code,
-        adr_task_name: row.adr_task_name,
-        ar_adr_increment_id: row.ar_adr_increment_id,
-        increment_name: row.increment_name,
-        ar_system_functions_id: row.ar_system_functions_id,
-        function_name: row.function_name,
-      }));
-      const adrCodes = [...new Set(usages.map((u) => String(u.adr_code || '').trim()).filter(Boolean))].sort();
-      const adrList =
-        adrCodes.length <= 5 ? adrCodes.join(', ') : `${adrCodes.slice(0, 5).join(', ')}… (+${adrCodes.length - 5})`;
-      return res.status(409).json({
-        error:
-          'Удаление невозможно: выбранные функции используются в архитектурных заключениях. Сначала уберите их в форме соответствующего заключения (раздел систем инкремента).',
-        adr_codes: adrCodes,
-        usages,
-        message: `Обнаружено в ADR: ${adrList}.`,
-      });
+      return res.status(409).json(buildSystemFunctionUsageConflict(usageQ.rows));
     }
 
     const r = await pool.query(queries.system_functions_delete_many, [systemId, ids]);
