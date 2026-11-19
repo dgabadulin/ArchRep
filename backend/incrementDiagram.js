@@ -61,6 +61,45 @@ function gridRound(n, step) {
   return Math.ceil(Number(n) / s) * s;
 }
 
+/** Прямоугольники пересекаются с учётом зазора. */
+function rectsOverlap(a, b, gap = 0) {
+  return !(
+    a.x + a.width + gap <= b.x ||
+    b.x + b.width + gap <= a.x ||
+    a.y + a.height + gap <= b.y ||
+    b.y + b.height + gap <= a.y
+  );
+}
+
+/**
+ * Свободная позиция для новой вершины при merge (issue: добавленная система
+ * накладывалась на уже существующие). Предпочтение — позиция слоистой раскладки;
+ * если она занята сохранёнными координатами, сканируем вправо/вниз с шагом размера.
+ *
+ * @param {{x:number,y:number,width:number,height:number}} preferred
+ * @param {{x:number,y:number,width:number,height:number}[]} occupied
+ * @param {number} gap
+ * @returns {{x:number,y:number,width:number,height:number}}
+ */
+function placeFreeRect(preferred, occupied, gap = 40) {
+  const stepX = Math.max(40, Number(preferred.width) || 0) + gap;
+  const stepY = Math.max(40, Number(preferred.height) || 0) + gap;
+  let x = Number(preferred.x) || 0;
+  let y = Number(preferred.y) || 0;
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const box = { x, y, width: preferred.width, height: preferred.height };
+    if (!occupied.some((other) => rectsOverlap(box, other, gap))) return box;
+    x += stepX;
+    if (attempt % 20 === 19) {
+      x = Number(preferred.x) || 0;
+      y += stepY;
+    }
+  }
+  // Крайний случай: под всеми занятыми прямоугольниками.
+  const maxBottom = occupied.reduce((max, box) => Math.max(max, box.y + box.height), y);
+  return { x: Number(preferred.x) || 0, y: maxBottom + gap, width: preferred.width, height: preferred.height };
+}
+
 /** Грубый перенос слов по длине символов (латиница/кириллица). */
 function wrapLines(text, maxChars) {
   const t = String(text || '').replace(/\r\n/g, '\n').trim();
@@ -368,10 +407,40 @@ function buildMxfile(opts) {
     maxH = Math.max(maxH, z.height);
   }
 
-  const useLayeredLayout = !geometryMap || geometryMap.size === 0;
-  const nodePositions = useLayeredLayout
-    ? layoutNodes(sizes, relations, layout)
-    : null;
+  const hasSavedGeometry = Boolean(geometryMap && geometryMap.size > 0);
+  // Раскладку считаем всегда: она даёт предпочтительные позиции для новых систем.
+  const nodePositions = layoutNodes(sizes, relations, layout);
+  const margin = Number(layout.margin) || 40;
+  const nodeSep = Number(layout.nodeSep) || 40;
+  const rankSep = Number(layout.rankSep) || 80;
+
+  // Сохранённые вершины. Если они уже пересекаются (схема, собранная старым
+  // генератором), такие узлы считаем невалидными и при merge переносим в свободные места.
+  const savedBoxes = new Map();
+  if (geometryMap) {
+    for (const z of sizes) {
+      const sid = `sys-${z.sys.ar_systems_id}`;
+      const saved = geometryMap.get(sid);
+      if (saved) savedBoxes.set(sid, { x: saved.x, y: saved.y, width: saved.width, height: saved.height });
+    }
+  }
+  const invalidSaved = new Set();
+  const savedEntries = [...savedBoxes.entries()];
+  for (let a = 0; a < savedEntries.length; a++) {
+    for (let b = a + 1; b < savedEntries.length; b++) {
+      const [sidA, boxA] = savedEntries[a];
+      const [sidB, boxB] = savedEntries[b];
+      if (rectsOverlap(boxA, boxB, 0)) {
+        invalidSaved.add(sidA);
+        invalidSaved.add(sidB);
+      }
+    }
+  }
+  /** Занятые прямоугольники: валидные сохранённые вершины + уже размещённые новые. */
+  const occupied = [];
+  for (const [sid, box] of savedBoxes) {
+    if (!invalidSaved.has(sid)) occupied.push(box);
+  }
 
   const positionsForRoutes = new Map();
   sizes.forEach((z, i) => {
@@ -385,27 +454,40 @@ function buildMxfile(opts) {
     let w = z.width;
     let h = z.height;
     const g = geometryMap && geometryMap.get(sid);
-    if (g) {
+    if (g && !invalidSaved.has(sid)) {
       x = g.x;
       y = g.y;
       w = g.width;
       h = g.height;
-    } else if (nodePositions && nodePositions.has(sid)) {
-      const p = nodePositions.get(sid);
-      x = p.x;
-      y = p.y;
-      w = p.width;
-      h = p.height;
     } else {
-      const margin = Number(layout.margin) || 40;
-      const nodeSep = Number(layout.nodeSep) || 40;
-      const rankSep = Number(layout.rankSep) || 80;
-      const n = sizes.length;
-      const cols = n === 0 ? 1 : Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
-      const cellW = maxW + nodeSep;
-      const cellH = maxH + rankSep;
-      x = margin + (i % cols) * cellW;
-      y = margin + Math.floor(i / cols) * cellH;
+      let candidate;
+      if (g) {
+        // Сохранённая позиция пересекается с другой — пробуем её и ищем свободное место.
+        candidate = { x: g.x, y: g.y, width: g.width, height: g.height };
+      } else if (nodePositions && nodePositions.has(sid)) {
+        const p = nodePositions.get(sid);
+        candidate = { x: p.x, y: p.y, width: p.width, height: p.height };
+      } else {
+        const n = sizes.length;
+        const cols = n === 0 ? 1 : Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
+        const cellW = maxW + nodeSep;
+        const cellH = maxH + rankSep;
+        candidate = {
+          x: margin + (i % cols) * cellW,
+          y: margin + Math.floor(i / cols) * cellH,
+          width: z.width,
+          height: z.height,
+        };
+      }
+      // При merge старые узлы сохраняют координаты; новый узел не должен попасть на них.
+      const placed = hasSavedGeometry
+        ? placeFreeRect(candidate, occupied, nodeSep)
+        : candidate;
+      x = placed.x;
+      y = placed.y;
+      w = placed.width;
+      h = placed.height;
+      occupied.push({ x, y, width: w, height: h });
     }
     const style =
       `rounded=1;whiteSpace=wrap;html=1;arcSize=${corner};` +
