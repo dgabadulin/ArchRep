@@ -1712,7 +1712,10 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
       }
     }
 
-    const newStatusId = ar_adr_statuses_id ?? current.rows[0].ar_adr_statuses_id;
+    // issue #115: статус берём из нормализованной шапки (mergeAppliedHeader), а не из
+    // необъявленной переменной — иначе ReferenceError «ar_adr_statuses_id is not defined»
+    // и сохранение заключения падало перед формированием схемы решения.
+    const newStatusId = header.ar_adr_statuses_id ?? current.rows[0].ar_adr_statuses_id;
     if (newStatusId) {
       const approvedCodes = getParam('ADR_APPROVED_STATUS_CODES', DEFAULT_APPROVED_STATUS_CODES);
       const statusRow = await client.query(queries.adr_status_get_name, [newStatusId]);
