@@ -44,8 +44,8 @@ test('schema marker: каждый prod SQL-скрипт после baseline об
     );
     assert.match(
       sql,
-      /WHERE\s+version\s*<\s*EXCLUDED\.version/i,
-      `${entry.name}: upsert маркера не монотонный (нет WHERE version < EXCLUDED.version)`,
+      /WHERE\s+archrep\.ar_schema_info\.version\s*<\s*EXCLUDED\.version/i,
+      `${entry.name}: upsert маркера не монотонный (нет WHERE archrep.ar_schema_info.version < EXCLUDED.version)`,
     );
 
     const marker = /VALUES\s*\(\s*'core'\s*,\s*'(\d{14})'/i.exec(sql);

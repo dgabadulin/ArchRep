@@ -150,10 +150,10 @@ ON CONFLICT (code) DO UPDATE
   SET version = EXCLUDED.version,
       applied_at = now(),
       applied_by = EXCLUDED.applied_by
-  WHERE version < EXCLUDED.version;
+  WHERE archrep.ar_schema_info.version < EXCLUDED.version;
 ```
 
-Тогда маркер обновляется и при ручном накате, и через `npm run db:migrate` (demo). Условие `WHERE version < EXCLUDED.version` обязательно: повторный накат старого скрипта не должен откатывать маркер назад.
+Тогда маркер обновляется и при ручном накате, и через `npm run db:migrate` (demo). Условие `WHERE archrep.ar_schema_info.version < EXCLUDED.version` обязательно: неквалифицированное `version` даёт `column reference "version" is ambiguous` (42702), а повторный накат старого скрипта не должен откатывать маркер назад.
 
 Если маркер уже отстал из-за скрипта без upsert, исправление оформляется отдельной dual-миграцией с проверкой эффектов (пример: `20261120120000_schema_info_marker_repair`), а не ручным повышением `version` без проверки.
 

@@ -40,4 +40,4 @@ ON CONFLICT (code) DO UPDATE
   SET version = EXCLUDED.version,
       applied_at = now(),
       applied_by = EXCLUDED.applied_by
-  WHERE version < EXCLUDED.version;
+  WHERE archrep.ar_schema_info.version < EXCLUDED.version;
