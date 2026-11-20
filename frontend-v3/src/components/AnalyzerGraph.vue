@@ -508,6 +508,11 @@ const configs = computed(() => ({
     },
     /** Одновременно активен только один узел. */
     selectable: 1,
+    /**
+     * Жёлтая focus-рамка библиотеки (#eebb00) дублировала синюю рамку активного узла
+     * (issue #116): на клике появлялись две рамки. Синий контур задаёт слот #override-node.
+     */
+    focusring: { visible: false },
     label: {
       visible: true,
       direction: 'south',
