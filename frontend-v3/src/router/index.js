@@ -99,6 +99,7 @@ const routes = [
       { path: 'settings/jobs', name: 'settings-jobs', component: () => import('../views/SettingsJobsView.vue'), meta: { title: 'Управление заданиями', requiredPermissions: ['jobs:read'] } },
       { path: 'settings/service-operations', name: 'settings-service-operations', component: () => import('../views/SettingsServiceOperationsView.vue'), meta: { title: 'Сервисные операции', requiredPermissions: ['service_operations:execute'] } },
       { path: 'settings/service-operations/import', name: 'settings-data-import', component: () => import('../views/DataImportView.vue'), meta: { title: 'Импорт данных', requiredPermissions: ['import:execute'] } },
+      { path: 'settings/service-operations/employees/import', name: 'settings-employee-import', component: () => import('../views/EmployeeImportView.vue'), meta: { title: 'Загрузка сотрудников', requiredPermissions: ['import:execute'] } },
       { path: 'settings/administration/users', name: 'admin-users', component: () => import('../views/AdminUsersView.vue'), meta: { title: 'Пользователи', requiredPermissions: ['users:read'] } },
       { path: 'settings/administration/roles', name: 'admin-roles', component: () => import('../views/AdminRolesView.vue'), meta: { title: 'Роли', requiredPermissions: ['roles:read'] } },
       { path: 'settings/administration/roles/new', name: 'admin-role-new', component: () => import('../views/AdminRoleForm.vue'), meta: { title: 'Новая роль', requiredPermissions: ['roles:write'] } },

@@ -901,7 +901,7 @@ const ENTITY_TYPES = {
     search: 'employees_select_search',
     get: 'employees_get',
     labelOf: (r) => r.full_name || `#${r.id}`,
-    brief: (r) => pick(r, ['id', 'full_name', 'employee_number', 'email', 'active', 'status']),
+    brief: (r) => pick(r, ['id', 'full_name', 'employee_number', 'email', 'position', 'department', 'active', 'status']),
     // Отдельного маршрута формы нет: сотрудники правятся в модалке вкладки «Сотрудники» («Справочники»).
     listPath: '/references',
     prefillFields: [],

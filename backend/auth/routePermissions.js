@@ -128,6 +128,9 @@ const RULES = [
   { methods: ['GET'], pattern: /^\/api\/import\//, permissions: ['import:execute'] },
   { methods: ['POST'], pattern: /^\/api\/import\/validate$/, permissions: ['import:execute'] },
   { methods: ['POST'], pattern: /^\/api\/import\/apply$/, permissions: ['import:execute'] },
+  { methods: ['GET'], pattern: /^\/api\/service-operations\/employees\/import\/template$/, permissions: ['import:execute'] },
+  { methods: ['POST'], pattern: /^\/api\/service-operations\/employees\/import\/validate$/, permissions: ['import:execute'] },
+  { methods: ['POST'], pattern: /^\/api\/service-operations\/employees\/import\/apply$/, permissions: ['import:execute', 'employee:write'] },
 
   { methods: ['GET'], pattern: re('/api/settings-parameters'), permissions: ['settings_parameters:read'] },
   { methods: ['POST', 'PUT', 'PATCH', 'DELETE'], pattern: re('/api/settings-parameters'), permissions: ['settings_parameters:write'] },

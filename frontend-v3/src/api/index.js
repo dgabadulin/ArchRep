@@ -132,6 +132,26 @@ export const adminApi = {
   },
 }
 
+/** Сервисная операция: полная синхронизация сотрудников из CSV (issue #122). */
+export const employeeImportApi = {
+  template: async () => {
+    const res = await fetch(`${apiBase}/api/service-operations/employees/import/template`, {
+      headers: { ...authHeaders() },
+    })
+    if (!res.ok) {
+      let msg = res.statusText
+      try {
+        const j = await res.json()
+        if (j?.error) msg = j.error
+      } catch (_) { /* ignore */ }
+      throw new Error(msg || 'template failed')
+    }
+    return res.blob()
+  },
+  validate: (body) => api.post('/service-operations/employees/import/validate', body),
+  apply: (body) => api.post('/service-operations/employees/import/apply', body),
+}
+
 /** Сервисный импорт данных (issue #64). */
 export const importApi = {
   entities: () => api.get('/import/entities'),

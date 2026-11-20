@@ -212,36 +212,41 @@ module.exports = {
 
   // --- Employees (ar_employees) ---
   employees_select: `
-    SELECT id, employee_number, full_name, email, active,
+    SELECT id, employee_number, full_name, email, position, department, active,
            CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
     FROM archrep.ar_employees ORDER BY full_name`,
   employees_select_search: `
-    SELECT id, employee_number, full_name, email, active,
+    SELECT id, employee_number, full_name, email, position, department, active,
            CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
     FROM archrep.ar_employees
     WHERE full_name ILIKE $1
        OR split_part(full_name, ' ', 1) ILIKE $1
        OR COALESCE(employee_number, '') ILIKE $1
        OR COALESCE(email, '') ILIKE $1
+       OR COALESCE(position, '') ILIKE $1
+       OR COALESCE(department, '') ILIKE $1
     ORDER BY full_name`,
   employees_get: `
-    SELECT id, employee_number, full_name, email, active,
+    SELECT id, employee_number, full_name, email, position, department, active,
            CASE WHEN active THEN 'active' ELSE 'inactive' END AS status
     FROM archrep.ar_employees WHERE id = $1`,
   employees_insert: `
-    INSERT INTO archrep.ar_employees (employee_number, full_name, email, active)
-    VALUES (NULLIF(trim($1), ''), $2, NULLIF(lower(trim($3)), ''), COALESCE($4, true))
-    RETURNING id, employee_number, full_name, email, active,
+    INSERT INTO archrep.ar_employees (employee_number, full_name, email, position, department, active)
+    VALUES (NULLIF(trim($1), ''), $2, NULLIF(lower(trim($3)), ''),
+            NULLIF(trim($4), ''), NULLIF(trim($5), ''), COALESCE($6, true))
+    RETURNING id, employee_number, full_name, email, position, department, active,
       CASE WHEN active THEN 'active' ELSE 'inactive' END AS status`,
   employees_update: `
     UPDATE archrep.ar_employees
     SET employee_number = NULLIF(trim($1), ''),
         full_name = $2,
         email = NULLIF(lower(trim($3)), ''),
-        active = COALESCE($4, active),
+        position = NULLIF(trim($4), ''),
+        department = NULLIF(trim($5), ''),
+        active = COALESCE($6, active),
         updated_at = current_timestamp
-    WHERE id = $5
-    RETURNING id, employee_number, full_name, email, active,
+    WHERE id = $7
+    RETURNING id, employee_number, full_name, email, position, department, active,
       CASE WHEN active THEN 'active' ELSE 'inactive' END AS status`,
   employees_delete: `DELETE FROM archrep.ar_employees WHERE id = $1`,
 

@@ -55,6 +55,12 @@ const { bootstrapAuth } = require('./auth/bootstrapAuth');
 const { normalizeDomainName } = require('./domainFromUrl');
 const { netboxObjectWebUrl, parseSystemCodes } = require('./netboxClient');
 const { getVersionInfo, normalizeVersion, readPackageVersion } = require('./version');
+const {
+  validateEmployeeImport,
+  applyEmployeeImport,
+  buildTemplateCsv,
+  EmployeeImportError,
+} = require('./employeeImport');
 
 
 // Параметры ADR: только коды справочников (issue #31).
@@ -762,12 +768,14 @@ app.get('/api/ar-employees/:id', async (req, res) => {
 });
 app.post('/api/ar-employees', async (req, res) => {
   try {
-    const { employee_number, full_name, email, active } = req.body || {};
+    const { employee_number, full_name, email, position, department, active } = req.body || {};
     if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
     const r = await pool.query(queries.employees_insert, [
       employee_number != null ? String(employee_number) : null,
       String(full_name).trim(),
       email != null ? String(email) : null,
+      position != null ? String(position) : null,
+      department != null ? String(department) : null,
       active,
     ]);
     res.status(201).json(applyDisplayName(r.rows[0], 'employee'));
@@ -779,12 +787,14 @@ app.post('/api/ar-employees', async (req, res) => {
 });
 app.put('/api/ar-employees/:id', async (req, res) => {
   try {
-    const { employee_number, full_name, email, active } = req.body || {};
+    const { employee_number, full_name, email, position, department, active } = req.body || {};
     if (!full_name || !String(full_name).trim()) return res.status(400).json({ error: 'full_name required' });
     const r = await pool.query(queries.employees_update, [
       employee_number != null ? String(employee_number) : null,
       String(full_name).trim(),
       email != null ? String(email) : null,
+      position != null ? String(position) : null,
+      department != null ? String(department) : null,
       active,
       req.params.id,
     ]);
@@ -3766,6 +3776,54 @@ app.post('/api/togaf/metamodel/rebuild-domains-from-web-resources', async (req, 
     res.status(err.status || 500).json({ error: err.message || 'rebuild failed' });
   }
 });
+
+// --- Загрузка справочника сотрудников (issue #122, docs/employee-directory-import.md) ---
+function employeeImportBuffer(body) {
+  const raw = String((body && body.fileBase64) || '');
+  if (!raw) throw new EmployeeImportError(400, 'Не передан CSV-файл');
+  const filename = String((body && body.filename) || '').trim().toLowerCase();
+  if (filename && !filename.endsWith('.csv')) {
+    throw new EmployeeImportError(400, 'Поддерживается только CSV-файл (.csv)');
+  }
+  const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+  return Buffer.from(base64, 'base64');
+}
+
+function sendEmployeeImportError(res, err) {
+  const status = Number(err && err.statusCode) || 500;
+  const body = { error: (err && err.message) || 'Ошибка загрузки сотрудников' };
+  if (err && err.summary) body.summary = err.summary;
+  if (err && err.rows) body.rows = err.rows;
+  if (err && err.deactivate) body.deactivate = err.deactivate;
+  res.status(status).json(body);
+}
+
+async function handleEmployeeImportRun(req, res, apply) {
+  try {
+    const body = req.body || {};
+    const buffer = employeeImportBuffer(body);
+    const result = apply
+      ? await applyEmployeeImport(pool, buffer, {
+        confirmDeactivate: body.confirmDeactivate === true,
+        expectedDeactivateCount: body.expectedDeactivateCount,
+        allowLargeDeactivation: body.allowLargeDeactivation === true,
+      })
+      : await validateEmployeeImport(pool, buffer);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof EmployeeImportError) return sendEmployeeImportError(res, err);
+    console.error('[employee-import]', err);
+    return sendTransactionError(res, err, 'Ошибка загрузки сотрудников');
+  }
+}
+
+app.get('/api/service-operations/employees/import/template', (req, res) => {
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="employees-template.csv"');
+  res.send(buildTemplateCsv());
+});
+app.post('/api/service-operations/employees/import/validate', (req, res) => handleEmployeeImportRun(req, res, false));
+app.post('/api/service-operations/employees/import/apply', (req, res) => handleEmployeeImportRun(req, res, true));
 
 // --- Data import (issue #64, docs/data-import-service.md) ---
 app.get('/api/import/entities', async (req, res) => {

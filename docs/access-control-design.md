@@ -464,6 +464,8 @@ Effective permissions = объединение permissions всех назнач
 | `/api/settings-parameters` | `settings_parameters:*` |
 | Справочники статусов/типов (в т.ч. web-resource refs) | `references:*` (read для форм — мягко при любом `*:write` домена) |
 | `/api/import/entities`, `template`, `export`, `validate`, `apply` | `import:execute`; apply также требует `<entity>:write` |
+| `/api/service-operations/employees/import/template`, `validate` | `import:execute` |
+| `/api/service-operations/employees/import/apply` | `import:execute` + `employee:write` |
 | `/api/users` GET list/get | `users:read` |
 | `/api/users` POST/PUT, reset-password, activate | `users:write` |
 | `/api/users` DELETE | `users:delete` |

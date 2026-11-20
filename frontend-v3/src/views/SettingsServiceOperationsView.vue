@@ -101,6 +101,18 @@
             <router-link class="btn btn-primary" to="/settings/service-operations/import">Открыть…</router-link>
           </div>
         </li>
+        <li class="op-card">
+          <div class="op-card-body">
+            <h3 class="op-title">Загрузка справочника сотрудников</h3>
+            <p class="op-desc">
+              Полная синхронизация справочника из CSV: обновление по табельному номеру, создание новых,
+              пометка отсутствующих как уволенных. Требуется предварительная проверка и подтверждение.
+            </p>
+          </div>
+          <div class="op-card-actions">
+            <router-link class="btn btn-primary" to="/settings/service-operations/employees/import">Открыть…</router-link>
+          </div>
+        </li>
       </ul>
     </section>
 

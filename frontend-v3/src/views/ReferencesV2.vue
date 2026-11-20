@@ -114,13 +114,15 @@
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
-          <thead><tr><th>ID</th><th>Табельный №</th><th>Полное имя</th><th>Email</th><th>Статус</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Табельный №</th><th>Полное имя</th><th>Email</th><th>Должность</th><th>Подразделение</th><th>Статус</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in employees" :key="r.id">
               <td>{{ r.id }}</td>
               <td>{{ r.employee_number || '—' }}</td>
               <td>{{ r.full_name }}</td>
               <td>{{ r.email || '—' }}</td>
+              <td>{{ r.position || '—' }}</td>
+              <td>{{ r.department || '—' }}</td>
               <td>{{ r.status === 'active' ? 'активен' : 'неактивен' }}</td>
               <td>
                 <button type="button" class="btn-link" @click="openEmployeeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
@@ -625,6 +627,8 @@
         <div class="form-row"><label>Табельный номер</label><input v-model="employeeForm.employee_number" placeholder="12345" /></div>
         <div class="form-row"><label>Полное имя <span class="req">*</span></label><input v-model="employeeForm.full_name" placeholder="Иванов Иван Иванович" /></div>
         <div class="form-row"><label>Email</label><input v-model="employeeForm.email" type="email" placeholder="name@example.com" /></div>
+        <div class="form-row"><label>Должность</label><input v-model="employeeForm.position" placeholder="Ведущий архитектор" /></div>
+        <div class="form-row"><label>Подразделение</label><input v-model="employeeForm.department" placeholder="Управление архитектуры" /></div>
         <div class="form-row"><label>Активен</label><select v-model="employeeForm.active"><option :value="true">Да</option><option :value="false">Нет</option></select></div>
         </fieldset>
         <div class="modal-actions">
@@ -1103,9 +1107,11 @@ function openEmployeeForm(r) {
       employee_number: r.employee_number ?? '',
       full_name: r.full_name ?? '',
       email: r.email ?? '',
+      position: r.position ?? '',
+      department: r.department ?? '',
       active: !!r.active,
     }
-    : { employee_number: '', full_name: '', email: '', active: true }
+    : { employee_number: '', full_name: '', email: '', position: '', department: '', active: true }
 }
 function openAdrSystemStatusForm(r) { adrSystemStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
 function openAdrRelationStatusForm(r) { adrRelationStatusForm.value = r ? { id: r.id, code: r.code ?? '', name: r.name, description: r.description ?? '' } : { code: '', name: '', description: '' } }
@@ -1310,6 +1316,8 @@ async function saveEmployee() {
       employee_number: employeeForm.value.employee_number?.trim() || null,
       full_name: employeeForm.value.full_name.trim(),
       email: employeeForm.value.email?.trim() || null,
+      position: employeeForm.value.position?.trim() || null,
+      department: employeeForm.value.department?.trim() || null,
       active: employeeForm.value.active,
     }
     if (employeeForm.value.id) await api.updateEmployee(employeeForm.value.id, body)
