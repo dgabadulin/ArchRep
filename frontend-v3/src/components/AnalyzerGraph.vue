@@ -430,6 +430,9 @@ function isNodeActive(nodeId) {
 /** Сделать объект единственным активным: очищаем «чужой» набор (узлы ↔ связи). */
 function selectOnly(kind, id) {
   if (!id) return
+  // ЛКМ по другому узлу/ребру не доходит до document: v-network-graph останавливает
+  // всплытие, поэтому контекстное меню закрываем здесь же (до открытия нового по ПКМ).
+  closeContextMenu()
   if (kind === 'node') {
     if (selectedEdgeIds.value.length) selectedEdgeIds.value = []
     if (selectedNodeIds.value.length !== 1 || selectedNodeIds.value[0] !== id) {
