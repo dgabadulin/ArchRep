@@ -13,12 +13,3 @@ VALUES (
   false
 )
 ON CONFLICT (code) DO NOTHING;
-
--- Версия схемы (issue #96): этот скрипт — последняя применённая миграция.
-INSERT INTO archrep.ar_schema_info (code, version, applied_at, applied_by)
-VALUES ('core', '20261119120000', now(), current_user)
-ON CONFLICT (code) DO UPDATE
-  SET version = EXCLUDED.version,
-      applied_at = now(),
-      applied_by = EXCLUDED.applied_by
-  WHERE archrep.ar_schema_info.version < EXCLUDED.version;

@@ -25,5 +25,4 @@ VALUES ('core', '20261106120000', now(), current_user)
 ON CONFLICT (code) DO UPDATE
   SET version = EXCLUDED.version,
       applied_at = now(),
-      applied_by = EXCLUDED.applied_by
-  WHERE archrep.ar_schema_info.version < EXCLUDED.version;
+      applied_by = EXCLUDED.applied_by;
