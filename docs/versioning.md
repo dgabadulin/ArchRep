@@ -147,10 +147,15 @@ Prod-скрипты накатываются **вручную** (`psql -f DB/scr
 INSERT INTO archrep.ar_schema_info (code, version, applied_at, applied_by)
 VALUES ('core', '<ts>', now(), current_user)
 ON CONFLICT (code) DO UPDATE
-  SET version = EXCLUDED.version, applied_at = now(), applied_by = EXCLUDED.applied_by;
+  SET version = EXCLUDED.version,
+      applied_at = now(),
+      applied_by = EXCLUDED.applied_by
+  WHERE version < EXCLUDED.version;
 ```
 
-Тогда маркер обновляется и при ручном накате, и через `npm run db:migrate` (demo).
+Тогда маркер обновляется и при ручном накате, и через `npm run db:migrate` (demo). Условие `WHERE version < EXCLUDED.version` обязательно: повторный накат старого скрипта не должен откатывать маркер назад.
+
+Если маркер уже отстал из-за скрипта без upsert, исправление оформляется отдельной dual-миграцией с проверкой эффектов (пример: `20261120120000_schema_info_marker_repair`), а не ручным повышением `version` без проверки.
 
 `GET /api/version` → `db`:
 
@@ -243,7 +248,7 @@ GET /api/version  → {
 | deploy: `package.json version != tag` | релизный PR не смержен | смержить релизный PR |
 | deploy: `N local commit(s) not pushed` | забыли `git push` | запушить |
 | `/api/version` → `db.source=unknown` | маркер не применён (старая БД) | применить `DB/scripts/migrate_20261104120000_schema_info.sql` |
-| плашка «код новее схемы» | код из нового тега, скрипты не накатаны | применить скрипты; при необходимости `SYS_DB_SCHEMA_WARN_MODE=off` |
+| плашка «код новее схемы» | скрипты не накатаны **или накатаны без upsert в `ar_schema_info`** | сверить `db.schema_version`; применить скрипты или repair-миграцию; не ограничиваться `SYS_DB_SCHEMA_WARN_MODE=off` |
 | плашка «версия интерфейса ≠ API» | кеш браузера/CDN | Ctrl+F5 |
 | Release Please не создал PR | нет `feat/fix` в коммитах; нет прав у workflow; рассинхрон manifest | см. лог Actions |
 

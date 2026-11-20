@@ -64,3 +64,12 @@ DELETE FROM archrep.ar_metamodel_relations r
         AND NOT EXISTS (SELECT 1 FROM archrep.ar_system_functions f WHERE f.id = r.to_entity_id))
     OR (r.from_entity_type = 'system_function'
         AND NOT EXISTS (SELECT 1 FROM archrep.ar_system_functions f WHERE f.id = r.from_entity_id));
+
+-- Версия схемы (issue #96): этот скрипт — последняя применённая миграция.
+INSERT INTO archrep.ar_schema_info (code, version, applied_at, applied_by)
+VALUES ('core', '20261119130000', now(), current_user)
+ON CONFLICT (code) DO UPDATE
+  SET version = EXCLUDED.version,
+      applied_at = now(),
+      applied_by = EXCLUDED.applied_by
+  WHERE version < EXCLUDED.version;

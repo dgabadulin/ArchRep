@@ -25,6 +25,7 @@
    - `DB/scripts/*.sql` (прод, `psql`)
    - `DB/migrations/*.js` (demo, `node-pg-migrate`)
    — см. `.cursor/rules/db-migrations-dual.mdc` и `DB/README.md`.
+   SQL-скрипт после `migrate_20261104120000_schema_info.sql` обязан заканчиваться монотонным upsert-ом маркера `archrep.ar_schema_info` со своим 14-значным префиксом, иначе `GET /api/version` покажет миграцию как неприменённую.
 5. **PR**: после пуша откройте Pull Request в `main` с описанием «что и почему», при необходимости закройте issue фразой `Closes #N`.
 
 ## Чего избегать
