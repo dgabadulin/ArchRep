@@ -12,6 +12,25 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по запросу
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.6.0](https://github.com/dgabadulin/ArchRep/compare/v4.5.0...v4.6.0) (2026-11-20)
+
+
+### Новое
+
+* **analyzer:** настройки палитры — выпадающие списки Да/Нет ([#116](https://github.com/dgabadulin/ArchRep/issues/116)) ([3a7f2bc](https://github.com/dgabadulin/ArchRep/commit/3a7f2bcb3ab81cd610f0d7367bc36a3bca6bee71))
+* **system-functions:** реестр функций ИС с карточкой, фильтрами и защитой удаления ([#76](https://github.com/dgabadulin/ArchRep/issues/76)) ([00093fd](https://github.com/dgabadulin/ArchRep/commit/00093fd621930ea8184df94db6bdbfd7aa378a19))
+* **ui:** пагинация и горизонтальная прокрутка табличных реестров ([#114](https://github.com/dgabadulin/ArchRep/issues/114)) ([889f9f1](https://github.com/dgabadulin/ArchRep/commit/889f9f1996c4e8bce7af62525ca3d35fd274621d))
+
+
+### Исправлено
+
+* **adr:** сохранение заключения не падает с ar_adr_statuses_id is not defined ([#115](https://github.com/dgabadulin/ArchRep/issues/115)) ([299cd61](https://github.com/dgabadulin/ArchRep/commit/299cd6151219af1e48958ca19e836765b21e77c4))
+* **adr:** сохранить заключение без падения API и вернуть навигацию из схемы ([9b80d46](https://github.com/dgabadulin/ArchRep/commit/9b80d46951bde8096a7ee792595555bf7b2d8a8a))
+* **analyzer:** выделение узла не скрывает его связи ([#116](https://github.com/dgabadulin/ArchRep/issues/116)) ([f354cde](https://github.com/dgabadulin/ArchRep/commit/f354cdec52f99a7556535636cdd9d652121d3791))
+* **analyzer:** удалена жёлтая рамка фокуса, дублировавшая выделение узла ([004b442](https://github.com/dgabadulin/ArchRep/commit/004b4429d6262942145adf3f9a53c9b91bd42490))
+* **drawio:** не размещать новые и наложенные системы поверх существующих при обновлении схемы ([8c2ccc0](https://github.com/dgabadulin/ArchRep/commit/8c2ccc06176736ee1707c9e9b4b08595614ff316))
+* **drawio:** рёбра схемы решения пересчитываются при merge и не наслаиваются ([#93](https://github.com/dgabadulin/ArchRep/issues/93)) ([4df46ae](https://github.com/dgabadulin/ArchRep/commit/4df46ae5bb0e8642c21e0288b548c626ba8276bc))
+
 ## [4.5.0](https://github.com/dgabadulin/ArchRep/compare/v4.4.0...v4.5.0) (2026-11-19)
 
 
