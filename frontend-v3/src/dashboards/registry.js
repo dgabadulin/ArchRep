@@ -1,9 +1,19 @@
 /**
- * Реестр дашбордов ECharts: метаданные и сопоставление slug → компонент.
+ * Реестр дашбордов: метаданные и сопоставление slug → компонент.
+ * Компонент может быть ECharts-графиком или обычной HTML-визуализацией (матрица).
  */
 import BusinessFunctionsTreemapChart from '../components/dashboards/BusinessFunctionsTreemapChart.vue'
+import TargetArchitectureMatrixChart from '../components/dashboards/TargetArchitectureMatrixChart.vue'
 
 export const dashboards = [
+  {
+    slug: 'target-architecture-matrix',
+    title: 'Целевая архитектура: матрица',
+    description:
+      'Матрица «бизнес-способности × продукты» по целевой архитектуре. В ячейках — системы: зелёные в промышленной или опытной эксплуатации, оранжевые — новые или планируемые.',
+    category: 'Бизнес-архитектура',
+    component: TargetArchitectureMatrixChart,
+  },
   {
     slug: 'business-functions-treemap',
     title: 'Бизнес-способности (treemap)',

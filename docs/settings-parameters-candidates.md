@@ -54,6 +54,7 @@
 | `30` связей в решении | `backend/ai/tools.js` | **SYS_AI_PREFILL_MAX_RELATIONS** | Лимит связей в одном решении черновика. Используется ИИ-архитектором при генерации ADR. | `30` |
 | `5000` символов JSON черновика | `backend/ai/tools.js` (`draftBudget`) | **SYS_AI_PREFILL_MAX_JSON_CHARS** | Бюджет структурной части черновика по размеру JSON (черновик открывается ссылкой `?payload=`). Используется ИИ-архитектором при генерации ADR. | `5000` |
 | `50` id в фокусе экрана | `backend/ai/tools.js` (`SCREEN_FOCUS_MAX_IDS`), `frontend-v3/src/views/AnalyticsView.vue` (`DEEPLINK_MAX_IDS`) | **SYS_AI_FOCUS_MAX_IDS** | Максимум id в фокусе экрана «Анализ зависимостей» для действия `open_view`. | `50` |
+| Порядок колонок матрицы | `backend/targetArchitectureMatrix.js` (`PRODUCT_ORDER_PARAM`) | **ARR_TARGET_MATRIX_ORDER** | Список кодов бизнес-сервисов для порядка колонок в дашборде «Целевая архитектура: матрица»; иначе — порядок реестра. | `["bs-lcv-mcv","bs-valday","bs-bus","bs-cat","bs-spare-parts","bs-service-commercial","bs-digital-services"]` |
 
 ---
 

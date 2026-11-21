@@ -55,6 +55,12 @@ export const api = {
   delete: (path) => request(path, { method: 'DELETE' }),
 }
 
+// Дашборды
+export const dashboardApi = {
+  /** Матрица целевой архитектуры: бизнес-функции × продукты × системы. */
+  targetArchitectureMatrix: () => api.get('/dashboard/target-architecture-matrix'),
+}
+
 // TOGAF
 export const togafApi = {
   entityTypes: () => api.get('/togaf/entity-types'),

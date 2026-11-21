@@ -42,6 +42,15 @@
 - `frontend-v3/src/components/dashboards/businessFunctionsTreemap.js` — построение дерева и опции ECharts;
 - `frontend-v3/src/components/dashboards/BusinessFunctionsTreemapChart.vue` — загрузка данных и `<v-chart>`.
 
+## Дашборд «Целевая архитектура: матрица»
+
+- **Slug:** `target-architecture-matrix`
+- **Данные:** `GET /api/dashboard/target-architecture-matrix` (право `dashboard:read`). Источник — только таблицы `archrep` и связи с `payload->>'source' = 'architecture_capability_matrix'`; внешние файлы и `temp/` не используются.
+- **Формат:** строки — бизнес-функции (с группировкой по родительской функции), колонки — продукты (бизнес-сервисы), ячейки — системы на пересечении связей `system_business_function` и `system_business_service`.
+- **Легенда:** зелёный — система в промышленной или опытной эксплуатации; оранжевый — новая или планируемая; серый — прочие статусы.
+- **Порядок колонок:** системный параметр `ARR_TARGET_MATRIX_ORDER` (`string_list`, коды бизнес-сервисов); без параметра — порядок реестра. Продукты вне списка идут после, в порядке реестра. Значение кэшируется при старте backend — после правки нужен перезапуск.
+- **Файлы:** `frontend-v3/src/components/dashboards/TargetArchitectureMatrixChart.vue`, `frontend-v3/src/components/dashboards/targetArchitectureMatrix.js`; backend — `backend/targetArchitectureMatrix.js`; сид параметра — `DB/scripts/migrate_20261121120000_target_matrix_product_order.sql`.
+
 ## Регистрация ECharts
 
 Точечное подключение модулей (treemap, canvas, tooltip, title): `frontend-v3/src/echarts/registerDashboardCharts.js`, импорт в `main.js` до монтирования приложения.

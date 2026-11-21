@@ -26,6 +26,7 @@ const { applyDisplayName, validateTemplateValue } = require('./displayName');
 const { enrichRelationRow, enrichRelationRows } = require('./relationLabels');
 const { isManagedRelationType } = require('./relationTypePolicy');
 const { buildHomeStats } = require('./homeDashboard');
+const { buildTargetArchitectureMatrix } = require('./targetArchitectureMatrix');
 const { buildMxfile, mergeMxfileWithData } = require('./incrementDiagram');
 const { formatSysFuncComment } = require('./sysFuncMarkers');
 const { HttpError, withTransaction, sendTransactionError } = require('./dbTx');
@@ -450,6 +451,16 @@ app.get('/api/dashboard/home-stats', async (req, res) => {
   } catch (e) {
     console.error('GET /api/dashboard/home-stats', e);
     res.status(500).json({ error: e.message || 'home-stats failed' });
+  }
+});
+
+app.get('/api/dashboard/target-architecture-matrix', async (req, res) => {
+  try {
+    const data = await buildTargetArchitectureMatrix(pool);
+    res.json(data);
+  } catch (e) {
+    console.error('GET /api/dashboard/target-architecture-matrix', e);
+    res.status(500).json({ error: e.message || 'target architecture matrix failed' });
   }
 });
 
