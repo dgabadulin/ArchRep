@@ -124,7 +124,6 @@ async function rebuildGraph() {
   } else if (Object.keys(graphNodes.value).length > 0) {
     graphRef.value?.applyLayout('grid')
   }
-  graphRef.value?.fitToContents?.()
 }
 
 watch(

@@ -16,7 +16,7 @@
       @layout="onPaletteLayout"
       @open-flows="openBundledFlows"
     />
-    <div class="analyzer-graph-wrap" :style="graphWrapStyle">
+    <div class="analyzer-graph-wrap" ref="graphWrapRef" :style="graphWrapStyle">
     <v-network-graph
       ref="graphRef"
       v-model:layouts="layouts"
@@ -225,7 +225,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseNodeId, getEntityTypeConfig } from '../utils/entityTypeConfig'
 import AnalyzerPalette from './AnalyzerPalette.vue'
@@ -462,6 +462,7 @@ watch(() => Object.keys(props.nodes || {}).join('|'), pruneSelection)
 watch(() => Object.keys(props.edges || {}).join('|'), pruneSelection)
 
 const containerRef = ref(null)
+const graphWrapRef = ref(null)
 const graphRef = ref(null)
 const contextMenuRef = ref(null)
 const ctxSubmenuPanelRef = ref(null)
@@ -997,7 +998,8 @@ function applyLayout(layoutType, centerNodeId = null) {
   lastLayoutType.value = layoutType
   lastLayoutCenterId.value = centerNodeId ?? null
   layouts.value = { nodes: computeLayoutNodes(layoutType, centerNodeId) }
-  nextTick(fitToContents)
+  // Новая раскладка — вписываем граф в область заново (а не только уменьшаем масштаб).
+  nextTick(() => fitToContents({ reset: true }))
 }
 
 /** Выбор полуокружности раскрытия: в сторону, где расположен узел относительно остальных (свободное место). */
@@ -1340,31 +1342,46 @@ function placeRevealedModules(parentId, revealedNodeIds) {
   commitCandidates(cand)
 }
 
-function fitToContents() {
+/** Кадр браузера: библиотека пересчитывает bbox и применяет fit асинхронно. */
+function nextFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+    else setTimeout(resolve, 0)
+  })
+}
+
+/**
+ * Вписать граф в область (issue #125).
+ * `fitToContents()` библиотеки асинхронный: если читать viewBox сразу после вызова,
+ * сравнение и «минимальный экстент» работают по устаревшему состоянию и отменяют fit —
+ * граф остаётся в слишком крупном масштабе. Поэтому ждём завершения fit и кадр отрисовки.
+ * @param {{ reset?: boolean }} opts `reset` — вписать заново (раскладка/resize области);
+ *   без него действует правило «только уменьшать масштаб» (раскрытие связей).
+ */
+async function fitToContents(opts = {}) {
   const g = graphRef.value
   if (!g) return
-  const getViewBox = g.getViewBox ?? g.instance?.getViewBox
-  const setViewBox = g.setViewBox ?? g.instance?.setViewBox
-  const fit = g.fitToContents ?? g.instance?.fitToContents
+  const fit = g.fitToContents
   if (typeof fit !== 'function') return
-  let beforeBox = null
-  if (typeof getViewBox === 'function' && typeof setViewBox === 'function') {
-    beforeBox = getViewBox.call(g)
-  }
-  fit.call(g)
-  if (beforeBox && typeof getViewBox === 'function' && typeof setViewBox === 'function') {
-    const afterBox = getViewBox.call(g)
+  const getViewBox = typeof g.getViewBox === 'function' ? () => g.getViewBox() : null
+  const setViewBox = typeof g.setViewBox === 'function' ? (box) => g.setViewBox(box) : null
+  const reset = opts.reset === true
+  const beforeBox = !reset && getViewBox ? getViewBox() : null
+  await fit.call(g)
+  await nextFrame()
+  if (beforeBox && getViewBox && setViewBox) {
+    const afterBox = getViewBox()
     const beforeW = beforeBox.right - beforeBox.left
     const beforeH = beforeBox.bottom - beforeBox.top
     const afterW = afterBox.right - afterBox.left
     const afterH = afterBox.bottom - afterBox.top
     if (afterW < beforeW || afterH < beforeH) {
-      setViewBox.call(g, beforeBox)
+      setViewBox(beforeBox)
     }
   }
   const MIN_VIEWBOX = (getConfig().GRAPH_VIEWBOX_MIN ?? 500) | 0
-  if (typeof getViewBox === 'function' && typeof setViewBox === 'function') {
-    const box = getViewBox.call(g)
+  if (getViewBox && setViewBox) {
+    const box = getViewBox()
     const w = box.right - box.left
     const h = box.bottom - box.top
     if (w > 0 && h > 0 && (w < MIN_VIEWBOX || h < MIN_VIEWBOX)) {
@@ -1373,7 +1390,7 @@ function fitToContents() {
       const nh = h * scale
       const cx = (box.left + box.right) / 2
       const cy = (box.top + box.bottom) / 2
-      setViewBox.call(g, {
+      setViewBox({
         left: cx - nw / 2,
         right: cx + nw / 2,
         top: cy - nh / 2,
@@ -1382,6 +1399,31 @@ function fitToContents() {
     }
   }
 }
+
+/**
+ * Пересчёт вписывания при изменении области графа: смена вкладки, ширина панели,
+ * ресайз окна. Иначе граф остаётся в масштабе, рассчитанном для прежнего размера.
+ */
+let sizeObserver = null
+let sizeRaf = 0
+function watchGraphAreaSize() {
+  const el = graphWrapRef.value
+  if (!el || typeof ResizeObserver === 'undefined' || typeof requestAnimationFrame !== 'function') return
+  sizeObserver = new ResizeObserver(() => {
+    if (sizeRaf) cancelAnimationFrame(sizeRaf)
+    sizeRaf = requestAnimationFrame(() => {
+      sizeRaf = 0
+      if (Object.keys(props.nodes || {}).length) fitToContents({ reset: true })
+    })
+  })
+  sizeObserver.observe(el)
+}
+onMounted(watchGraphAreaSize)
+onBeforeUnmount(() => {
+  if (sizeRaf) cancelAnimationFrame(sizeRaf)
+  sizeObserver?.disconnect()
+  sizeObserver = null
+})
 
 function exportSvg() {
   nextTick(() => {
