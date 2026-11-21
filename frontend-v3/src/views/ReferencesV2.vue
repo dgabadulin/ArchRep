@@ -71,12 +71,13 @@
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
-          <thead><tr><th>ID</th><th>Наименование</th><th>Руководитель</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Наименование</th><th>Руководитель</th><th>Доп.классификация1</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in owners" :key="r.id">
               <td>{{ r.id }}</td>
               <td>{{ r.name }}</td>
               <td>{{ r.leader ?? '—' }}</td>
+              <td>{{ r.extra_classification1 || '—' }}</td>
               <td>
                 <button type="button" class="btn-link" @click="openOwnerForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
                 <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteOwner(r.id)">Удалить</button>
@@ -597,10 +598,17 @@
     </div>
     <div v-if="ownerForm" class="modal-overlay">
       <div class="modal">
-        <h3>{{ ownerForm.id ? 'Изменить владельца' : 'Новый владелец' }}</h3>
+        <h3>{{ ownerForm.id ? 'Изменить функциональную вертикаль' : 'Новая функциональная вертикаль' }}</h3>
         <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="ownerForm.name" /></div>
         <div class="form-row"><label>Руководитель</label><input v-model="ownerForm.leader" /></div>
+        <div class="form-row">
+          <label>Доп.классификация1</label>
+          <select v-model="ownerForm.extra_classification1">
+            <option value="">— не задана —</option>
+            <option v-for="v in ownerClassifications" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </div>
         </fieldset>
         <div class="modal-actions">
           <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveOwner">Сохранить</button>
@@ -954,10 +962,23 @@ function canMutateTab(tabKey) {
 
 const canMutateActive = computed(() => canMutateTab(activeTab.value))
 
+const ownerClassifications = [
+  'Производство и операции',
+  'Финансы и экономика',
+  'Персонал (HR)',
+  'Продажи и клиентский сервис',
+  'Закупки и логистика',
+  'Технический блок и инжиниринг',
+  'ИТ',
+  'Безопасность',
+  'Административно-правовой блок',
+  'Управляющая компания',
+]
+
 const tabs = [
   { id: 'statuses', label: 'Статусы систем' },
   { id: 'hosting', label: 'Типы хостинга' },
-  { id: 'owners', label: 'Владельцы (направления)' },
+  { id: 'owners', label: 'Функциональные вертикали' },
   { id: 'vendors', label: 'Партнёры / вендоры' },
   { id: 'employees', label: 'Сотрудники' },
   { id: 'adrSystemStatuses', label: 'Системы в решении (статусы)' },
@@ -1098,7 +1119,7 @@ async function exportExcel() {
 
 function openStatusForm(r) { statusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
 function openHostingForm(r) { hostingForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
-function openOwnerForm(r) { ownerForm.value = r ? { id: r.id, name: r.name, leader: r.leader ?? '' } : { name: '', leader: '' } }
+function openOwnerForm(r) { ownerForm.value = r ? { id: r.id, name: r.name, leader: r.leader ?? '', extra_classification1: r.extra_classification1 ?? '' } : { name: '', leader: '', extra_classification1: '' } }
 function openVendorForm(r) { vendorForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
 function openEmployeeForm(r) {
   employeeForm.value = r
@@ -1294,8 +1315,8 @@ async function saveHosting() {
 async function saveOwner() {
   if (!ownerForm.value?.name) return
   try {
-    if (ownerForm.value.id) await api.updateOwner(ownerForm.value.id, { name: ownerForm.value.name, leader: ownerForm.value.leader })
-    else await api.createOwner({ name: ownerForm.value.name, leader: ownerForm.value.leader })
+    if (ownerForm.value.id) await api.updateOwner(ownerForm.value.id, { name: ownerForm.value.name, leader: ownerForm.value.leader, extra_classification1: ownerForm.value.extra_classification1 })
+    else await api.createOwner({ name: ownerForm.value.name, leader: ownerForm.value.leader, extra_classification1: ownerForm.value.extra_classification1 })
     ownerForm.value = null
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }

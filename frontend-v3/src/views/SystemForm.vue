@@ -81,7 +81,7 @@
           @partner-created="mergePartner"
         />
         <div class="field">
-          <label>Владелец (направление)</label>
+          <label>Функциональная вертикаль</label>
           <select v-model="form.ar_system_owners_id">
             <option :value="null">—</option>
             <option v-for="o in owners" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>

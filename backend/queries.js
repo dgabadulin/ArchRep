@@ -250,10 +250,10 @@ module.exports = {
       CASE WHEN active THEN 'active' ELSE 'inactive' END AS status`,
   employees_delete: `DELETE FROM archrep.ar_employees WHERE id = $1`,
 
-  owners_select: `SELECT id, name, leader FROM archrep.ar_system_owners ORDER BY name`,
-  owners_select_search: `SELECT id, name, leader FROM archrep.ar_system_owners WHERE name ILIKE $1 OR COALESCE(leader,'') ILIKE $1 ORDER BY name`,
-  owners_insert: `INSERT INTO archrep.ar_system_owners (name, leader) VALUES ($1, NULLIF($2,'')) RETURNING *`,
-  owners_update: `UPDATE archrep.ar_system_owners SET name = $1, leader = NULLIF($2,'') WHERE id = $3 RETURNING *`,
+  owners_select: `SELECT id, name, leader, extra_classification1 FROM archrep.ar_system_owners ORDER BY name`,
+  owners_select_search: `SELECT id, name, leader, extra_classification1 FROM archrep.ar_system_owners WHERE name ILIKE $1 OR COALESCE(leader,'') ILIKE $1 OR COALESCE(extra_classification1,'') ILIKE $1 ORDER BY name`,
+  owners_insert: `INSERT INTO archrep.ar_system_owners (name, leader, extra_classification1) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
+  owners_update: `UPDATE archrep.ar_system_owners SET name = $1, leader = NULLIF($2,''), extra_classification1 = NULLIF($3,'') WHERE id = $4 RETURNING *`,
   owners_delete: `DELETE FROM archrep.ar_system_owners WHERE id = $1`,
   owners_get: `SELECT id, name, leader FROM archrep.ar_system_owners WHERE id = $1`,
 

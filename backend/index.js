@@ -820,9 +820,9 @@ app.delete('/api/ar-employees/:id', async (req, res) => {
 // --- Owners CRUD (additional to GET /api/owners) ---
 app.post('/api/owners', async (req, res) => {
   try {
-    const { name, leader } = req.body || {};
+    const { name, leader, extra_classification1 } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
-    const r = await pool.query(queries.owners_insert, [name, leader]);
+    const r = await pool.query(queries.owners_insert, [name, leader, extra_classification1]);
     res.status(201).json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
@@ -835,9 +835,9 @@ app.get('/api/owners/:id', async (req, res) => {
 });
 app.put('/api/owners/:id', async (req, res) => {
   try {
-    const { name, leader } = req.body || {};
+    const { name, leader, extra_classification1 } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
-    const r = await pool.query(queries.owners_update, [name, leader, req.params.id]);
+    const r = await pool.query(queries.owners_update, [name, leader, extra_classification1, req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
