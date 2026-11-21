@@ -2366,6 +2366,19 @@ app.delete('/api/increments/:incrementId/diagrams/:diagramId', async (req, res) 
   }
 });
 
+/**
+ * Справочники «Настройки → Справочники»: единый контракт поиска (issue #124).
+ * `?search=` фильтрует на сервере (ILIKE по текстовым полям), без параметра — полный список.
+ * Клиент повторно не фильтрует, поэтому таблица и Excel-выгрузка видят один и тот же набор строк.
+ * @param {string} key ключ запроса полного списка
+ * @param {string} searchKey ключ запроса с фильтром ($1 — шаблон ILIKE)
+ * @param {string} search строка поиска (trim)
+ */
+async function selectRefRows(key, searchKey, search) {
+  const withSearch = Boolean(search && searchKey);
+  return pool.query(withSearch ? queries[searchKey] : queries[key], withSearch ? [`%${search}%`] : []);
+}
+
 // Справочники для инкрементов (системы в решении, интеграции в решении) — используются в форме прикладного решения и в разделе Справочники
 app.get('/api/adr-system-statuses', async (req, res) => {
   try {
@@ -2388,7 +2401,8 @@ app.get('/api/adr-system-statuses', async (req, res) => {
 // Справочник статусов функции в заключении (issue #74).
 app.get('/api/adr-system-function-statuses', async (req, res) => {
   try {
-    const r = await pool.query(queries.adr_increment_system_function_statuses_select);
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('adr_increment_system_function_statuses_select', 'adr_increment_system_function_statuses_select_search', search);
     res.json(r.rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -2431,7 +2445,8 @@ app.delete('/api/adr-system-function-statuses/:id', async (req, res) => {
 // Справочник статусов функции в реестре (issue #74).
 app.get('/api/system-function-statuses', async (req, res) => {
   try {
-    const r = await pool.query(queries.system_function_statuses_select);
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('system_function_statuses_select', 'system_function_statuses_select_search', search);
     res.json(r.rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -2946,7 +2961,11 @@ app.post('/api/ar-gaps/:id/relations', async (req, res) => {
 
 // Refs: gap types, impact level types, gap states
 app.get('/api/ar-gap-types', async (req, res) => {
-  try { const r = await pool.query(queries.gap_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('gap_types_select', 'gap_types_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/ar-gap-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.gap_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -2961,7 +2980,11 @@ app.delete('/api/ar-gap-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.gap_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/ar-impact-level-types', async (req, res) => {
-  try { const r = await pool.query(queries.impact_level_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('impact_level_types_select', 'impact_level_types_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/ar-impact-level-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.impact_level_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -2976,7 +2999,11 @@ app.delete('/api/ar-impact-level-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.impact_level_types_delete, [req.params.id]); if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' }); res.status(204).send(); } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/ar-gap-states', async (req, res) => {
-  try { const r = await pool.query(queries.gap_states_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('gap_states_select', 'gap_states_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/ar-gap-states/:id', async (req, res) => {
   try { const r = await pool.query(queries.gap_states_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -3280,7 +3307,11 @@ app.delete('/api/togaf/certificates/:id', async (req, res) => {
 });
 
 app.get('/api/togaf/domain-statuses', async (req, res) => {
-  try { const r = await pool.query(queries.domain_statuses_select); res.json(applyDisplayName(r.rows, 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('domain_statuses_select', 'domain_statuses_select_search', search);
+    res.json(applyDisplayName(r.rows, 'domain_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/domain-statuses/:id', async (req, res) => {
   try { const r = await pool.query(queries.domain_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'domain_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -3307,7 +3338,11 @@ app.delete('/api/togaf/domain-statuses/:id', async (req, res) => {
 });
 
 app.get('/api/togaf/web-resource-statuses', async (req, res) => {
-  try { const r = await pool.query(queries.web_resource_statuses_select); res.json(applyDisplayName(r.rows, 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('web_resource_statuses_select', 'web_resource_statuses_select_search', search);
+    res.json(applyDisplayName(r.rows, 'web_resource_status'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/web-resource-statuses/:id', async (req, res) => {
   try { const r = await pool.query(queries.web_resource_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_status')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -3334,7 +3369,11 @@ app.delete('/api/togaf/web-resource-statuses/:id', async (req, res) => {
 });
 
 app.get('/api/togaf/web-resource-categories', async (req, res) => {
-  try { const r = await pool.query(queries.web_resource_categories_select); res.json(applyDisplayName(r.rows, 'web_resource_category')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('web_resource_categories_select', 'web_resource_categories_select_search', search);
+    res.json(applyDisplayName(r.rows, 'web_resource_category'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/web-resource-categories/:id', async (req, res) => {
   try { const r = await pool.query(queries.web_resource_categories_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_category')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -3365,7 +3404,11 @@ app.delete('/api/togaf/web-resource-categories/:id', async (req, res) => {
 });
 
 app.get('/api/togaf/web-resource-stage-types', async (req, res) => {
-  try { const r = await pool.query(queries.web_resource_stage_types_select); res.json(applyDisplayName(r.rows, 'web_resource_stage_type')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('web_resource_stage_types_select', 'web_resource_stage_types_select_search', search);
+    res.json(applyDisplayName(r.rows, 'web_resource_stage_type'));
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/web-resource-stage-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.web_resource_stage_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(applyDisplayName(r.rows[0], 'web_resource_stage_type')); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -3610,7 +3653,8 @@ app.delete('/api/settings-parameters/:id', async (req, res) => {
 // --- TOGAF Metamodel (task #14) ---
 app.get('/api/togaf/entity-types', async (req, res) => {
   try {
-    const r = await pool.query(queries.metamodel_entity_types_select);
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('metamodel_entity_types_select', 'metamodel_entity_types_select_search', search);
     res.json(r.rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -3676,7 +3720,8 @@ app.delete('/api/togaf/entity-types/:id', async (req, res) => {
 
 app.get('/api/togaf/relation-types', async (req, res) => {
   try {
-    const r = await pool.query(queries.metamodel_relation_types_select);
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('metamodel_relation_types_select', 'metamodel_relation_types_select_search', search);
     res.json(r.rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
@@ -3997,7 +4042,11 @@ app.delete('/api/togaf/relations/:id', async (req, res) => {
 
 // TOGAF refs: organization unit categories, actor types, business service statuses
 app.get('/api/togaf/refs/organization-unit-categories', async (req, res) => {
-  try { const r = await pool.query(queries.togaf_organization_unit_categories_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('togaf_organization_unit_categories_select', 'togaf_organization_unit_categories_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/refs/organization-unit-categories/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_organization_unit_categories_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -4013,7 +4062,11 @@ app.delete('/api/togaf/refs/organization-unit-categories/:id', async (req, res) 
 });
 
 app.get('/api/togaf/refs/actor-types', async (req, res) => {
-  try { const r = await pool.query(queries.togaf_actor_types_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('togaf_actor_types_select', 'togaf_actor_types_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/refs/actor-types/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_actor_types_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }
@@ -4029,7 +4082,11 @@ app.delete('/api/togaf/refs/actor-types/:id', async (req, res) => {
 });
 
 app.get('/api/togaf/refs/business-service-statuses', async (req, res) => {
-  try { const r = await pool.query(queries.togaf_business_service_statuses_select); res.json(r.rows); } catch (err) { console.error(err); res.status(500).send('Server error'); }
+  try {
+    const search = (req.query.search || '').trim();
+    const r = await selectRefRows('togaf_business_service_statuses_select', 'togaf_business_service_statuses_select_search', search);
+    res.json(r.rows);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
 });
 app.get('/api/togaf/refs/business-service-statuses/:id', async (req, res) => {
   try { const r = await pool.query(queries.togaf_business_service_statuses_get, [req.params.id]); if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' }); res.json(r.rows[0]); } catch (err) { console.error(err); res.status(500).send('Server error'); }

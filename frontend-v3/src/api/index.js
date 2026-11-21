@@ -63,8 +63,8 @@ export const dashboardApi = {
 
 // TOGAF
 export const togafApi = {
-  entityTypes: () => api.get('/togaf/entity-types'),
-  relationTypes: () => api.get('/togaf/relation-types'),
+  entityTypes: (params) => api.get('/togaf/entity-types', params),
+  relationTypes: (params) => api.get('/togaf/relation-types', params),
   relations: (params) => api.get('/togaf/relations', params),
   relation: (id, params) => api.get(`/togaf/relations/${id}`, params),
   createRelation: (body) => api.post('/togaf/relations', body),
@@ -105,17 +105,17 @@ export const togafApi = {
   deleteBusinessFunction: (id) => api.delete(`/togaf/business-functions/${id}`),
 
   refs: {
-    organizationUnitCategories: () => api.get('/togaf/refs/organization-unit-categories'),
+    organizationUnitCategories: (params) => api.get('/togaf/refs/organization-unit-categories', params),
     organizationUnitCategory: (id) => api.get(`/togaf/refs/organization-unit-categories/${id}`),
     createOrganizationUnitCategory: (body) => api.post('/togaf/refs/organization-unit-categories', body),
     updateOrganizationUnitCategory: (id, body) => api.put(`/togaf/refs/organization-unit-categories/${id}`, body),
     deleteOrganizationUnitCategory: (id) => api.delete(`/togaf/refs/organization-unit-categories/${id}`),
-    actorTypes: () => api.get('/togaf/refs/actor-types'),
+    actorTypes: (params) => api.get('/togaf/refs/actor-types', params),
     actorType: (id) => api.get(`/togaf/refs/actor-types/${id}`),
     createActorType: (body) => api.post('/togaf/refs/actor-types', body),
     updateActorType: (id, body) => api.put(`/togaf/refs/actor-types/${id}`, body),
     deleteActorType: (id) => api.delete(`/togaf/refs/actor-types/${id}`),
-    businessServiceStatuses: () => api.get('/togaf/refs/business-service-statuses'),
+    businessServiceStatuses: (params) => api.get('/togaf/refs/business-service-statuses', params),
     businessServiceStatus: (id) => api.get(`/togaf/refs/business-service-statuses/${id}`),
     createBusinessServiceStatus: (body) => api.post('/togaf/refs/business-service-statuses', body),
     updateBusinessServiceStatus: (id, body) => api.put(`/togaf/refs/business-service-statuses/${id}`, body),

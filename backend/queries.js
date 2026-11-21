@@ -424,10 +424,12 @@ module.exports = {
 
   adr_increment_system_statuses_select: `SELECT id, code, name, description FROM archrep.ar_adr_increment_system_statuses ORDER BY name`,
   adr_increment_system_function_statuses_select: `SELECT id, code, name, description FROM archrep.ar_adr_increment_system_function_statuses ORDER BY name`,
+  adr_increment_system_function_statuses_select_search: `SELECT id, code, name, description FROM archrep.ar_adr_increment_system_function_statuses WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   adr_increment_system_function_statuses_insert: `INSERT INTO archrep.ar_adr_increment_system_function_statuses (code, name, description) VALUES ($1, $2, NULLIF($3,'')) RETURNING *`,
   adr_increment_system_function_statuses_update: `UPDATE archrep.ar_adr_increment_system_function_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
   adr_increment_system_function_statuses_delete: `DELETE FROM archrep.ar_adr_increment_system_function_statuses WHERE id = $1`,
   system_function_statuses_select: `SELECT id, code, name, description FROM archrep.ar_system_function_statuses ORDER BY name`,
+  system_function_statuses_select_search: `SELECT id, code, name, description FROM archrep.ar_system_function_statuses WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   system_function_statuses_insert: `INSERT INTO archrep.ar_system_function_statuses (code, name, description) VALUES ($1, $2, NULLIF($3,'')) RETURNING *`,
   system_function_statuses_update: `UPDATE archrep.ar_system_function_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
   system_function_statuses_delete: `DELETE FROM archrep.ar_system_function_statuses WHERE id = $1`,
@@ -615,6 +617,7 @@ module.exports = {
 
   // --- TOGAF Metamodel (task #14) ---
   metamodel_entity_types_select: `SELECT id, code, name, table_name, disp_param_name, description, COALESCE(import_allowed, false) AS import_allowed FROM archrep.ar_metamodel_entity_types ORDER BY code`,
+  metamodel_entity_types_select_search: `SELECT id, code, name, table_name, disp_param_name, description, COALESCE(import_allowed, false) AS import_allowed FROM archrep.ar_metamodel_entity_types WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(table_name, '') ILIKE $1 OR COALESCE(disp_param_name, '') ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY code`,
   metamodel_entity_types_get: `SELECT id, code, name, table_name, disp_param_name, description, COALESCE(import_allowed, false) AS import_allowed FROM archrep.ar_metamodel_entity_types WHERE id = $1`,
   metamodel_entity_types_insert: `INSERT INTO archrep.ar_metamodel_entity_types (code, name, table_name, disp_param_name, description, import_allowed) VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), COALESCE($6, false)) RETURNING *`,
   metamodel_entity_types_update: `UPDATE archrep.ar_metamodel_entity_types SET code = $1, name = $2, table_name = NULLIF($3,''), disp_param_name = NULLIF($4,''), description = NULLIF($5,''), import_allowed = COALESCE($6, false) WHERE id = $7 RETURNING *`,
@@ -630,6 +633,16 @@ module.exports = {
     FROM archrep.ar_metamodel_relation_types r
     JOIN archrep.ar_metamodel_entity_types f ON r.from_entity_type_id = f.id
     JOIN archrep.ar_metamodel_entity_types t ON r.to_entity_type_id = t.id
+    ORDER BY r.code, f.code, t.code`,
+  metamodel_relation_types_select_search: `
+    SELECT r.id, r.code, r.name, r.description, r.from_entity_type_id, r.to_entity_type_id, r.managed,
+           f.code AS from_entity_type_code, f.name AS from_entity_type_name,
+           t.code AS to_entity_type_code, t.name AS to_entity_type_name
+    FROM archrep.ar_metamodel_relation_types r
+    JOIN archrep.ar_metamodel_entity_types f ON r.from_entity_type_id = f.id
+    JOIN archrep.ar_metamodel_entity_types t ON r.to_entity_type_id = t.id
+    WHERE r.code ILIKE $1 OR r.name ILIKE $1 OR COALESCE(r.description, '') ILIKE $1
+       OR f.code ILIKE $1 OR f.name ILIKE $1 OR t.code ILIKE $1 OR t.name ILIKE $1
     ORDER BY r.code, f.code, t.code`,
   metamodel_relation_types_get: `
     SELECT r.id, r.code, r.name, r.description, r.from_entity_type_id, r.to_entity_type_id, r.managed,
@@ -722,18 +735,21 @@ module.exports = {
   metamodel_relations_delete: `DELETE FROM archrep.ar_metamodel_relations WHERE id = $1`,
 
   togaf_organization_unit_categories_select: `SELECT id, code, name, description FROM archrep.ar_organization_unit_categories ORDER BY name`,
+  togaf_organization_unit_categories_select_search: `SELECT id, code, name, description FROM archrep.ar_organization_unit_categories WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   togaf_organization_unit_categories_get: `SELECT id, code, name, description FROM archrep.ar_organization_unit_categories WHERE id = $1`,
   togaf_organization_unit_categories_insert: `INSERT INTO archrep.ar_organization_unit_categories (code, name, description) VALUES (NULLIF($1,''), $2, NULLIF($3,'')) RETURNING *`,
   togaf_organization_unit_categories_update: `UPDATE archrep.ar_organization_unit_categories SET code=NULLIF($1,''), name=$2, description=NULLIF($3,'') WHERE id=$4 RETURNING *`,
   togaf_organization_unit_categories_delete: `DELETE FROM archrep.ar_organization_unit_categories WHERE id = $1`,
 
   togaf_actor_types_select: `SELECT id, code, name, description FROM archrep.ar_actor_types ORDER BY name`,
+  togaf_actor_types_select_search: `SELECT id, code, name, description FROM archrep.ar_actor_types WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   togaf_actor_types_get: `SELECT id, code, name, description FROM archrep.ar_actor_types WHERE id = $1`,
   togaf_actor_types_insert: `INSERT INTO archrep.ar_actor_types (code, name, description) VALUES (NULLIF($1,''), $2, NULLIF($3,'')) RETURNING *`,
   togaf_actor_types_update: `UPDATE archrep.ar_actor_types SET code=NULLIF($1,''), name=$2, description=NULLIF($3,'') WHERE id=$4 RETURNING *`,
   togaf_actor_types_delete: `DELETE FROM archrep.ar_actor_types WHERE id = $1`,
 
   togaf_business_service_statuses_select: `SELECT id, name, description FROM archrep.ar_business_service_statuses ORDER BY name`,
+  togaf_business_service_statuses_select_search: `SELECT id, name, description FROM archrep.ar_business_service_statuses WHERE name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   togaf_business_service_statuses_get: `SELECT id, name, description FROM archrep.ar_business_service_statuses WHERE id = $1`,
   togaf_business_service_statuses_insert: `INSERT INTO archrep.ar_business_service_statuses (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
   togaf_business_service_statuses_update: `UPDATE archrep.ar_business_service_statuses SET name=$1, description=NULLIF($2,'') WHERE id=$3 RETURNING *`,
@@ -819,36 +835,42 @@ module.exports = {
     WHERE g.code = $1`,
 
   gap_types_select: `SELECT id, name, description FROM archrep.ar_gap_types ORDER BY name`,
+  gap_types_select_search: `SELECT id, name, description FROM archrep.ar_gap_types WHERE name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,
   gap_types_get: `SELECT id, name, description FROM archrep.ar_gap_types WHERE id = $1`,
   gap_types_insert: `INSERT INTO archrep.ar_gap_types (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
   gap_types_update: `UPDATE archrep.ar_gap_types SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
   gap_types_delete: `DELETE FROM archrep.ar_gap_types WHERE id = $1`,
 
   impact_level_types_select: `SELECT id, name, description FROM archrep.ar_impact_level_types ORDER BY id`,
+  impact_level_types_select_search: `SELECT id, name, description FROM archrep.ar_impact_level_types WHERE name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   impact_level_types_get: `SELECT id, name, description FROM archrep.ar_impact_level_types WHERE id = $1`,
   impact_level_types_insert: `INSERT INTO archrep.ar_impact_level_types (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
   impact_level_types_update: `UPDATE archrep.ar_impact_level_types SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
   impact_level_types_delete: `DELETE FROM archrep.ar_impact_level_types WHERE id = $1`,
 
   gap_states_select: `SELECT id, name, description FROM archrep.ar_gap_states ORDER BY id`,
+  gap_states_select_search: `SELECT id, name, description FROM archrep.ar_gap_states WHERE name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   gap_states_get: `SELECT id, name, description FROM archrep.ar_gap_states WHERE id = $1`,
   gap_states_insert: `INSERT INTO archrep.ar_gap_states (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
   gap_states_update: `UPDATE archrep.ar_gap_states SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
   gap_states_delete: `DELETE FROM archrep.ar_gap_states WHERE id = $1`,
 
   web_resource_statuses_select: `SELECT id, code, name, description FROM archrep.ar_web_resource_statuses ORDER BY id`,
+  web_resource_statuses_select_search: `SELECT id, code, name, description FROM archrep.ar_web_resource_statuses WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   web_resource_statuses_get: `SELECT id, code, name, description FROM archrep.ar_web_resource_statuses WHERE id = $1`,
   web_resource_statuses_insert: `INSERT INTO archrep.ar_web_resource_statuses (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
   web_resource_statuses_update: `UPDATE archrep.ar_web_resource_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
   web_resource_statuses_delete: `DELETE FROM archrep.ar_web_resource_statuses WHERE id = $1`,
 
   web_resource_categories_select: `SELECT id, code, name, description FROM archrep.ar_web_resource_categories ORDER BY id`,
+  web_resource_categories_select_search: `SELECT id, code, name, description FROM archrep.ar_web_resource_categories WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   web_resource_categories_get: `SELECT id, code, name, description FROM archrep.ar_web_resource_categories WHERE id = $1`,
   web_resource_categories_insert: `INSERT INTO archrep.ar_web_resource_categories (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
   web_resource_categories_update: `UPDATE archrep.ar_web_resource_categories SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
   web_resource_categories_delete: `DELETE FROM archrep.ar_web_resource_categories WHERE id = $1`,
 
   web_resource_stage_types_select: `SELECT id, code, name, description FROM archrep.ar_web_resource_stage_types ORDER BY id`,
+  web_resource_stage_types_select_search: `SELECT id, code, name, description FROM archrep.ar_web_resource_stage_types WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   web_resource_stage_types_get: `SELECT id, code, name, description FROM archrep.ar_web_resource_stage_types WHERE id = $1`,
   web_resource_stage_types_insert: `INSERT INTO archrep.ar_web_resource_stage_types (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
   web_resource_stage_types_update: `UPDATE archrep.ar_web_resource_stage_types SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
@@ -975,6 +997,7 @@ module.exports = {
   web_resources_delete: `DELETE FROM archrep.ar_web_resources WHERE id = $1`,
 
   domain_statuses_select: `SELECT id, code, name, description FROM archrep.ar_domain_statuses ORDER BY id`,
+  domain_statuses_select_search: `SELECT id, code, name, description FROM archrep.ar_domain_statuses WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY id`,
   domain_statuses_get: `SELECT id, code, name, description FROM archrep.ar_domain_statuses WHERE id = $1`,
   domain_statuses_insert: `INSERT INTO archrep.ar_domain_statuses (code, name, description) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING *`,
   domain_statuses_update: `UPDATE archrep.ar_domain_statuses SET code = $1, name = $2, description = NULLIF($3,'') WHERE id = $4 RETURNING *`,
