@@ -199,8 +199,6 @@
                 <th>IP</th>
                 <th>Статус</th>
                 <th>Площадка</th>
-                <th>Кластер</th>
-                <th>Платформа</th>
               </tr>
             </thead>
             <tbody>
@@ -213,8 +211,6 @@
                 <td>{{ row.primary_ip ?? '—' }}</td>
                 <td>{{ row.status ?? '—' }}</td>
                 <td>{{ row.site ?? '—' }}</td>
-                <td>{{ row.cluster || '—' }}</td>
-                <td>{{ row.platform || '—' }}</td>
               </tr>
             </tbody>
           </table>
