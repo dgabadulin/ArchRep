@@ -301,6 +301,8 @@ export const api = {
   // Инфраструктура (Netbox, read-only)
   getInfrastructure: (params) => request('/api/infrastructure' + buildQuery(params)),
   getInfrastructureItem: (id) => request(`/api/infrastructure/${id}`),
+  /** Срез карточки ИС: серверы системы/модуля (issue #125). */
+  getSystemsInfrastructure: (params) => request('/api/systems-infrastructure' + buildQuery(params)),
   getInfrastructureObjectTypes: (params) =>
     request('/api/togaf/refs/infrastructure-object-types' + buildQuery(params)),
   createInfrastructureObjectType: (body) =>

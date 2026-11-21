@@ -1,6 +1,6 @@
 # Каталог инфраструктуры из Netbox (read-only)
 
-**Статус:** реализовано (issue #92)  
+**Статус:** реализовано (issue #92); вкладка «Инфраструктура» на карточке ИС — issue #125  
 **GitHub:** [#92](https://github.com/dgabadulin/ArchRep/issues/92)  
 **Источник данных:** Netbox (`virtualization.virtualmachine`, `dcim.device`)  
 **Синхронизация:** задание `infrastructure_sync` (Job Runner), ручной запуск — «Настройки → Управление заданиями»  
@@ -141,6 +141,7 @@
 | Маршрут | Право | Назначение |
 |---|---|---|
 | `GET /api/infrastructure?search=` | `infrastructure:read` | Список серверов |
+| `GET /api/systems-infrastructure?system_id=` | `system:read` | Срез карточки ИС: серверы системы/модуля, связи `system_infrastructure` / `subsystem_infrastructure` (#125) |
 | `GET /api/infrastructure/:id` | `infrastructure:read` | Карточка (read-only) |
 | `GET/POST/PUT/DELETE /api/togaf/refs/infrastructure-object-types` | `references:read` / `references:write` | Справочник типов |
 | `POST /api/jobs/:id/run` | `jobs:execute` | Ручной запуск синхронизации |
@@ -157,6 +158,10 @@
 - Нет кнопок создания/изменения/удаления; при отсутствии ИС — «ИС не определена».
 - Главная: строка объёма в аккордеоне (`infrastructure_object`).
 - Анализатор зависимостей: тип `infrastructure_object` в `GRAPH_ENTITY_ICONS` / `GRAPH_ENTITY_ORDER`.
+- **Карточка ИС** (`/systems/:id/edit`): вкладка **«Инфраструктура»** — таблица серверов системы и граф связей
+  (как вкладка «Технологический стек»). Read-only: пометка о том, что данные обновляются автоматически при
+  настроенной интеграции с системой учёта инфраструктуры, карточки серверов ведутся в Netbox. Список доступен
+  при `system:read` (срез карточки, не требует `infrastructure:read`).
 
 ## 8. Чек-лист `adding-new-entity-type.md`
 
@@ -174,6 +179,7 @@
 | `relationLabels.js` | `infrastructure_object → infrastructure_objects_label_select` |
 | `metamodel_entity_search_text` | Ветка `infrastructure_object` |
 | Роутер, меню, список | Добавлены; формы нет (read-only) |
+| Карточка ИС | Вкладка «Инфраструктура» (`GET /api/systems-infrastructure?system_id=`, `system:read`), read-only, граф + таблица (#125) |
 | ИИ-архитектор | `ENTITY_TYPES` + `RELATION_END_META` (без формы и предзаполнения) |
 | Главная | `ACCORDION_COUNT_SQL.infrastructure_object` |
 | Импорт/экспорт Excel | Не применимо (read-only, `import_allowed=false`) |
@@ -191,4 +197,6 @@
    - недоступный Netbox → задание `failed`, каталог не изменился;
    - тег без ИС → запись есть, связи нет.
 5. `GET /api/infrastructure` под пользователем с `infrastructure:read`; без права — 403.
+6. Карточка ИС → вкладка «Инфраструктура»: серверы системы видны при `system:read`, таблица и граф совпадают
+   со связями `system_infrastructure` / `subsystem_infrastructure`; пометка об автообновлении присутствует.
 

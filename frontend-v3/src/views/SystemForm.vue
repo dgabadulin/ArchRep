@@ -17,6 +17,9 @@
           :title="`Изменений без сохранения: ${techDraftCount}`"
         >•</span>
       </button>
+      <button :class="['tab', { active: activeTab === 'infra' }]" @click="activeTab = 'infra'; loadInfrastructure()">
+        Инфраструктура
+      </button>
       <button :class="['tab', { active: activeTab === 'integrations' }]" @click="activeTab = 'integrations'; loadIntegrationFlows()">
         Интеграции
       </button>
@@ -167,6 +170,57 @@
           <p v-if="!techStackLoading && systemTechnologies.length === 0" class="empty">
             Нет связанных технологий.
             <template v-if="canWrite"> Выберите технологию из каталога и добавьте связь.</template>
+          </p>
+        </template>
+      </EntityLinksTableGraph>
+    </div>
+
+    <!-- Вкладка "Инфраструктура" — срез карточки ИС (system:read, issue #125); серверы read-only из системы учёта инфраструктуры -->
+    <div v-else-if="activeTab === 'infra'" class="card tech-stack">
+      <div v-if="infraError" class="error">{{ infraError }}</div>
+      <EntityLinksTableGraph
+        :loading="infraLoading"
+        :relations="infraGraphRelations"
+        :center-node-id="infraGraphCenterNodeId"
+        :node-names="infraGraphNodeNames"
+        graph-height="780px"
+      >
+        <template #hint>
+          Серверы, связанные с системой в метамодели. Данные в разделе обновляются автоматически, если настроена
+          интеграция с системой учёта инфраструктуры (Netbox): связи «ИС → сервер» создаёт синхронизация по тегам
+          <code>IS:&lt;код ИС&gt;</code>. Карточки серверов ведутся в Netbox — здесь только просмотр.
+        </template>
+        <template #table>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Сервер</th>
+                <th>Тип</th>
+                <th>IP</th>
+                <th>Статус</th>
+                <th>Площадка</th>
+                <th>Кластер</th>
+                <th>Платформа</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in systemInfrastructure" :key="row.relation_id">
+                <td>
+                  <a v-if="row.netbox_url" :href="row.netbox_url" target="_blank" rel="noopener" class="link">{{ row.name }}</a>
+                  <span v-else>{{ row.name }}</span>
+                </td>
+                <td>{{ row.type_name ?? '—' }}</td>
+                <td>{{ row.primary_ip ?? '—' }}</td>
+                <td>{{ row.status ?? '—' }}</td>
+                <td>{{ row.site ?? '—' }}</td>
+                <td>{{ row.cluster || '—' }}</td>
+                <td>{{ row.platform || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!infraLoading && systemInfrastructure.length === 0" class="empty">
+            Нет связанных серверов.
+            <template v-if="!isEdit">Список появится после сохранения системы.</template>
           </p>
         </template>
       </EntityLinksTableGraph>
@@ -522,6 +576,63 @@ async function loadTechStack({ force = false } = {}) {
     submitError.value = e.body?.error || e.message || 'Ошибка загрузки технологий'
   } finally {
     techStackLoading.value = false
+  }
+}
+
+/**
+ * Инфраструктура системы (issue #125): срез карточки ИС — серверы, связанные в метамодели.
+ * Read-only: связи создаёт синхронизация с системой учёта инфраструктуры (Netbox),
+ * карточки серверов ведутся там же, форма лишь показывает срез.
+ */
+const systemInfrastructure = ref([])
+const infraLoading = ref(false)
+const infraError = ref('')
+
+/** Связи для графа: строки среза уже содержат relation_* (в отличие от черновика стека технологий). */
+const infraGraphRelations = computed(() =>
+  systemInfrastructure.value.map((row) => ({
+    id: row.relation_id,
+    from_entity_type: row.from_entity_type,
+    from_entity_id: Number(row.from_entity_id),
+    to_entity_type: 'infrastructure_object',
+    to_entity_id: Number(row.id),
+    relation_type: row.relation_type,
+    relation_type_name: row.relation_type_name || '',
+  })),
+)
+
+/** Подписи узлов графа: срез уже содержит имена серверов, поэтому право `infrastructure:read` не нужно. */
+const infraGraphNodeNames = computed(() => {
+  const names = {}
+  for (const row of systemInfrastructure.value) {
+    names[nodeId('infrastructure_object', row.id)] = row.name
+  }
+  return names
+})
+
+/** Центр «звезды» на графе: конец «система» берём из связи, а для пустого среза — из формы. */
+const infraGraphCenterNodeId = computed(() => {
+  const systemId = Number(id.value)
+  if (!Number.isFinite(systemId)) return null
+  const fromType =
+    systemInfrastructure.value[0]?.from_entity_type || (form.parent_ar_systems_id != null ? 'subsystem' : 'system')
+  return nodeId(fromType, systemId)
+})
+
+async function loadInfrastructure() {
+  infraError.value = ''
+  if (!isEdit.value || !id.value) {
+    systemInfrastructure.value = []
+    return
+  }
+  infraLoading.value = true
+  try {
+    systemInfrastructure.value = await api.getSystemsInfrastructure({ system_id: id.value })
+  } catch (e) {
+    infraError.value = e.body?.error || e.message || 'Ошибка загрузки инфраструктуры'
+    systemInfrastructure.value = []
+  } finally {
+    infraLoading.value = false
   }
 }
 

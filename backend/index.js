@@ -3479,6 +3479,20 @@ app.get('/api/infrastructure/:id', async (req, res) => {
   }
 });
 
+// Срез карточки ИС: серверы системы (issue #125). Read-only — связи создаёт синхронизация
+// с системой учёта инфраструктуры (Netbox), карточки серверов ведутся там же.
+app.get('/api/systems-infrastructure', async (req, res) => {
+  try {
+    const systemId = req.query.system_id;
+    if (!systemId) return res.status(400).json({ error: 'system_id required' });
+    const r = await pool.query(queries.infrastructure_objects_by_system, [systemId]);
+    res.json(r.rows.map(decorateInfrastructureRow));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Справочник типов объектов инфраструктуры (вкладка «Справочники»)
 app.get('/api/togaf/refs/infrastructure-object-types', async (req, res) => {
   try {

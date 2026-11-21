@@ -58,6 +58,11 @@ const props = defineProps({
   /** Узел-центр для раскладки «звезда», например gap:12 или system:34 */
   centerNodeId: { type: String, default: null },
   relationTypes: { type: Array, default: () => [] },
+  /**
+   * Готовые подписи узлов (`nodeId → name`). Нужны, когда срез карточки уже содержит наименования
+   * связанных объектов и не должен требовать права на их реестр (например, серверы ИС, issue #125).
+   */
+  nodeNames: { type: Object, default: () => ({}) },
   graphTitle: { type: String, default: 'Граф связей' },
   graphHeight: { type: String, default: '780px' },
 })
@@ -75,6 +80,12 @@ async function resolveGraphNodeNames() {
   const updates = {}
   const promises = []
   for (const nid of Object.keys(graphNodes.value)) {
+    // Подпись уже пришла в срезе карточки — не ходим в реестр связанной сущности (может не быть прав).
+    const provided = props.nodeNames?.[nid]
+    if (provided) {
+      updates[nid] = String(provided)
+      continue
+    }
     const p = parseNodeId(nid)
     if (!p) continue
     promises.push(
@@ -129,6 +140,14 @@ watch(
   () => {
     rebuildGraph()
   }
+)
+
+watch(
+  () => props.nodeNames,
+  () => {
+    rebuildGraph()
+  },
+  { deep: true }
 )
 
 onMounted(() => {

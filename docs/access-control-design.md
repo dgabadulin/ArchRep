@@ -438,6 +438,7 @@ Effective permissions = объединение permissions всех назнач
 | `/api/ar-employees` (карточка / мутации) | `employee:*` |
 | `GET /api/technologies` (список) | **anyOf** `technology:read` \| `system:read` |
 | `GET/POST/DELETE /api/systems-technologies` | `system:read` / `system:write` (связь на карточке ИС) |
+| `GET /api/systems-infrastructure?system_id=` | `system:read` (срез карточки ИС: серверы системы, #125) |
 
 См. §10.6 (реестр ≠ lookup, вкладки-срезы карточки).
 

@@ -1358,6 +1358,28 @@ module.exports = {
     ORDER BY c.expires_at, c.code`,
 
   // --- Инфраструктура (Netbox, read-only) ---
+  /** Серверы, связанные с ИС/модулем (срез карточки ИС, issue #125): связь + метаданные типа связи. */
+  infrastructure_objects_by_system: `
+    SELECT o.id, o.source, o.external_id, o.ar_infrastructure_object_types_id,
+           o.name, o.description, o.primary_ip, o.status, o.site, o.cluster, o.platform, o.tenant,
+           o.vcpus, o.memory_gb, o.disk_gb, o.netbox_updated_at, o.synced_at,
+           t.code AS type_code, t.name AS type_name,
+           r.id AS relation_id, r.from_entity_type, r.from_entity_id, r.relation_type,
+           rt.name AS relation_type_name
+    FROM archrep.ar_metamodel_relations r
+    JOIN archrep.ar_infrastructure_objects o ON o.id = r.to_entity_id
+    JOIN archrep.ar_infrastructure_object_types t ON t.id = o.ar_infrastructure_object_types_id
+    LEFT JOIN archrep.ar_metamodel_entity_types fe ON fe.code = r.from_entity_type
+    LEFT JOIN archrep.ar_metamodel_entity_types te ON te.code = r.to_entity_type
+    LEFT JOIN archrep.ar_metamodel_relation_types rt
+      ON rt.code = r.relation_type
+     AND rt.from_entity_type_id = fe.id
+     AND rt.to_entity_type_id = te.id
+    WHERE r.to_entity_type = 'infrastructure_object'
+      AND r.from_entity_type IN ('system', 'subsystem')
+      AND r.from_entity_id = $1
+      AND r.relation_type IN ('system_infrastructure', 'subsystem_infrastructure')
+    ORDER BY o.name`,
   infrastructure_object_types_select: `SELECT id, code, name, description FROM archrep.ar_infrastructure_object_types ORDER BY id`,
   infrastructure_object_types_select_search: `
     SELECT id, code, name, description

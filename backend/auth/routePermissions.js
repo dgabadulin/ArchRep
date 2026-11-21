@@ -185,6 +185,8 @@ const RULES = [
 
   // Каталог инфраструктуры (Netbox) — только чтение; синхронизация запускается заданием (jobs:execute)
   { methods: ['GET'], pattern: re('/api/infrastructure'), permissions: ['infrastructure:read'] },
+  // Срез карточки ИС: серверы системы (issue #125) — читается вместе с карточкой ИС.
+  { methods: ['GET'], pattern: re('/api/systems-infrastructure'), permissions: ['system:read'] },
 
   listLookup('/api/partners', 'partner:export', PARTNER_FK_READS),
   ...crud('/api/partners', 'partner'),
