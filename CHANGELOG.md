@@ -12,6 +12,24 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по запросу
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.7.0](https://github.com/dgabadulin/ArchRep/compare/v4.6.0...v4.7.0) (2026-11-21)
+
+
+### Новое
+
+* **dashboards:** добавлен дашборд матрицы целевой архитектуры с цветовой легендой ([c94dcc0](https://github.com/dgabadulin/ArchRep/commit/c94dcc0732bbdf58a14876627066c0c4eb4ce446))
+* **employee:** добавлена полная синхронизация справочника сотрудников из CSV ([fd85d9a](https://github.com/dgabadulin/ArchRep/commit/fd85d9ac5fc56c409c758b3b61d9e56782639d73))
+* **owners:** добавлена дополнительная классификация функциональных вертикалей ([c22b795](https://github.com/dgabadulin/ArchRep/commit/c22b7950a4c822883f8dba47c21e835793083504))
+
+
+### Исправлено
+
+* **analyzer:** добавлено закрытие контекстного меню при выборе другого узла или связи ([7e61697](https://github.com/dgabadulin/ArchRep/commit/7e61697ce377c8a3de15f97e5b3129c4796caa86))
+* **db:** применённые SQL-скрипты возвращены к исходному виду ([b497aa6](https://github.com/dgabadulin/ArchRep/commit/b497aa604a40fc4fba5059f61985f6dc4355ed33))
+* **db:** устранено неоднозначное сравнение версии в upsert маркера схемы ([958406d](https://github.com/dgabadulin/ArchRep/commit/958406d1e84c3ff3bbbe4fab363708fb699b7411))
+* **db:** устранено отставание маркера версии схемы при накате миграций ([8f23a4e](https://github.com/dgabadulin/ArchRep/commit/8f23a4e552782de83e5d1f3101bf569802a519e0))
+* **owners:** уточнены правила классификации функциональных вертикалей ([0ea0d07](https://github.com/dgabadulin/ArchRep/commit/0ea0d0771dc483e613d81ab998f32447975630a8))
+
 ## [4.6.0](https://github.com/dgabadulin/ArchRep/compare/v4.5.0...v4.6.0) (2026-11-20)
 
 
