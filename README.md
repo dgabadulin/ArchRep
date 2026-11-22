@@ -27,7 +27,7 @@
 - `backend/` — код API (index.js, queries.js, views, public).
 - `db/schema/` — DDL схемы (например `archrep_test.sql`).
 - `infra/` — инфраструктура по подпапкам: `common/` (dockerfile), `prod/` (deploy), `demo/` (demo compose и env); шаблон env — корневой `.env.example`.
-- `DB/` — прежнее место DDL (дубликат в `db/schema/`); дампы по-прежнему в .gitignore.
+- `DB/` — прежнее место DDL (дубликат в `db/schema/`).
 - `docs/` — документация, промпты.
 
 **Целевые каталоги (уже созданы, код пока в корне):**
