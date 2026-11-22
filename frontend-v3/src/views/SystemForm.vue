@@ -525,9 +525,13 @@ function mapToForm(row) {
   form.ar_system_hosting_types_id = row.ar_system_hosting_types_id ?? null
   form.comment = row.comment ?? ''
   form.owner_ar_organization_units_id = row.owner_ar_organization_units_id ?? null
-  // id сортируем: снимок useFormDirty (JSON) не должен зависеть от порядка кликов
+  // id сортируем: снимок useFormDirty (JSON) не должен зависеть от порядка кликов.
+  // Приводим к числу: агрегат `jsonb_agg` отдаёт числа, а FK/id справочника — строки (bigint в node-pg).
   form.interface_type_ids = Array.isArray(row.interface_type_ids)
-    ? row.interface_type_ids.map(Number).sort((a, b) => a - b)
+    ? row.interface_type_ids
+        .map(Number)
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .sort((a, b) => a - b)
     : []
   form.external_system = !!row.external_system
 }
@@ -586,7 +590,13 @@ async function loadRefs() {
     togafApi.organizationUnits().catch(() => []),
   ])
   parentSystems.value = parents; statuses.value = st; vendors.value = v; owners.value = o; hostingTypes.value = h
-  interfaceTypes.value = Array.isArray(it) ? it : []
+  // bigint в node-pg приходит строкой, а `interface_type_ids` из jsonb — числом.
+  // Для строгого сравнения в чекбоксах (`includes`) id справочника приводим к числу.
+  interfaceTypes.value = Array.isArray(it)
+    ? it
+        .map((row) => ({ ...row, id: Number(row.id) }))
+        .filter((row) => Number.isFinite(row.id) && row.id > 0)
+    : []
   employees.value = em
   organizationUnits.value = Array.isArray(ou) ? ou : []
 }
