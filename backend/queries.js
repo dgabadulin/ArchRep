@@ -298,12 +298,12 @@ module.exports = {
   owners_delete: `DELETE FROM archrep.ar_system_owners WHERE id = $1`,
   owners_get: `SELECT id, name, leader FROM archrep.ar_system_owners WHERE id = $1`,
 
-  system_statuses_select: `SELECT id, name, description FROM archrep.ar_system_statuses ORDER BY id`,
-  system_statuses_select_search: `SELECT id, name, description FROM archrep.ar_system_statuses WHERE name ILIKE $1 OR COALESCE(description,'') ILIKE $1 ORDER BY id`,
-  system_statuses_insert: `INSERT INTO archrep.ar_system_statuses (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
-  system_statuses_update: `UPDATE archrep.ar_system_statuses SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
+  system_statuses_select: `SELECT id, name, description, extra_classification1 FROM archrep.ar_system_statuses ORDER BY id`,
+  system_statuses_select_search: `SELECT id, name, description, extra_classification1 FROM archrep.ar_system_statuses WHERE name ILIKE $1 OR COALESCE(description,'') ILIKE $1 OR COALESCE(extra_classification1,'') ILIKE $1 ORDER BY id`,
+  system_statuses_insert: `INSERT INTO archrep.ar_system_statuses (name, description, extra_classification1) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING id, name, description, extra_classification1`,
+  system_statuses_update: `UPDATE archrep.ar_system_statuses SET name = $1, description = NULLIF($2,''), extra_classification1 = NULLIF($3,'') WHERE id = $4 RETURNING id, name, description, extra_classification1`,
   system_statuses_delete: `DELETE FROM archrep.ar_system_statuses WHERE id = $1`,
-  system_statuses_get: `SELECT id, name, description FROM archrep.ar_system_statuses WHERE id = $1`,
+  system_statuses_get: `SELECT id, name, description, extra_classification1 FROM archrep.ar_system_statuses WHERE id = $1`,
 
   hosting_types_select: `SELECT id, name FROM archrep.ar_system_hosting_types ORDER BY name`,
   hosting_types_select_search: `SELECT id, name FROM archrep.ar_system_hosting_types WHERE name ILIKE $1 ORDER BY name`,

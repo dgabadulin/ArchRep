@@ -28,12 +28,13 @@
           <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
         </div>
         <table class="table">
-          <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Наименование</th><th>Описание</th><th>Доп.классификация1</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in statuses" :key="r.id">
               <td>{{ r.id }}</td>
               <td>{{ r.name }}</td>
               <td>{{ r.description ?? '—' }}</td>
+              <td>{{ r.extra_classification1 || '—' }}</td>
               <td>
                 <button type="button" class="btn-link" @click="openStatusForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
                 <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteStatus(r.id)">Удалить</button>
@@ -622,6 +623,7 @@
         <fieldset class="form-fieldset" :disabled="!canMutateActive">
         <div class="form-row"><label>Наименование</label><input v-model="statusForm.name" /></div>
         <div class="form-row"><label>Описание</label><input v-model="statusForm.description" /></div>
+        <div class="form-row"><label>Доп.классификация1</label><input v-model="statusForm.extra_classification1" /></div>
         </fieldset>
         <div class="modal-actions">
           <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveStatus">Сохранить</button>
@@ -1197,7 +1199,16 @@ async function exportExcel() {
   }
 }
 
-function openStatusForm(r) { statusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
+function openStatusForm(r) {
+  statusForm.value = r
+    ? {
+      id: r.id,
+      name: r.name,
+      description: r.description ?? '',
+      extra_classification1: r.extra_classification1 ?? '',
+    }
+    : { name: '', description: '', extra_classification1: '' }
+}
 function openHostingForm(r) { hostingForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
 function openInterfaceTypeForm(r) {
   interfaceTypeForm.value = r
@@ -1382,8 +1393,13 @@ function formatEntityTypesArr(arr) { return (arr && arr.length) ? arr.join(', ')
 async function saveStatus() {
   if (!statusForm.value?.name) return
   try {
-    if (statusForm.value.id) await api.updateSystemStatus(statusForm.value.id, { name: statusForm.value.name, description: statusForm.value.description })
-    else await api.createSystemStatus({ name: statusForm.value.name, description: statusForm.value.description })
+    const payload = {
+      name: statusForm.value.name,
+      description: statusForm.value.description,
+      extra_classification1: statusForm.value.extra_classification1,
+    }
+    if (statusForm.value.id) await api.updateSystemStatus(statusForm.value.id, payload)
+    else await api.createSystemStatus(payload)
     statusForm.value = null
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }

@@ -922,17 +922,22 @@ app.delete('/api/owners/:id', async (req, res) => {
 // --- System statuses CRUD (additional to GET) ---
 app.post('/api/system-statuses', async (req, res) => {
   try {
-    const { name, description } = req.body || {};
+    const { name, description, extra_classification1 } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
-    const r = await pool.query(queries.system_statuses_insert, [name, description]);
+    const r = await pool.query(queries.system_statuses_insert, [name, description, extra_classification1]);
     res.status(201).json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
 });
 app.put('/api/system-statuses/:id', async (req, res) => {
   try {
-    const { name, description } = req.body || {};
+    const { name, description, extra_classification1 } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
-    const r = await pool.query(queries.system_statuses_update, [name, description, req.params.id]);
+    const r = await pool.query(queries.system_statuses_update, [
+      name,
+      description,
+      extra_classification1,
+      req.params.id,
+    ]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
