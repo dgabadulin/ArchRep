@@ -10,6 +10,11 @@ const {
   parseBool,
   pgId,
 } = require('../importLib/common');
+const {
+  parseInterfaceTypeNames,
+  resolveInterfaceTypeIds,
+  syncSystemInterfaceTypes,
+} = require('../systemInterfaceTypes');
 
 const catalog = makeCatalog(
   [
@@ -25,6 +30,7 @@ const catalog = makeCatalog(
     { field: 'supplier_name', label: 'Поставщик', zone: 'left', kind: 'ref' },
     { field: 'supporter_name', label: 'Партнёр по поддержке', zone: 'left', kind: 'ref' },
     { field: 'hosting_name', label: 'Тип хостинга', zone: 'left', kind: 'ref' },
+    { field: 'interface_types', label: 'Типы интерфейса', zone: 'left', kind: 'ref' },
     { field: 'it_lead_employee_name', label: 'Ответственный от ИТ', zone: 'left', kind: 'ref' },
     { field: 'business_lead_employee_name', label: 'Владелец системы (бизнес)', zone: 'left', kind: 'ref' },
     { field: 'description', label: 'Описание', zone: 'left' },
@@ -36,11 +42,12 @@ const catalog = makeCatalog(
     { field: 'supplier_ar_partners_id', label: 'ID поставщика', zone: 'right' },
     { field: 'supporter_ar_partners_id', label: 'ID партнёра по поддержке', zone: 'right' },
     { field: 'ar_system_hosting_types_id', label: 'ID типа хостинга', zone: 'right' },
+    { field: 'interface_type_ids', label: 'ID типов интерфейса', zone: 'right' },
     { field: 'it_lead_employee_id', label: 'ID ответственного от ИТ', zone: 'right' },
     { field: 'business_lead_employee_id', label: 'ID владельца системы (бизнес)', zone: 'right' },
   ],
   'system',
-  2
+  3
 );
 
 function fieldValueFromRow(row, field) {
@@ -51,16 +58,21 @@ function fieldValueFromRow(row, field) {
   if (field === 'supplier_name') return row.supplier || '';
   if (field === 'supporter_name') return row.supporter || '';
   if (field === 'hosting_name') return row.hosting || '';
+  if (field === 'interface_types') return row.interface_types || '';
+  if (field === 'interface_type_ids') {
+    return Array.isArray(row.interface_type_ids) ? row.interface_type_ids.join('; ') : row.interface_type_ids || '';
+  }
   const v = row[field];
   return v == null ? '' : v;
 }
 
 async function loadRefs(db, queries) {
-  const [systems, statuses, partners, hosting, employees, organizations] = await Promise.all([
+  const [systems, statuses, partners, hosting, interfaceTypes, employees, organizations] = await Promise.all([
     db.query(queries.systems_select_for_import_labels),
     db.query(queries.system_statuses_select),
     db.query(queries.partners_select),
     db.query(queries.system_hosting_types_select),
+    db.query(queries.system_interface_types_select),
     db.query(queries.employees_select),
     db.query(queries.organization_units_org_select),
   ]);
@@ -69,6 +81,7 @@ async function loadRefs(db, queries) {
     statuses: buildNameIndex(statuses.rows, (r) => r.name),
     partners: buildNameIndex(partners.rows, (r) => r.name),
     hosting: buildNameIndex(hosting.rows, (r) => r.name),
+    interfaceTypes: buildNameIndex(interfaceTypes.rows, (r) => r.name),
     employees: buildNameIndex(employees.rows, (r) => r.full_name),
     organizations: buildNameIndex(organizations.rows, (r) => r.name),
     _raw: {
@@ -76,6 +89,7 @@ async function loadRefs(db, queries) {
       statuses: statuses.rows,
       partners: partners.rows,
       hosting: hosting.rows,
+      interfaceTypes: interfaceTypes.rows,
       employees: employees.rows,
       organizations: organizations.rows,
     },
@@ -94,6 +108,14 @@ async function loadRefSheetData(db, queries) {
       fields: ['vendor_name', 'supplier_name', 'supporter_name'],
     },
     { sheetName: 'Справочник_хостинг', rows: refs._raw.hosting, nameFn: (r) => r.name, field: 'hosting_name' },
+    {
+      sheetName: 'Справочник_типы_интерфейса',
+      rows: refs._raw.interfaceTypes,
+      nameFn: (r) => r.name,
+      field: 'interface_types',
+      // Несколько значений через «;» — проверка списка не должна блокировать составное значение.
+      multi: true,
+    },
     {
       sheetName: 'Справочник_сотрудники',
       rows: refs._raw.employees,
@@ -168,7 +190,7 @@ async function create(db, ctx, f, refs) {
     owner_ar_organization_units_id: null,
   });
   const external = f.external_system ? parseBool(f.external_system, false) : false;
-  await db.query(ctx.queries.systems_insert, [
+  const inserted = await db.query(ctx.queries.systems_insert, [
     f.code.trim(),
     f.name,
     f.fullname || null,
@@ -186,6 +208,12 @@ async function create(db, ctx, f, refs) {
     pgId(ids.business_lead_employee_id),
     pgId(ids.owner_ar_organization_units_id),
   ]);
+  // Типы интерфейса (issue #129): связь M:N — отдельная таблица, синхронизируем после вставки шапки.
+  const systemId = inserted.rows[0] && inserted.rows[0].id;
+  if (systemId && f.interface_types) {
+    const typeIds = resolveInterfaceTypeIds(parseInterfaceTypeNames(f.interface_types), refs.interfaceTypes);
+    await syncSystemInterfaceTypes(db, ctx.queries, systemId, typeIds);
+  }
 }
 
 async function update(db, ctx, existing, f, refs) {
@@ -233,6 +261,11 @@ async function update(db, ctx, existing, f, refs) {
     pgId(merged.owner_ar_organization_units_id),
     existing.id,
   ]);
+  // Типы интерфейса (issue #129): пустая ячейка = не менять (как у остальных справочников).
+  if (f.interface_types) {
+    const typeIds = resolveInterfaceTypeIds(parseInterfaceTypeNames(f.interface_types), refs.interfaceTypes);
+    await syncSystemInterfaceTypes(db, ctx.queries, existing.id, typeIds);
+  }
 }
 
 async function loadExportRows(db, queries) {

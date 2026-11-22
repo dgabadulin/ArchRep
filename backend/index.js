@@ -31,6 +31,10 @@ const { buildMxfile, mergeMxfileWithData } = require('./incrementDiagram');
 const { formatSysFuncComment } = require('./sysFuncMarkers');
 const { HttpError, withTransaction, sendTransactionError } = require('./dbTx');
 const {
+  normalizeInterfaceTypeIds,
+  syncSystemInterfaceTypes,
+} = require('./systemInterfaceTypes');
+const {
   normalizeIncrementPayload,
   mergeAppliedHeader,
   extractMxfile,
@@ -478,7 +482,14 @@ app.get('/api/ar-systems', async (req, res) => {
     if (onlyModules && !excludeModules) rows = rows.filter((r) => r.parent_ar_systems_id != null);
     rows = rows.map((r) => applyDisplayName(r, r.parent_ar_systems_id != null ? 'subsystem' : 'system'));
     if (excel) {
-      const buf = buildExcelBuffer(rows, 'Системы');
+      // SheetJS не пишет массивы в ячейки: id типов интерфейса отдаём строкой (issue #129).
+      const exportRows = rows.map((r) => ({
+        ...r,
+        interface_type_ids: Array.isArray(r.interface_type_ids)
+          ? r.interface_type_ids.join('; ')
+          : r.interface_type_ids,
+      }))
+      const buf = buildExcelBuffer(exportRows, 'Системы');
       res.setHeader('Content-Disposition', 'attachment; filename=systems.xlsx');
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       return res.send(buf);
@@ -528,37 +539,48 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
     it_lead_employee_id,
     business_lead_employee_id,
     owner_ar_organization_units_id,
+    interface_type_ids,
   } = b;
   if (!code || !name) {
     return res.status(400).json({ error: 'Missing required fields: code or name' });
   }
   try {
-    const result = await pool.query(queries.systems_update, [
-      code,
-      name,
-      pgParam(fullname),
-      pgParam(parent_ar_systems_id),
-      pgParam(ar_system_statuses_id),
-      pgParam(vendor_ar_partners_id),
-      pgParam(supplier_ar_partners_id),
-      pgParam(supporter_ar_partners_id),
-      pgParam(description),
-      pgParam(ar_system_hosting_types_id),
-      technologies,
-      external_system,
-      pgParam(comment),
-      pgParam(it_lead_employee_id),
-      pgParam(business_lead_employee_id),
-      pgParam(owner_ar_organization_units_id),
-      id
-    ]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'System not found' });
-    }
-    res.json(result.rows[0]);
+    const row = await withTransaction(pool, async (client, stage) => {
+      stage('update-system');
+      const result = await client.query(queries.systems_update, [
+        code,
+        name,
+        pgParam(fullname),
+        pgParam(parent_ar_systems_id),
+        pgParam(ar_system_statuses_id),
+        pgParam(vendor_ar_partners_id),
+        pgParam(supplier_ar_partners_id),
+        pgParam(supporter_ar_partners_id),
+        pgParam(description),
+        pgParam(ar_system_hosting_types_id),
+        technologies,
+        external_system,
+        pgParam(comment),
+        pgParam(it_lead_employee_id),
+        pgParam(business_lead_employee_id),
+        pgParam(owner_ar_organization_units_id),
+        id,
+      ]);
+      if (result.rowCount === 0) throw new HttpError(404, 'System not found');
+      // Шапка и связи «тип интерфейса» сохраняются атомарно (issue #129).
+      // Нет ключа в теле — связи не трогаем (совместимость со старыми клиентами).
+      if (interface_type_ids !== undefined) {
+        stage('sync-interface-types');
+        const ids = normalizeInterfaceTypeIds(interface_type_ids);
+        await syncSystemInterfaceTypes(client, queries, id, ids);
+      }
+      stage('reload-system');
+      const fresh = await client.query(queries.systems_get, [id]);
+      return fresh.rows[0];
+    });
+    res.json(applyDisplayName(row, row.parent_ar_systems_id != null ? 'subsystem' : 'system'));
   } catch (err) {
-    console.error('Database error:', err.stack);
-    res.status(500).send('Server error');
+    sendTransactionError(res, err, 'Failed to update system');
   }
 });
 
@@ -582,32 +604,42 @@ app.post('/api/add-ar-systems', async (req, res) => {
       it_lead_employee_id,
       business_lead_employee_id,
       owner_ar_organization_units_id,
+      interface_type_ids,
     } = b;
     if (!code || !name) {
       return res.status(400).json({ error: 'Fields "code" and "name" are required' });
     }
-    const result = await pool.query(queries.systems_insert, [
-      code,
-      name,
-      pgParam(fullname),
-      pgParam(parent_ar_systems_id),
-      pgParam(ar_system_statuses_id),
-      pgParam(vendor_ar_partners_id),
-      pgParam(supplier_ar_partners_id),
-      pgParam(supporter_ar_partners_id),
-      pgParam(description),
-      pgParam(ar_system_hosting_types_id),
-      technologies,
-      external_system,
-      pgParam(comment),
-      pgParam(it_lead_employee_id),
-      pgParam(business_lead_employee_id),
-      pgParam(owner_ar_organization_units_id),
-    ]);
-    res.status(201).json({ message: 'Record created successfully', id: result.rows[0].id });
+    const createdId = await withTransaction(pool, async (client, stage) => {
+      stage('insert-system');
+      const result = await client.query(queries.systems_insert, [
+        code,
+        name,
+        pgParam(fullname),
+        pgParam(parent_ar_systems_id),
+        pgParam(ar_system_statuses_id),
+        pgParam(vendor_ar_partners_id),
+        pgParam(supplier_ar_partners_id),
+        pgParam(supporter_ar_partners_id),
+        pgParam(description),
+        pgParam(ar_system_hosting_types_id),
+        technologies,
+        external_system,
+        pgParam(comment),
+        pgParam(it_lead_employee_id),
+        pgParam(business_lead_employee_id),
+        pgParam(owner_ar_organization_units_id),
+      ]);
+      const newId = result.rows[0].id;
+      const ids = normalizeInterfaceTypeIds(interface_type_ids);
+      if (ids.length) {
+        stage('sync-interface-types');
+        await syncSystemInterfaceTypes(client, queries, newId, ids);
+      }
+      return newId;
+    });
+    res.status(201).json({ message: 'Record created successfully', id: createdId });
   } catch (err) {
-    console.error('Database error:', err.stack);
-    res.status(500).json({ error: 'Failed to create record' });
+    sendTransactionError(res, err, 'Failed to create record');
   }
 });
 
@@ -653,6 +685,28 @@ app.get('/api/hosting-types', async (req, res) => {
     if (excel) {
       const buf = buildExcelBuffer(rows, 'Типы хостинга');
       res.setHeader('Content-Disposition', 'attachment; filename=hosting-types.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('Database error:', err.stack);
+    res.status(500).send('Server error');
+  }
+});
+
+// Типы интерфейса ИС (issue #129): справочник для формы карточки и вкладки «Справочники».
+app.get('/api/system-interface-types', async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.system_interface_types_select_search : queries.system_interface_types_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const result = await pool.query(q, params);
+    const rows = result.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Типы интерфейса');
+      res.setHeader('Content-Disposition', 'attachment; filename=system-interface-types.xlsx');
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       return res.send(buf);
     }
@@ -915,6 +969,60 @@ app.delete('/api/hosting-types/:id', async (req, res) => {
     if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.status(204).send();
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+
+// --- System interface types CRUD (issue #129) ---
+app.post('/api/system-interface-types', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.system_interface_types_insert, [
+      String(code).trim(),
+      String(name).trim(),
+      description,
+    ]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Тип интерфейса с таким кодом или наименованием уже существует' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create' });
+  }
+});
+app.put('/api/system-interface-types/:id', async (req, res) => {
+  try {
+    const { code, name, description } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await pool.query(queries.system_interface_types_update, [
+      req.params.id,
+      String(code).trim(),
+      String(name).trim(),
+      description,
+    ]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Тип интерфейса с таким кодом или наименованием уже существует' });
+    }
+    console.error(err);
+    res.status(500).send('Server error');
+  }
+});
+app.delete('/api/system-interface-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.system_interface_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    // RESTRICT: тип используется в карточках ИС — сначала снимаем связи
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Тип интерфейса используется в карточках ИС — сначала снимите его в системах' });
+    }
+    console.error(err);
+    res.status(500).send('Server error');
+  }
 });
 
 // --- Technologies ---

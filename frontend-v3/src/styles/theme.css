@@ -170,6 +170,83 @@ button {
 .field-wide {
   grid-column: 1 / -1;
 }
+
+/* Группы полей карточки (issue #129): бирюзовая рамка отделяет смысловые блоки. */
+.form-group {
+  border: 1px solid rgba(0, 229, 204, 0.55);
+  border-radius: var(--ar-radius);
+  padding: 0.85rem 1rem 1rem;
+  margin: 0;
+  min-width: 0;
+}
+.form-grid > .form-group {
+  grid-column: 1 / -1;
+}
+.form-group > legend {
+  padding: 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ar-muted);
+}
+.form-group .form-grid {
+  gap: 0.9rem 1.25rem;
+}
+/* Вложенная рамка одного поля внутри группы — напр. «Тип интерфейса». */
+.form-subgroup {
+  border: 1px solid rgba(0, 229, 204, 0.45);
+  border-radius: var(--ar-radius-sm);
+  padding: 0.3rem 0.65rem 0.5rem;
+  margin: 0;
+  min-width: 0;
+}
+.form-subgroup > legend {
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ar-muted);
+}
+/* Мультивыбор «чипсами»: несколько типов интерфейса у одной ИС. */
+.iface-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  min-height: 2.1rem;
+}
+.iface-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--ar-border);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  background: var(--ar-surface);
+  cursor: pointer;
+  user-select: none;
+}
+.iface-chip input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ar-accent-hover);
+}
+.iface-chip.checked {
+  background: var(--ar-accent-soft);
+  border-color: var(--ar-accent);
+  font-weight: 600;
+}
+.iface-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--ar-muted);
+}
 .field label {
   display: block;
   margin-bottom: 0.35rem;

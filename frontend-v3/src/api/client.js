@@ -124,6 +124,13 @@ export const api = {
   createHostingType: (body) => request('/api/hosting-types', { method: 'POST', body: JSON.stringify(body) }),
   updateHostingType: (id, body) => request(`/api/hosting-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteHostingType: (id) => request(`/api/hosting-types/${id}`, { method: 'DELETE' }),
+  // Типы интерфейса ИС (issue #129): справочник + мультивыбор в карточке системы.
+  getSystemInterfaceTypes: (params) => request('/api/system-interface-types' + buildQuery(params)),
+  createSystemInterfaceType: (body) =>
+    request('/api/system-interface-types', { method: 'POST', body: JSON.stringify(body) }),
+  updateSystemInterfaceType: (id, body) =>
+    request(`/api/system-interface-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteSystemInterfaceType: (id) => request(`/api/system-interface-types/${id}`, { method: 'DELETE' }),
   getTechnologies: (params) => request('/api/technologies' + buildQuery(params)),
   getTechnology: (id) => request(`/api/technologies/${id}`),
   createTechnology: (body) => request('/api/technologies', { method: 'POST', body: JSON.stringify(body) }),

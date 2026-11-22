@@ -68,23 +68,36 @@ async function buildWorkbookBuffer(catalog, opts = {}) {
     const maxRows = Math.max(1000, (ref.rows || []).length + 50);
     const formula = `'${ref.sheetName}'!$A$2:$A$${maxRows}`;
     for (const field of fields) {
-      if (field) validationByField[field] = formula;
+      if (!field) continue;
+      // `multi` — поле может содержать несколько значений через «;»: проверка списка
+      // остаётся подсказкой (warning), иначе Excel блокирует составное значение (issue #129).
+      validationByField[field] = ref.multi ? { formula, multi: true } : formula;
     }
   }
 
   const maxDataRow = Math.max(1000, dataRows.length + 50);
   for (let col = 0; col < headers.length; col++) {
     const field = catalog.parseHeaderField(headers[col]);
-    const formula = field && validationByField[field];
-    if (!formula) continue;
+    const rule = field && validationByField[field];
+    if (!rule) continue;
+    const multi = typeof rule === 'object' && rule.multi;
+    const formula = multi ? rule.formula : rule;
     const colLetter = dataSheet.getColumn(col + 1).letter;
     dataSheet.dataValidations.add(`${colLetter}2:${colLetter}${maxDataRow}`, {
       type: 'list',
       allowBlank: true,
       formulae: [formula],
       showErrorMessage: true,
-      errorTitle: 'Значение из справочника',
-      error: 'Выберите значение из списка или оставьте ячейку пустой',
+      ...(multi
+        ? {
+            errorStyle: 'warning',
+            errorTitle: 'Можно несколько значений',
+            error: 'Выберите значение из справочника; несколько — через «;» (например, Web; Mobile)',
+          }
+        : {
+            errorTitle: 'Значение из справочника',
+            error: 'Выберите значение из списка или оставьте ячейку пустой',
+          }),
     });
   }
 

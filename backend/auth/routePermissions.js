@@ -239,6 +239,7 @@ const RULES = [
   refLookup('/api/owners', 'system:read'),
   refLookup('/api/system-statuses', 'system:read'),
   refLookup('/api/hosting-types', 'system:read'),
+  refLookup('/api/system-interface-types', 'system:read'),
   {
     methods: ['GET'],
     pattern: listPath('/api/ar-vendors'),
@@ -267,6 +268,7 @@ const RULES = [
   ...refCrud('/api/owners'),
   ...refCrud('/api/system-statuses'),
   ...refCrud('/api/hosting-types'),
+  ...refCrud('/api/system-interface-types'),
   ...refCrud('/api/ar-vendors'),
   ...refCrud('/api/technology-classes'),
   ...refCrud('/api/technology-statuses'),

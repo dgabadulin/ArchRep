@@ -1,3 +1,23 @@
+/**
+ * Срез «Тип интерфейса ИС» (issue #129): связь M:N собирается подзапросами,
+ * чтобы строки реестра не размножались. `interface_types` — имена через запятую
+ * (колонка реестра, поиск, фильтр), `interface_type_ids` — массив id для формы.
+ * Оба поля — агрегаты от `s.id`, поэтому подходят для всех системных запросов.
+ */
+const INTERFACE_TYPES_COLUMNS = `
+        , COALESCE((
+            SELECT string_agg(sit.name, ', ' ORDER BY sit.name)
+            FROM archrep.ar_system_interface_type_links silt
+            JOIN archrep.ar_system_interface_types sit ON sit.id = silt.ar_system_interface_types_id
+            WHERE silt.ar_systems_id = s.id
+          ), '') AS interface_types
+        , COALESCE((
+            SELECT jsonb_agg(sit.id ORDER BY sit.id)
+            FROM archrep.ar_system_interface_type_links silt
+            JOIN archrep.ar_system_interface_types sit ON sit.id = silt.ar_system_interface_types_id
+            WHERE silt.ar_systems_id = s.id
+          ), '[]'::jsonb) AS interface_type_ids`;
+
 module.exports = {
     systems_select: `
         SELECT
@@ -29,6 +49,7 @@ module.exports = {
         , (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name
         , it_e.full_name AS it_lead_employee_name
         , bl_e.full_name AS business_lead_employee_name
+        ${INTERFACE_TYPES_COLUMNS}
         FROM
         archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
@@ -53,6 +74,7 @@ module.exports = {
           s.owner_ar_organization_units_id,
           (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
+          ${INTERFACE_TYPES_COLUMNS}
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
@@ -68,7 +90,12 @@ module.exports = {
           OR COALESCE(supp.name,'') ILIKE $1 OR COALESCE(s.description,'') ILIKE $1 OR COALESCE(so.name,'') ILIKE $1 OR COALESCE(sht.name,'') ILIKE $1
           OR COALESCE(s.comment,'') ILIKE $1 OR COALESCE(s.technologies,'') ILIKE $1
           OR COALESCE(it_e.full_name,'') ILIKE $1 OR COALESCE(bl_e.full_name,'') ILIKE $1
-          OR COALESCE((SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id),'') ILIKE $1)
+          OR COALESCE((SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id),'') ILIKE $1
+          OR EXISTS (
+            SELECT 1 FROM archrep.ar_system_interface_type_links silt
+            JOIN archrep.ar_system_interface_types sit ON sit.id = silt.ar_system_interface_types_id
+            WHERE silt.ar_systems_id = s.id AND sit.name ILIKE $1
+          ))
         ORDER BY s.name
     `,
     systems_get: `
@@ -81,6 +108,7 @@ module.exports = {
           s.owner_ar_organization_units_id,
           (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
+          ${INTERFACE_TYPES_COLUMNS}
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
@@ -103,6 +131,7 @@ module.exports = {
           s.owner_ar_organization_units_id,
           (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
+          ${INTERFACE_TYPES_COLUMNS}
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
         LEFT JOIN archrep.ar_system_statuses ss ON s.ar_system_statuses_id = ss.id
@@ -282,6 +311,33 @@ module.exports = {
   hosting_types_update: `UPDATE archrep.ar_system_hosting_types SET name = $1 WHERE id = $2 RETURNING *`,
   hosting_types_delete: `DELETE FROM archrep.ar_system_hosting_types WHERE id = $1`,
   hosting_types_get: `SELECT id, name FROM archrep.ar_system_hosting_types WHERE id = $1`,
+
+  // --- Типы интерфейса ИС (issue #129): справочник + связь M:N с системами ---
+  system_interface_types_select: `
+    SELECT id, code, name, description
+    FROM archrep.ar_system_interface_types
+    ORDER BY id`,
+  system_interface_types_select_search: `
+    SELECT id, code, name, description
+    FROM archrep.ar_system_interface_types
+    WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1
+    ORDER BY id`,
+  system_interface_types_insert: `
+    INSERT INTO archrep.ar_system_interface_types (code, name, description)
+    VALUES ($1, $2, NULLIF($3, ''))
+    RETURNING id, code, name, description`,
+  system_interface_types_update: `
+    UPDATE archrep.ar_system_interface_types
+    SET code = $2, name = $3, description = NULLIF($4, '')
+    WHERE id = $1
+    RETURNING id, code, name, description`,
+  system_interface_types_delete: `DELETE FROM archrep.ar_system_interface_types WHERE id = $1`,
+  /** Синхронизация формы/импорта: удалить все связи системы и вставить актуальные (в транзакции). */
+  system_interface_type_links_delete: `DELETE FROM archrep.ar_system_interface_type_links WHERE ar_systems_id = $1`,
+  system_interface_type_links_insert: `
+    INSERT INTO archrep.ar_system_interface_type_links (ar_systems_id, ar_system_interface_types_id)
+    SELECT $1::BIGINT, unnest($2::BIGINT[])
+    ON CONFLICT (ar_systems_id, ar_system_interface_types_id) DO NOTHING`,
 
   // --- Technologies ---
   technologies_select: `

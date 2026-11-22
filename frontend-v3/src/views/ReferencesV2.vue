@@ -64,6 +64,29 @@
         </table>
         <p v-if="hostingTypes.length === 0" class="empty">Нет записей</p>
       </template>
+      <!-- Типы интерфейса ИС (issue #129) -->
+      <template v-else-if="activeTab === 'interfaceTypes'">
+        <div class="table-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openInterfaceTypeForm()">Добавить</button>
+          <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Код</th><th>Наименование</th><th>Описание</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in interfaceTypes" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td>{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.description ?? '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openInterfaceTypeForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteInterfaceType(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="interfaceTypes.length === 0" class="empty">Нет записей</p>
+      </template>
       <!-- Owners -->
       <template v-else-if="activeTab === 'owners'">
         <div class="table-actions">
@@ -618,6 +641,20 @@
         </div>
       </div>
     </div>
+    <div v-if="interfaceTypeForm" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ interfaceTypeForm.id ? 'Изменить тип интерфейса' : 'Новый тип интерфейса ИС' }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
+        <div class="form-row"><label>Код <span class="req">*</span></label><input v-model="interfaceTypeForm.code" placeholder="web" /></div>
+        <div class="form-row"><label>Наименование <span class="req">*</span></label><input v-model="interfaceTypeForm.name" placeholder="Web" /></div>
+        <div class="form-row"><label>Описание</label><input v-model="interfaceTypeForm.description" placeholder="Веб-интерфейс (браузер)" /></div>
+        </fieldset>
+        <div class="modal-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveInterfaceType">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="interfaceTypeForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="ownerForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ ownerForm.id ? 'Изменить функциональную вертикаль' : 'Новая функциональная вертикаль' }}</h3>
@@ -1014,6 +1051,7 @@ const ownerClassifications = [
 const tabs = [
   { id: 'statuses', label: 'Статусы систем' },
   { id: 'hosting', label: 'Типы хостинга' },
+  { id: 'interfaceTypes', label: 'Типы интерфейса ИС' },
   { id: 'owners', label: 'Функциональные вертикали' },
   { id: 'vendors', label: 'Партнёры / вендоры' },
   { id: 'employees', label: 'Сотрудники' },
@@ -1044,6 +1082,8 @@ const loading = ref(true)
 const excelLoading = ref(false)
 const statuses = ref([])
 const hostingTypes = ref([])
+/** Типы интерфейса ИС (issue #129): справочник с кодом и описанием. */
+const interfaceTypes = ref([])
 const owners = ref([])
 const vendors = ref([])
 const employees = ref([])
@@ -1066,6 +1106,7 @@ const domainStatuses = ref([])
 const businessServiceStatuses = ref([])
 const statusForm = ref(null)
 const hostingForm = ref(null)
+const interfaceTypeForm = ref(null)
 const ownerForm = ref(null)
 const vendorForm = ref(null)
 const employeeForm = ref(null)
@@ -1098,6 +1139,7 @@ async function loadTab() {
     const q = search.value ? { search: search.value } : {}
     if (activeTab.value === 'statuses') statuses.value = await api.getSystemStatuses(q)
     else if (activeTab.value === 'hosting') hostingTypes.value = await api.getHostingTypes(q)
+    else if (activeTab.value === 'interfaceTypes') interfaceTypes.value = await api.getSystemInterfaceTypes(q)
     else if (activeTab.value === 'owners') owners.value = await api.getOwners(q)
     else if (activeTab.value === 'vendors') vendors.value = await api.getPartners(q)
     else if (activeTab.value === 'employees') employees.value = await api.getEmployees(q)
@@ -1140,6 +1182,7 @@ async function exportExcel() {
     let blob
     if (activeTab.value === 'statuses') blob = await api.getSystemStatuses(q)
     else if (activeTab.value === 'hosting') blob = await api.getHostingTypes(q)
+    else if (activeTab.value === 'interfaceTypes') blob = await api.getSystemInterfaceTypes(q)
     else if (activeTab.value === 'owners') blob = await api.getOwners(q)
     else if (activeTab.value === 'vendors') blob = await api.getPartners(q)
     else if (activeTab.value === 'employees') blob = await api.getEmployees(q)
@@ -1156,6 +1199,11 @@ async function exportExcel() {
 
 function openStatusForm(r) { statusForm.value = r ? { id: r.id, name: r.name, description: r.description ?? '' } : { name: '', description: '' } }
 function openHostingForm(r) { hostingForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
+function openInterfaceTypeForm(r) {
+  interfaceTypeForm.value = r
+    ? { id: r.id, code: r.code ?? '', name: r.name ?? '', description: r.description ?? '' }
+    : { code: '', name: '', description: '' }
+}
 function openOwnerForm(r) { ownerForm.value = r ? { id: r.id, name: r.name, leader: r.leader ?? '', extra_classification1: r.extra_classification1 ?? '' } : { name: '', leader: '', extra_classification1: '' } }
 function openVendorForm(r) { vendorForm.value = r ? { id: r.id, name: r.name } : { name: '' } }
 function openEmployeeForm(r) {
@@ -1349,6 +1397,20 @@ async function saveHosting() {
     await loadTab()
   } catch (e) { alert(e.message || 'Ошибка') }
 }
+async function saveInterfaceType() {
+  if (!interfaceTypeForm.value?.code?.trim() || !interfaceTypeForm.value?.name) return
+  try {
+    const payload = {
+      code: interfaceTypeForm.value.code.trim(),
+      name: interfaceTypeForm.value.name,
+      description: interfaceTypeForm.value.description,
+    }
+    if (interfaceTypeForm.value.id) await api.updateSystemInterfaceType(interfaceTypeForm.value.id, payload)
+    else await api.createSystemInterfaceType(payload)
+    interfaceTypeForm.value = null
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
 async function saveOwner() {
   if (!ownerForm.value?.name) return
   try {
@@ -1511,6 +1573,13 @@ async function saveRelationType() {
 
 async function deleteStatus(id) { if (confirm('Удалить?')) { await api.deleteSystemStatus(id); await loadTab() } }
 async function deleteHosting(id) { if (confirm('Удалить?')) { await api.deleteHostingType(id); await loadTab() } }
+async function deleteInterfaceType(id) {
+  if (!confirm('Удалить тип интерфейса?')) return
+  try {
+    await api.deleteSystemInterfaceType(id)
+    await loadTab()
+  } catch (e) { alert(e.message || 'Ошибка') }
+}
 async function deleteOwner(id) { if (confirm('Удалить?')) { await api.deleteOwner(id); await loadTab() } }
 async function deleteVendor(id) { if (confirm('Удалить?')) { await api.deletePartner(id); await loadTab() } }
 async function deleteEmployee(id) {

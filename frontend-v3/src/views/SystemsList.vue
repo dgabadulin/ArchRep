@@ -102,6 +102,7 @@ const columns = applyRegistryFilters([
   { key: 'owner', label: 'Функциональная вертикаль', defaultVisible: true },
   { key: 'owner_organization_name', label: 'Организация-владелец', defaultVisible: true },
   { key: 'hosting', label: 'Тип хостинга', defaultVisible: false },
+  { key: 'interface_types', label: 'Тип интерфейса', defaultVisible: true, filter: 'enum' },
   { key: 'description', label: 'Описание', defaultVisible: false },
   { key: 'it_lead_employee_name', label: 'Ответственный от ИТ', defaultVisible: false },
   { key: 'business_lead_employee_name', label: 'Владелец системы (бизнес)', defaultVisible: false },

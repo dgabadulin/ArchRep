@@ -40,7 +40,7 @@
           <label>Краткое наименование <span class="req">*</span></label>
           <input ref="nameInput" v-model="form.name" required placeholder="Напр. СУД.Keycloak" />
         </div>
-        <div class="field field-wide">
+        <div class="field">
           <label>Полное наименование</label>
           <input v-model="form.fullname" placeholder="Модуль Keycloak системы СУД" />
         </div>
@@ -49,13 +49,6 @@
           <select v-model="form.parent_ar_systems_id">
             <option :value="null">—</option>
             <option v-for="p in parentSystems" :key="p.id" :value="p.id">{{ p.display_name || p.name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Организация-владелец</label>
-          <select v-model="form.owner_ar_organization_units_id">
-            <option :value="null">—</option>
-            <option v-for="ou in organizationOwners" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
           </select>
         </div>
         <div class="field">
@@ -72,31 +65,64 @@
             <option :value="true">Да</option>
           </select>
         </div>
-        <PartnerSelectField
-          v-model="form.vendor_ar_partners_id"
-          label="Вендор"
-          :options="vendors"
-          @partner-created="mergePartner"
-        />
-        <PartnerSelectField
-          v-model="form.supplier_ar_partners_id"
-          label="Поставщик"
-          :options="vendors"
-          @partner-created="mergePartner"
-        />
-        <PartnerSelectField
-          v-model="form.supporter_ar_partners_id"
-          label="Партнёр по поддержке"
-          :options="vendors"
-          @partner-created="mergePartner"
-        />
-        <div class="field">
-          <label>Функциональная вертикаль</label>
-          <select v-model="form.ar_system_owners_id">
-            <option :value="null">—</option>
-            <option v-for="o in owners" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
-          </select>
-        </div>
+
+        <fieldset class="form-group">
+          <legend>Организации</legend>
+          <div class="form-grid">
+            <div class="field">
+              <label>Организация-владелец</label>
+              <select v-model="form.owner_ar_organization_units_id">
+                <option :value="null">—</option>
+                <option v-for="ou in organizationOwners" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
+              </select>
+            </div>
+            <PartnerSelectField
+              v-model="form.vendor_ar_partners_id"
+              label="Вендор"
+              :options="vendors"
+              @partner-created="mergePartner"
+            />
+            <PartnerSelectField
+              v-model="form.supplier_ar_partners_id"
+              label="Поставщик"
+              :options="vendors"
+              @partner-created="mergePartner"
+            />
+            <PartnerSelectField
+              v-model="form.supporter_ar_partners_id"
+              label="Партнёр по поддержке"
+              :options="vendors"
+              @partner-created="mergePartner"
+            />
+          </div>
+        </fieldset>
+        <fieldset class="form-group">
+          <legend>Ответственность</legend>
+          <div class="form-grid">
+            <div class="field">
+              <label>Ответственный от ИТ</label>
+              <select v-model="form.it_lead_employee_id">
+                <option :value="null">—</option>
+                <option v-for="emp in employees" :key="emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Владелец системы (бизнес)</label>
+              <select v-model="form.business_lead_employee_id">
+                <option :value="null">—</option>
+                <option v-for="emp in employees" :key="'b-' + emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Функциональная вертикаль</label>
+              <select v-model="form.ar_system_owners_id">
+                <option :value="null">—</option>
+                <option v-for="o in owners" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
         <div class="field">
           <label>Тип хостинга</label>
           <select v-model="form.ar_system_hosting_types_id">
@@ -104,27 +130,30 @@
             <option v-for="h in hostingTypes" :key="h.id" :value="h.id">{{ h.display_name || h.name }}</option>
           </select>
         </div>
-        <div class="field">
-          <label>Ответственный от ИТ</label>
-          <select v-model="form.it_lead_employee_id">
-            <option :value="null">—</option>
-            <option v-for="emp in employees" :key="emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Владелец системы (бизнес)</label>
-          <select v-model="form.business_lead_employee_id">
-            <option :value="null">—</option>
-            <option v-for="emp in employees" :key="'b-' + emp.id" :value="emp.id">{{ emp.display_name || emp.full_name }}</option>
-          </select>
-        </div>
+        <fieldset class="form-subgroup">
+          <legend>Тип интерфейса</legend>
+          <div class="iface-chips">
+            <label
+              v-for="t in interfaceTypes"
+              :key="t.id"
+              class="iface-chip"
+              :class="{ checked: form.interface_type_ids.includes(t.id) }"
+            >
+              <input
+                type="checkbox"
+                :value="t.id"
+                :checked="form.interface_type_ids.includes(t.id)"
+                @change="toggleInterfaceType(t.id)"
+              />
+              {{ t.display_name || t.name }}
+            </label>
+          </div>
+          <span class="iface-hint">Можно выбрать несколько</span>
+        </fieldset>
+
         <div class="field field-wide">
           <label>Описание</label>
           <textarea v-model="form.description" rows="3"></textarea>
-        </div>
-        <div class="field field-wide">
-          <label>Примечание</label>
-          <input v-model="form.comment" />
         </div>
       </div>
       </fieldset>
@@ -358,6 +387,8 @@ function mergePartner(partner) {
 
 const owners = ref([])
 const hostingTypes = ref([])
+/** Справочник «Типы интерфейса ИС» (issue #129): мультивыбор, хранится в `form.interface_type_ids`. */
+const interfaceTypes = ref([])
 const employees = ref([])
 /** Организационные единицы категории «Организация» — источник поля «Организация-владелец» (issue #126). */
 const organizationUnits = ref([])
@@ -448,6 +479,7 @@ const form = reactive({
   it_lead_employee_id: null, business_lead_employee_id: null,
   ar_system_owners_id: null, ar_system_hosting_types_id: null, comment: '',
   owner_ar_organization_units_id: null,
+  interface_type_ids: [],
   external_system: false,
 })
 
@@ -474,6 +506,7 @@ function emptyForm() {
   form.it_lead_employee_id = null; form.business_lead_employee_id = null
   form.ar_system_owners_id = null; form.ar_system_hosting_types_id = null; form.comment = ''
   form.owner_ar_organization_units_id = null
+  form.interface_type_ids = []
   form.external_system = false
 }
 
@@ -492,7 +525,20 @@ function mapToForm(row) {
   form.ar_system_hosting_types_id = row.ar_system_hosting_types_id ?? null
   form.comment = row.comment ?? ''
   form.owner_ar_organization_units_id = row.owner_ar_organization_units_id ?? null
+  // id сортируем: снимок useFormDirty (JSON) не должен зависеть от порядка кликов
+  form.interface_type_ids = Array.isArray(row.interface_type_ids)
+    ? row.interface_type_ids.map(Number).sort((a, b) => a - b)
+    : []
   form.external_system = !!row.external_system
+}
+
+/** Мультивыбор «Тип интерфейса» (issue #129): храним id отсортированными — стабильный dirty-снимок. */
+function toggleInterfaceType(typeId) {
+  const id = Number(typeId)
+  const current = Array.isArray(form.interface_type_ids) ? form.interface_type_ids : []
+  form.interface_type_ids = current.includes(id)
+    ? current.filter((value) => value !== id)
+    : [...current, id].sort((a, b) => a - b)
 }
 
 /**
@@ -532,13 +578,15 @@ function applyAiPrefillForRoute() {
 }
 
 async function loadRefs() {
-  const [parents, st, v, o, h, em, ou] = await Promise.all([
+  const [parents, st, v, o, h, it, em, ou] = await Promise.all([
     api.getParentSystems(), api.getSystemStatuses(), api.getVendors(), api.getOwners(), api.getHostingTypes(),
+    api.getSystemInterfaceTypes(),
     api.getEmployees(),
     // Справочник орг. единиц: поле «Организация-владелец» показывает только категорию «Организация» (#126).
     togafApi.organizationUnits().catch(() => []),
   ])
   parentSystems.value = parents; statuses.value = st; vendors.value = v; owners.value = o; hostingTypes.value = h
+  interfaceTypes.value = Array.isArray(it) ? it : []
   employees.value = em
   organizationUnits.value = Array.isArray(ou) ? ou : []
 }
@@ -758,6 +806,7 @@ async function submit(opts = {}) {
       ar_system_owners_id: fkOrNull(form.ar_system_owners_id),
       ar_system_hosting_types_id: fkOrNull(form.ar_system_hosting_types_id),
       owner_ar_organization_units_id: fkOrNull(form.owner_ar_organization_units_id),
+      interface_type_ids: [...form.interface_type_ids],
       comment: form.comment?.trim() || undefined,
       external_system: form.external_system,
       technologies: '', // поле убрано с формы, передаём пустую строку для API
