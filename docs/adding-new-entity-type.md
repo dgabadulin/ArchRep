@@ -264,6 +264,8 @@
 - [ ] **Главная:** `ACCORDION_COUNT_SQL[<code>]` в `backend/homeDashboard.js` (или KPI: функции БД + `ALLOWED_COUNT_FUNCTIONS` + `ARR_HOME_KPI_TILES`; см. §4.6).
 - [ ] При использовании v2 — синхронизировать отображение в формах.
 - [ ] **Импорт/экспорт Excel** (если сущность в сервисном импорте — см. §2.8 и [data-import-service.md](./data-import-service.md)): адаптер `importEntities/<code>.js`, регистрация в `index.js`, **`import_allowed = true`** в метамодели, каталог полей, bump **`template_version`** при смене контракта.
+- [ ] **Новое поле у существующей сущности** — в той же задаче: каталог полей `importEntities/<code>.js`, справочный лист для нового FK, `resolveIds`/`create`/`update`, bump `template_version` (`.clinerules` §10; без этого импорт теряет данные).
+- [ ] **Схема метамодели**: новая версия `docs/diagrams/Метамодель ИСАР <X.Y>.pptx` — связь → минор, сущность → мажор; `npm run build:metamodel -- <X.Y>`, строка в `docs/diagrams/README.md` (`.clinerules` §10).
 - [ ] Проверка: справочник типов связей, создание связи из UI, построение графа с узлом нового типа, редактирование `DISP_*` в настройках, **строка объёма на главной (аккордеон/KPI)**, импорт (dry-run + apply) при подключённом адаптере.
 
 ---
