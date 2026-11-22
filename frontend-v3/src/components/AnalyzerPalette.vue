@@ -53,6 +53,20 @@
             </dd>
           </div>
           <div class="palette-row">
+            <dt>Показать связи</dt>
+            <dd>
+              <select
+                class="palette-select"
+                :value="showRelations ? '1' : '0'"
+                title="Панель «Связи»: фильтр типов связей выбранного объекта"
+                @change="emit('update:showRelations', $event.target.value === '1')"
+              >
+                <option value="1">Да</option>
+                <option value="0">Нет</option>
+              </select>
+            </dd>
+          </div>
+          <div class="palette-row">
             <dt>Топология графа</dt>
             <dd>
               <select
@@ -122,6 +136,8 @@ const props = defineProps({
   cascadeAvailable: { type: Boolean, default: true },
   /** Значение переключателя «Показать легенду». */
   showLegend: { type: Boolean, default: false },
+  /** Значение переключателя «Показать связи» — панель фильтра типов связей выбранного объекта. */
+  showRelations: { type: Boolean, default: false },
   /** Текущая раскладка (совпадает с применённой в графе). */
   layoutType: { type: String, default: 'grid' },
   /** Список доступных раскладок: [{ type, label }]. */
@@ -136,7 +152,7 @@ const props = defineProps({
   relationTypes: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['update:showAllEdgesCascade', 'update:showLegend', 'layout', 'openFlows'])
+const emit = defineEmits(['update:showAllEdgesCascade', 'update:showLegend', 'update:showRelations', 'layout', 'openFlows'])
 
 const collapsed = ref(false)
 const nodeData = ref(null)

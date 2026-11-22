@@ -45,6 +45,7 @@
         :relations="relations"
         :relation-types="relationTypes"
         :legend-entity-types="entityTypes"
+        :center-node-id="rootNodeId"
         :show-cascade-toggle="rootNodeId != null"
         v-model:show-all-edges-cascade="showAllEdgesCascade"
         :can-collapse-modules="analyzerCanCollapseModules"

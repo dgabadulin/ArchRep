@@ -22,13 +22,14 @@ const SOURCE = 'netbox';
 
 /**
  * Префикс имён виртуальных серверов, которые не загружаются в каталог (issue: синхронизация
- * каталога инфраструктуры). Сравнение без учёта регистра, пробелы по краям отбрасываются.
+ * каталога инфраструктуры). Исключаются и `vm`, и `vm-…`, и любые имена, начинающиеся на `vm`
+ * (например, `vm01`); сравнение без учёта регистра, пробелы по краям отбрасываются.
  * Ранее загруженные такие ВМ удаляются mark-and-sweep: их `synced_at` не обновляется.
  */
-const VM_NAME_EXCLUDE_PREFIX = 'vm-';
+const VM_NAME_EXCLUDE_PREFIX = 'vm';
 
 /**
- * Служебная/автосозданная ВМ: имя начинается с `vm-` → в каталог не загружается.
+ * Служебная/автосозданная ВМ: имя начинается на `vm` → в каталог не загружается.
  * Правило относится только к виду `virtual_server` (проверяется вызывающим кодом).
  * @param {unknown} name
  * @returns {boolean}
@@ -45,7 +46,7 @@ function buildMessage(summary) {
     `удалено ${summary.deleted}`,
     `связей ${summary.relations_synced}`,
   ];
-  if (summary.skipped > 0) parts.push(`пропущено vm- ${summary.skipped}`);
+  if (summary.skipped > 0) parts.push(`пропущено vm* ${summary.skipped}`);
   if (summary.unmatched_codes.length) {
     const shown = summary.unmatched_codes.slice(0, 5).join(', ');
     const rest = summary.unmatched_codes.length > 5 ? ` и ещё ${summary.unmatched_codes.length - 5}` : '';
@@ -102,7 +103,7 @@ async function syncInfrastructureFromNetbox(pool, deps = {}) {
 
     // Чтение вне транзакции: при ошибке НИЧЕГО не удаляем и не меняем.
     const rawItems = await fetchNetboxObjects(kind, cfg);
-    // Служебные ВМ с именем `vm-…` в каталог не загружаются (до upsert, без связей).
+    // Служебные ВМ с именем на `vm` (`vm`, `vm-…`, `vm01`) в каталог не загружаются (до upsert, без связей).
     const items = kind === 'virtual_server'
       ? rawItems.filter((raw) => !isExcludedVirtualServerName(raw && raw.name))
       : rawItems;

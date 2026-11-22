@@ -4,13 +4,14 @@
       v-if="effectiveShowPalette"
       v-model:show-all-edges-cascade="showAllEdgesCascadeLocal"
       v-model:show-legend="showLegend"
+      v-model:show-relations="showRelations"
       :cascade-available="showCascadeToggle"
       :layout-type="lastLayoutType"
       :layout-options="layoutOptions"
       :selected-node-id="activeNodeId"
       :selected-edge-id="activeEdgeId"
-      :nodes="nodes"
-      :edges="edges"
+      :nodes="graphNodes"
+      :edges="graphEdges"
       :relations="relations"
       :relation-types="relationTypes"
       @layout="onPaletteLayout"
@@ -23,8 +24,8 @@
       v-model:zoom-level="zoomLevel"
       v-model:selected-nodes="selectedNodeIds"
       v-model:selected-edges="selectedEdgeIds"
-      :nodes="nodes"
-      :edges="edges"
+      :nodes="graphNodes"
+      :edges="graphEdges"
       :configs="configs"
       :event-handlers="eventHandlers"
       class="analyzer-graph"
@@ -208,16 +209,45 @@
 
     <!-- Легенда типов сущностей (метамодель): слева мини-вершина как на графе, справа название типа -->
     <div v-if="showLegend && legendRows.length" class="graph-legend" aria-label="Легенда типов сущностей">
-      <div v-for="row in legendRows" :key="row.code" class="legend-row">
-        <svg class="legend-node-svg" viewBox="-24 -24 48 48" width="36" height="36" aria-hidden="true">
-          <g class="node-custom">
-            <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#f8f9fb" stroke="#00c4ae" stroke-width="1" />
-            <g transform="translate(-12, -12)">
-              <component :is="getIconComponent(row.syntheticNodeId)" :size="24" stroke-width="1.5" />
+      <div class="graph-panel-head">
+        <span class="graph-panel-title">Легенда</span>
+        <button type="button" class="graph-panel-close" title="Закрыть легенду" @click="showLegend = false">×</button>
+      </div>
+      <div class="graph-panel-body">
+        <div v-for="row in legendRows" :key="row.code" class="legend-row">
+          <svg class="legend-node-svg" viewBox="-24 -24 48 48" width="36" height="36" aria-hidden="true">
+            <g class="node-custom">
+              <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#f8f9fb" stroke="#00c4ae" stroke-width="1" />
+              <g transform="translate(-12, -12)">
+                <component :is="getIconComponent(row.syntheticNodeId)" :size="24" stroke-width="1.5" />
+              </g>
             </g>
-          </g>
-        </svg>
-        <span class="legend-label">{{ row.label }}</span>
+          </svg>
+          <span class="legend-label">{{ row.label }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Панель «Связи»: типы связей выбранного объекта; чекбокс глобально скрывает тип на графе -->
+    <div v-if="showRelations" class="graph-relations" aria-label="Связи выбранного объекта">
+      <div class="graph-panel-head">
+        <span class="graph-panel-title">Связи</span>
+        <button type="button" class="graph-panel-close" title="Закрыть панель связей" @click="showRelations = false">×</button>
+      </div>
+      <div class="graph-panel-body">
+        <p v-if="!activeNodeId" class="graph-panel-empty">
+          Выберите объект на графе (ЛКМ) — здесь появятся типы его связей.
+        </p>
+        <p v-else-if="selectedNodeRelationTypes.length === 0" class="graph-panel-empty">У объекта нет связей.</p>
+        <label v-for="row in selectedNodeRelationTypes" :key="row.code" class="relation-row">
+          <input
+            type="checkbox"
+            :checked="!hiddenRelationTypes.has(row.code)"
+            @change="toggleRelationType(row.code)"
+          />
+          <span class="relation-label">{{ row.label }}</span>
+          <span class="relation-count">{{ row.count }}</span>
+        </label>
       </div>
     </div>
     </div>
@@ -290,8 +320,8 @@ const props = defineProps({
    */
   showExportButtons: { type: Boolean, default: undefined },
   /**
-   * Узел-центр для первичной раскладки «звезда» (nodeId вида gap:12).
-   * Имеет смысл в variant=embed при нескольких узлах.
+   * Узел-центр/корень графа: в embed — центр первичной раскладки «звезда» (когда узлов больше одного);
+   * в анализаторе — корень графа: не скрывается фильтром типов связей панели «Связи».
    */
   centerNodeId: { type: String, default: null },
   nodes: { type: Object, default: () => ({}) },
@@ -412,6 +442,10 @@ const showAllEdgesCascadeLocal = computed({
 
 const showLegend = ref(false)
 
+/** Панель «Связи»: видимость и глобальный фильтр типов связей (скрытые коды типов). */
+const showRelations = ref(false)
+const hiddenRelationTypes = ref(new Set())
+
 /**
  * Выделение на графе (issue #116). Библиотека ведёт узлы и связи отдельными наборами,
  * поэтому «одновременно активен только один объект» обеспечивается вручную (см. selectOnly).
@@ -425,6 +459,94 @@ const activeEdgeId = computed(() => selectedEdgeIds.value[0] || null)
 /** Активный узел: рамка рисуется в слоте #override-node (у него свой прямоугольник). */
 function isNodeActive(nodeId) {
   return selectedNodeIds.value.includes(nodeId)
+}
+
+/** Рёбра с учётом фильтра типов связей (панель «Связи»): скрытый тип убирает все рёбра этого типа. */
+const graphEdges = computed(() => {
+  const hidden = hiddenRelationTypes.value
+  const out = {}
+  for (const [id, edge] of Object.entries(props.edges || {})) {
+    if (!edge) continue
+    const code = String(edge.relationType || '').trim()
+    if (code && hidden.has(code)) continue
+    out[id] = edge
+  }
+  return out
+})
+
+/**
+ * Узлы с учётом фильтра: узел скрывается, только если до фильтра у него были рёбра, а после — не осталось.
+ * Не скрываются: корень графа (`centerNodeId`) и текущий выбранный узел — иначе из панели нельзя
+ * было бы вернуть скрытый тип. Изначально изолированные узлы остаются видимыми.
+ */
+const graphNodes = computed(() => {
+  const all = props.nodes || {}
+  if (hiddenRelationTypes.value.size === 0) return all
+  const connectedBefore = new Set()
+  for (const edge of Object.values(props.edges || {})) {
+    if (!edge) continue
+    connectedBefore.add(edge.source)
+    connectedBefore.add(edge.target)
+  }
+  const connectedAfter = new Set()
+  for (const edge of Object.values(graphEdges.value)) {
+    connectedAfter.add(edge.source)
+    connectedAfter.add(edge.target)
+  }
+  const root = props.centerNodeId
+  const selected = activeNodeId.value
+  const out = {}
+  for (const [id, node] of Object.entries(all)) {
+    if (
+      id === root ||
+      id === selected ||
+      connectedAfter.has(id) ||
+      !connectedBefore.has(id)
+    ) {
+      out[id] = node
+    }
+  }
+  return out
+})
+
+/** Наименования типов связей из справочника метамодели (fallback — код). */
+const relationTypeLabels = computed(() => {
+  const map = new Map()
+  for (const rt of props.relationTypes || []) {
+    const code = String(rt?.code || '').trim()
+    if (!code) continue
+    map.set(code, String(rt.display_name || rt.name || code).trim() || code)
+  }
+  return map
+})
+
+/** Типы связей выбранного узла — по полному набору рёбер (скрытые типы тоже видны, чтобы включить обратно). */
+const selectedNodeRelationTypes = computed(() => {
+  const nid = activeNodeId.value
+  if (!nid) return []
+  const groups = new Map()
+  for (const edge of Object.values(props.edges || {})) {
+    if (!edge) continue
+    if (edge.source !== nid && edge.target !== nid) continue
+    const code = String(edge.relationType || '').trim()
+    if (!code) continue
+    const row = groups.get(code) || {
+      code,
+      label: relationTypeLabels.value.get(code) || code,
+      count: 0,
+    }
+    row.count += 1
+    groups.set(code, row)
+  }
+  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+})
+
+/** Чекбокс типа связи: глобально скрыть/показать все рёбра этого типа. */
+function toggleRelationType(code) {
+  const next = new Set(hiddenRelationTypes.value)
+  if (next.has(code)) next.delete(code)
+  else next.add(code)
+  hiddenRelationTypes.value = next
 }
 
 /** Сделать объект единственным активным: очищаем «чужой» набор (узлы ↔ связи). */
@@ -446,10 +568,10 @@ function selectOnly(kind, id) {
   }
 }
 
-/** Сбросить выделение, если объект исчез с графа (скрытие, свёртка модулей, новый граф). */
+/** Сбросить выделение, если объект исчез с графа (скрытие, свёртка модулей, фильтр связей, новый граф). */
 function pruneSelection() {
-  const visibleNodes = props.nodes || {}
-  const visibleEdges = props.edges || {}
+  const visibleNodes = graphNodes.value
+  const visibleEdges = graphEdges.value
   if (selectedNodeIds.value.some((id) => !visibleNodes[id])) {
     selectedNodeIds.value = selectedNodeIds.value.filter((id) => visibleNodes[id])
   }
@@ -460,6 +582,7 @@ function pruneSelection() {
 
 watch(() => Object.keys(props.nodes || {}).join('|'), pruneSelection)
 watch(() => Object.keys(props.edges || {}).join('|'), pruneSelection)
+watch(() => [...hiddenRelationTypes.value].sort().join('|'), pruneSelection)
 
 const containerRef = ref(null)
 const graphWrapRef = ref(null)
@@ -1576,21 +1699,87 @@ defineExpose({
 .btn-tool:hover {
   background: var(--ar-row-hover);
 }
-.graph-legend {
+.graph-legend,
+.graph-relations {
   position: absolute;
-  left: 10px;
   bottom: 10px;
   z-index: 6;
-  max-width: min(320px, 42vw);
-  max-height: 42%;
-  overflow-y: auto;
-  padding: 10px 12px;
+  max-height: 46%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--ar-border);
   border-radius: var(--ar-radius);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
   font-size: 0.82rem;
   color: var(--ar-text);
+}
+.graph-legend {
+  left: 10px;
+  max-width: min(320px, 42vw);
+}
+.graph-relations {
+  right: 10px;
+  max-width: min(340px, 46vw);
+}
+.graph-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--ar-border);
+  background: var(--ar-table-head-bg);
+}
+.graph-panel-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ar-muted);
+}
+.graph-panel-close {
+  border: none;
+  background: none;
+  padding: 0 0.2rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ar-muted);
+  cursor: pointer;
+}
+.graph-panel-close:hover {
+  color: var(--ar-text);
+}
+.graph-panel-body {
+  padding: 8px 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.graph-panel-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ar-muted);
+}
+.relation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.relation-row input {
+  margin: 0;
+  accent-color: var(--ar-accent-hover);
+}
+.relation-label {
+  flex: 1;
+  line-height: 1.25;
+}
+.relation-count {
+  color: var(--ar-muted);
+  font-size: 0.75rem;
 }
 .legend-row {
   display: flex;

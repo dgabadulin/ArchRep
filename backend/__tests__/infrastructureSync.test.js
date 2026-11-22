@@ -5,19 +5,19 @@ const assert = require('node:assert/strict');
 
 const { isExcludedVirtualServerName, buildMessage } = require('../infrastructureSync.js');
 
-test('isExcludedVirtualServerName: имя с префиксом vm- исключается без учёта регистра и пробелов', () => {
-  for (const name of ['vm-01', 'VM-KUBE-1', ' vm-test ', 'Vm-']) {
+test('isExcludedVirtualServerName: имя с префиксом vm исключается без учёта регистра и пробелов', () => {
+  for (const name of ['vm', 'vm-01', 'VM-KUBE-1', ' vm-test ', 'Vm-', 'vm01', 'vmserver']) {
     assert.equal(isExcludedVirtualServerName(name), true, String(name));
   }
 });
 
-test('isExcludedVirtualServerName: vm без дефиса и префикс не в начале не исключаются', () => {
-  for (const name of ['vm', 'vm_01', 'server-vm-1', 'vmserver', 'kvm-host', '', null, undefined]) {
+test('isExcludedVirtualServerName: префикс не в начале и пустые значения не исключаются', () => {
+  for (const name of ['v', 'server-vm-1', 'kvm-host', 'avm', '', null, undefined]) {
     assert.equal(isExcludedVirtualServerName(name), false, String(name));
   }
 });
 
-test('buildMessage: пропущенные vm- попадают в сводку только когда они есть', () => {
+test('buildMessage: пропущенные vm* попадают в сводку только когда они есть', () => {
   const base = {
     vms_fetched: 3,
     devices_fetched: 2,
@@ -28,5 +28,5 @@ test('buildMessage: пропущенные vm- попадают в сводку 
     unmatched_codes: [],
   };
   assert.doesNotMatch(buildMessage({ ...base, skipped: 0 }), /пропущено/);
-  assert.match(buildMessage({ ...base, skipped: 2 }), /пропущено vm- 2/);
+  assert.match(buildMessage({ ...base, skipped: 2 }), /пропущено vm\* 2/);
 });
