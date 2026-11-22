@@ -20,6 +20,23 @@ const {
 
 const SOURCE = 'netbox';
 
+/**
+ * Префикс имён виртуальных серверов, которые не загружаются в каталог (issue: синхронизация
+ * каталога инфраструктуры). Сравнение без учёта регистра, пробелы по краям отбрасываются.
+ * Ранее загруженные такие ВМ удаляются mark-and-sweep: их `synced_at` не обновляется.
+ */
+const VM_NAME_EXCLUDE_PREFIX = 'vm-';
+
+/**
+ * Служебная/автосозданная ВМ: имя начинается с `vm-` → в каталог не загружается.
+ * Правило относится только к виду `virtual_server` (проверяется вызывающим кодом).
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+function isExcludedVirtualServerName(name) {
+  return String(name == null ? '' : name).trim().toLowerCase().startsWith(VM_NAME_EXCLUDE_PREFIX);
+}
+
 function buildMessage(summary) {
   const parts = [
     `Netbox: ВМ ${summary.vms_fetched}, серверов ${summary.devices_fetched}`,
@@ -28,6 +45,7 @@ function buildMessage(summary) {
     `удалено ${summary.deleted}`,
     `связей ${summary.relations_synced}`,
   ];
+  if (summary.skipped > 0) parts.push(`пропущено vm- ${summary.skipped}`);
   if (summary.unmatched_codes.length) {
     const shown = summary.unmatched_codes.slice(0, 5).join(', ');
     const rest = summary.unmatched_codes.length > 5 ? ` и ещё ${summary.unmatched_codes.length - 5}` : '';
@@ -66,6 +84,7 @@ async function syncInfrastructureFromNetbox(pool, deps = {}) {
     tag_prefix: cfg.tagPrefix,
     vms_fetched: 0,
     devices_fetched: 0,
+    skipped: 0,
     created: 0,
     updated: 0,
     deleted: 0,
@@ -83,14 +102,19 @@ async function syncInfrastructureFromNetbox(pool, deps = {}) {
 
     // Чтение вне транзакции: при ошибке НИЧЕГО не удаляем и не меняем.
     const rawItems = await fetchNetboxObjects(kind, cfg);
-    if (kind === 'virtual_server') summary.vms_fetched = rawItems.length;
-    else summary.devices_fetched = rawItems.length;
+    // Служебные ВМ с именем `vm-…` в каталог не загружаются (до upsert, без связей).
+    const items = kind === 'virtual_server'
+      ? rawItems.filter((raw) => !isExcludedVirtualServerName(raw && raw.name))
+      : rawItems;
+    summary.skipped += rawItems.length - items.length;
+    if (kind === 'virtual_server') summary.vms_fetched = items.length;
+    else summary.devices_fetched = items.length;
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      for (const raw of rawItems) {
+      for (const raw of items) {
         const item = buildNetboxItem(kind, raw, cfg);
         if (!Number.isFinite(item.external_id)) continue;
 
@@ -182,4 +206,8 @@ async function syncInfrastructureFromNetbox(pool, deps = {}) {
   return summary;
 }
 
-module.exports = { syncInfrastructureFromNetbox };
+module.exports = {
+  syncInfrastructureFromNetbox,
+  isExcludedVirtualServerName,
+  buildMessage,
+};
