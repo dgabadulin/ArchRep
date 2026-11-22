@@ -527,6 +527,7 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
     comment,
     it_lead_employee_id,
     business_lead_employee_id,
+    owner_ar_organization_units_id,
   } = b;
   if (!code || !name) {
     return res.status(400).json({ error: 'Missing required fields: code or name' });
@@ -548,6 +549,7 @@ app.put('/api/update-ar-systems/:id', async (req, res) => {
       pgParam(comment),
       pgParam(it_lead_employee_id),
       pgParam(business_lead_employee_id),
+      pgParam(owner_ar_organization_units_id),
       id
     ]);
     if (result.rowCount === 0) {
@@ -579,6 +581,7 @@ app.post('/api/add-ar-systems', async (req, res) => {
       comment,
       it_lead_employee_id,
       business_lead_employee_id,
+      owner_ar_organization_units_id,
     } = b;
     if (!code || !name) {
       return res.status(400).json({ error: 'Fields "code" and "name" are required' });
@@ -599,6 +602,7 @@ app.post('/api/add-ar-systems', async (req, res) => {
       pgParam(comment),
       pgParam(it_lead_employee_id),
       pgParam(business_lead_employee_id),
+      pgParam(owner_ar_organization_units_id),
     ]);
     res.status(201).json({ message: 'Record created successfully', id: result.rows[0].id });
   } catch (err) {

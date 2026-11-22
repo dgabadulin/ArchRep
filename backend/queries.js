@@ -25,6 +25,8 @@ module.exports = {
         , s.ar_system_hosting_types_id
         , s.it_lead_employee_id
         , s.business_lead_employee_id
+        , s.owner_ar_organization_units_id
+        , (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name
         , it_e.full_name AS it_lead_employee_name
         , bl_e.full_name AS business_lead_employee_name
         FROM
@@ -48,6 +50,8 @@ module.exports = {
           s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
           s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
+          s.owner_ar_organization_units_id,
+          (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
@@ -63,7 +67,8 @@ module.exports = {
           OR COALESCE(ss.name,'') ILIKE $1 OR COALESCE(vnd.name,'') ILIKE $1 OR COALESCE(supl.name,'') ILIKE $1
           OR COALESCE(supp.name,'') ILIKE $1 OR COALESCE(s.description,'') ILIKE $1 OR COALESCE(so.name,'') ILIKE $1 OR COALESCE(sht.name,'') ILIKE $1
           OR COALESCE(s.comment,'') ILIKE $1 OR COALESCE(s.technologies,'') ILIKE $1
-          OR COALESCE(it_e.full_name,'') ILIKE $1 OR COALESCE(bl_e.full_name,'') ILIKE $1)
+          OR COALESCE(it_e.full_name,'') ILIKE $1 OR COALESCE(bl_e.full_name,'') ILIKE $1
+          OR COALESCE((SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id),'') ILIKE $1)
         ORDER BY s.name
     `,
     systems_get: `
@@ -73,6 +78,8 @@ module.exports = {
           s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
           s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
+          s.owner_ar_organization_units_id,
+          (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
@@ -93,6 +100,8 @@ module.exports = {
           s.parent_ar_systems_id, s.ar_system_statuses_id, s.vendor_ar_partners_id, s.supplier_ar_partners_id,
           s.supporter_ar_partners_id, s.ar_system_owners_id, s.ar_system_hosting_types_id,
           s.it_lead_employee_id, s.business_lead_employee_id,
+          s.owner_ar_organization_units_id,
+          (SELECT ou.name FROM archrep.ar_organization_units ou WHERE ou.id = s.owner_ar_organization_units_id) AS owner_organization_name,
           it_e.full_name AS it_lead_employee_name, bl_e.full_name AS business_lead_employee_name
         FROM archrep.ar_systems s
         LEFT JOIN archrep.ar_systems parent ON parent.id = s.parent_ar_systems_id
@@ -170,8 +179,9 @@ module.exports = {
       external_system = COALESCE($12, false),
       comment = $13,
       it_lead_employee_id = NULLIF($14, '')::BIGINT,
-      business_lead_employee_id = NULLIF($15, '')::BIGINT
-    WHERE id = $16
+      business_lead_employee_id = NULLIF($15, '')::BIGINT,
+      owner_ar_organization_units_id = NULLIF($16, '')::BIGINT
+    WHERE id = $17
     RETURNING *
   `,
   systems_insert:`
@@ -190,7 +200,8 @@ module.exports = {
     external_system,
     comment,
     it_lead_employee_id,
-    business_lead_employee_id
+    business_lead_employee_id,
+    owner_ar_organization_units_id
   ) VALUES (
     $1, $2, $3, NULLIF($4, '')::BIGINT, NULLIF($5, '')::BIGINT,
     NULLIF($6, '')::BIGINT, NULLIF($7, '')::BIGINT, NULLIF($8, '')::BIGINT,
@@ -198,7 +209,8 @@ module.exports = {
     COALESCE($12, false),
     $13,
     NULLIF($14, '')::BIGINT,
-    NULLIF($15, '')::BIGINT
+    NULLIF($15, '')::BIGINT,
+    NULLIF($16, '')::BIGINT
   )
   RETURNING id
 `,
@@ -740,6 +752,13 @@ module.exports = {
   togaf_organization_unit_categories_insert: `INSERT INTO archrep.ar_organization_unit_categories (code, name, description) VALUES (NULLIF($1,''), $2, NULLIF($3,'')) RETURNING *`,
   togaf_organization_unit_categories_update: `UPDATE archrep.ar_organization_unit_categories SET code=NULLIF($1,''), name=$2, description=NULLIF($3,'') WHERE id=$4 RETURNING *`,
   togaf_organization_unit_categories_delete: `DELETE FROM archrep.ar_organization_unit_categories WHERE id = $1`,
+  /** Организации-владельцы ИС (категория «Организация», issue #126) — справочник для импорта/формы. */
+  organization_units_org_select: `
+    SELECT o.id, o.name
+    FROM archrep.ar_organization_units o
+    JOIN archrep.ar_organization_unit_categories c ON c.id = o.organization_unit_categories_id
+    WHERE lower(COALESCE(c.code, '')) = 'org'
+    ORDER BY o.name`,
 
   togaf_actor_types_select: `SELECT id, code, name, description FROM archrep.ar_actor_types ORDER BY name`,
   togaf_actor_types_select_search: `SELECT id, code, name, description FROM archrep.ar_actor_types WHERE code ILIKE $1 OR name ILIKE $1 OR COALESCE(description, '') ILIKE $1 ORDER BY name`,

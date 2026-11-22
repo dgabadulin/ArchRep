@@ -52,6 +52,13 @@
           </select>
         </div>
         <div class="field">
+          <label>Организация-владелец</label>
+          <select v-model="form.owner_ar_organization_units_id">
+            <option :value="null">—</option>
+            <option v-for="ou in organizationOwners" :key="ou.id" :value="ou.id">{{ ou.display_name || ou.name }}</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Статус</label>
           <select v-model="form.ar_system_statuses_id">
             <option :value="null">—</option>
@@ -130,7 +137,6 @@
         :loading="techStackLoading"
         :relations="techStackGraphRelations"
         :center-node-id="systemTechGraphCenterNodeId"
-        graph-height="780px"
       >
         <template #hint>
           Технологический стек из метамодели. На графе отображаются только связи из таблицы слева; тип связи задаётся
@@ -183,7 +189,6 @@
         :relations="infraGraphRelations"
         :center-node-id="infraGraphCenterNodeId"
         :node-names="infraGraphNodeNames"
-        graph-height="780px"
       >
         <template #hint>
           Серверы, связанные с системой в метамодели. Данные в разделе обновляются автоматически, если настроена
@@ -354,6 +359,15 @@ function mergePartner(partner) {
 const owners = ref([])
 const hostingTypes = ref([])
 const employees = ref([])
+/** Организационные единицы категории «Организация» — источник поля «Организация-владелец» (issue #126). */
+const organizationUnits = ref([])
+const organizationOwners = computed(() =>
+  organizationUnits.value.filter((ou) => {
+    const code = String(ou.category_code || '').trim().toLowerCase()
+    if (code) return code === 'org'
+    return String(ou.category_name || '').trim().toLowerCase() === 'организация'
+  }),
+)
 
 const activeTab = ref('data')
 
@@ -433,6 +447,7 @@ const form = reactive({
   supporter_ar_partners_id: null, description: '',
   it_lead_employee_id: null, business_lead_employee_id: null,
   ar_system_owners_id: null, ar_system_hosting_types_id: null, comment: '',
+  owner_ar_organization_units_id: null,
   external_system: false,
 })
 
@@ -458,6 +473,7 @@ function emptyForm() {
   form.supporter_ar_partners_id = null; form.description = ''
   form.it_lead_employee_id = null; form.business_lead_employee_id = null
   form.ar_system_owners_id = null; form.ar_system_hosting_types_id = null; form.comment = ''
+  form.owner_ar_organization_units_id = null
   form.external_system = false
 }
 
@@ -475,6 +491,7 @@ function mapToForm(row) {
   form.ar_system_owners_id = row.ar_system_owners_id ?? null
   form.ar_system_hosting_types_id = row.ar_system_hosting_types_id ?? null
   form.comment = row.comment ?? ''
+  form.owner_ar_organization_units_id = row.owner_ar_organization_units_id ?? null
   form.external_system = !!row.external_system
 }
 
@@ -515,12 +532,15 @@ function applyAiPrefillForRoute() {
 }
 
 async function loadRefs() {
-  const [parents, st, v, o, h, em] = await Promise.all([
+  const [parents, st, v, o, h, em, ou] = await Promise.all([
     api.getParentSystems(), api.getSystemStatuses(), api.getVendors(), api.getOwners(), api.getHostingTypes(),
     api.getEmployees(),
+    // Справочник орг. единиц: поле «Организация-владелец» показывает только категорию «Организация» (#126).
+    togafApi.organizationUnits().catch(() => []),
   ])
   parentSystems.value = parents; statuses.value = st; vendors.value = v; owners.value = o; hostingTypes.value = h
   employees.value = em
+  organizationUnits.value = Array.isArray(ou) ? ou : []
 }
 
 /**
@@ -737,6 +757,7 @@ async function submit(opts = {}) {
       business_lead_employee_id: fkOrNull(form.business_lead_employee_id),
       ar_system_owners_id: fkOrNull(form.ar_system_owners_id),
       ar_system_hosting_types_id: fkOrNull(form.ar_system_hosting_types_id),
+      owner_ar_organization_units_id: fkOrNull(form.owner_ar_organization_units_id),
       comment: form.comment?.trim() || undefined,
       external_system: form.external_system,
       technologies: '', // поле убрано с формы, передаём пустую строку для API

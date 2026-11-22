@@ -1,6 +1,7 @@
 /**
  * Импорт: system (+ модули через parent). Технологии/интеграции на вкладках — вне плоского импорта.
- * Ключ — code (ручной). owner (направление) не пишется: API create/update его не принимает.
+ * Ключ — code (ручной). «Организация-владелец» (issue #126) импортируется по названию
+ * организации (категория ОУ «Организация»); направление (owner) по-прежнему не пишется.
  */
 const {
   makeCatalog,
@@ -19,6 +20,7 @@ const catalog = makeCatalog(
     { field: 'parent_name', label: 'Родительская система', zone: 'left', kind: 'ref' },
     { field: 'status_name', label: 'Статус', zone: 'left', kind: 'ref' },
     { field: 'external_system', label: 'Внешняя система', zone: 'left', kind: 'bool' },
+    { field: 'owner_organization_name', label: 'Организация-владелец', zone: 'left', kind: 'ref' },
     { field: 'vendor_name', label: 'Вендор', zone: 'left', kind: 'ref' },
     { field: 'supplier_name', label: 'Поставщик', zone: 'left', kind: 'ref' },
     { field: 'supporter_name', label: 'Партнёр по поддержке', zone: 'left', kind: 'ref' },
@@ -29,6 +31,7 @@ const catalog = makeCatalog(
     { field: 'comment', label: 'Примечание', zone: 'left' },
     { field: 'parent_ar_systems_id', label: 'ID родительской системы', zone: 'right' },
     { field: 'ar_system_statuses_id', label: 'ID статуса', zone: 'right' },
+    { field: 'owner_ar_organization_units_id', label: 'ID организации-владельца', zone: 'right' },
     { field: 'vendor_ar_partners_id', label: 'ID вендора', zone: 'right' },
     { field: 'supplier_ar_partners_id', label: 'ID поставщика', zone: 'right' },
     { field: 'supporter_ar_partners_id', label: 'ID партнёра по поддержке', zone: 'right' },
@@ -37,12 +40,13 @@ const catalog = makeCatalog(
     { field: 'business_lead_employee_id', label: 'ID владельца системы (бизнес)', zone: 'right' },
   ],
   'system',
-  1
+  2
 );
 
 function fieldValueFromRow(row, field) {
   if (field === 'external_system') return row.external_system ? 'да' : 'нет';
   if (field === 'status_name') return row.status || '';
+  if (field === 'owner_organization_name') return row.owner_organization_name || '';
   if (field === 'vendor_name') return row.vendor || '';
   if (field === 'supplier_name') return row.supplier || '';
   if (field === 'supporter_name') return row.supporter || '';
@@ -52,12 +56,13 @@ function fieldValueFromRow(row, field) {
 }
 
 async function loadRefs(db, queries) {
-  const [systems, statuses, partners, hosting, employees] = await Promise.all([
+  const [systems, statuses, partners, hosting, employees, organizations] = await Promise.all([
     db.query(queries.systems_select_for_import_labels),
     db.query(queries.system_statuses_select),
     db.query(queries.partners_select),
     db.query(queries.system_hosting_types_select),
     db.query(queries.employees_select),
+    db.query(queries.organization_units_org_select),
   ]);
   return {
     systems: buildNameIndex(systems.rows, (r) => r.import_label),
@@ -65,12 +70,14 @@ async function loadRefs(db, queries) {
     partners: buildNameIndex(partners.rows, (r) => r.name),
     hosting: buildNameIndex(hosting.rows, (r) => r.name),
     employees: buildNameIndex(employees.rows, (r) => r.full_name),
+    organizations: buildNameIndex(organizations.rows, (r) => r.name),
     _raw: {
       systems: systems.rows,
       statuses: statuses.rows,
       partners: partners.rows,
       hosting: hosting.rows,
       employees: employees.rows,
+      organizations: organizations.rows,
     },
   };
 }
@@ -92,6 +99,12 @@ async function loadRefSheetData(db, queries) {
       rows: refs._raw.employees,
       nameFn: (r) => r.full_name,
       fields: ['it_lead_employee_name', 'business_lead_employee_name'],
+    },
+    {
+      sheetName: 'Справочник_организации',
+      rows: refs._raw.organizations,
+      nameFn: (r) => r.name,
+      field: 'owner_organization_name',
     },
   ];
 }
@@ -123,6 +136,10 @@ function resolveIds(f, refs, base = {}) {
     const hit = resolveOptional(refs.partners, f.supporter_name, 'Партнёр по поддержке');
     out.supporter_ar_partners_id = hit ? hit.id : null;
   }
+  if (f.owner_organization_name) {
+    const hit = resolveOptional(refs.organizations, f.owner_organization_name, 'Организация-владелец');
+    out.owner_ar_organization_units_id = hit ? hit.id : null;
+  }
   if (f.hosting_name) {
     const hit = resolveOptional(refs.hosting, f.hosting_name, 'Тип хостинга');
     out.ar_system_hosting_types_id = hit ? hit.id : null;
@@ -148,6 +165,7 @@ async function create(db, ctx, f, refs) {
     ar_system_hosting_types_id: null,
     it_lead_employee_id: null,
     business_lead_employee_id: null,
+    owner_ar_organization_units_id: null,
   });
   const external = f.external_system ? parseBool(f.external_system, false) : false;
   await db.query(ctx.queries.systems_insert, [
@@ -166,6 +184,7 @@ async function create(db, ctx, f, refs) {
     f.comment || null,
     pgId(ids.it_lead_employee_id),
     pgId(ids.business_lead_employee_id),
+    pgId(ids.owner_ar_organization_units_id),
   ]);
 }
 
@@ -186,6 +205,7 @@ async function update(db, ctx, existing, f, refs) {
     comment: existing.comment || '',
     it_lead_employee_id: existing.it_lead_employee_id,
     business_lead_employee_id: existing.business_lead_employee_id,
+    owner_ar_organization_units_id: existing.owner_ar_organization_units_id,
   };
   if (f.code) merged.code = f.code.trim();
   if (f.name) merged.name = f.name;
@@ -210,6 +230,7 @@ async function update(db, ctx, existing, f, refs) {
     merged.comment || null,
     pgId(merged.it_lead_employee_id),
     pgId(merged.business_lead_employee_id),
+    pgId(merged.owner_ar_organization_units_id),
     existing.id,
   ]);
 }

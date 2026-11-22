@@ -100,6 +100,7 @@ const columns = applyRegistryFilters([
   { key: 'supplier', label: 'Поставщик', defaultVisible: false },
   { key: 'supporter', label: 'Партнёр по поддержке', defaultVisible: false },
   { key: 'owner', label: 'Функциональная вертикаль', defaultVisible: true },
+  { key: 'owner_organization_name', label: 'Организация-владелец', defaultVisible: true },
   { key: 'hosting', label: 'Тип хостинга', defaultVisible: false },
   { key: 'description', label: 'Описание', defaultVisible: false },
   { key: 'it_lead_employee_name', label: 'Ответственный от ИТ', defaultVisible: false },
