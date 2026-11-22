@@ -1,5 +1,5 @@
 /**
- * Преобразование данных дашборда «Целевая архитектура: матрица»
+ * Преобразование данных дашборда «Карта ИТ ландшафта» (ранее «Целевая архитектура: матрица»)
  * в строки бизнес-функций, колонки продуктов и ячейки с системами.
  *
  * Источник — только данные ИСАР (`/api/dashboard/target-architecture-matrix`),
@@ -87,10 +87,9 @@ export function buildTargetArchitectureGroups(data) {
     });
   }
 
-  for (const group of groups) {
-    group.rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
-  }
-
+  // Порядок строк задаёт backend: параметр ARR_TARGET_MATRIX_FUNCTION_ORDER (issue #127),
+  // иначе — порядок SQL-запроса (родитель, наименование). Повторная сортировка здесь
+  // перекрыла бы приоритет параметра, поэтому группы и строки сохраняют порядок данных.
   return {
     products,
     groups,

@@ -8,10 +8,17 @@ import TargetArchitectureMatrixChart from '../components/dashboards/TargetArchit
 export const dashboards = [
   {
     slug: 'target-architecture-matrix',
-    title: 'Целевая архитектура: матрица',
+    title: 'Карта ИТ ландшафта',
     description:
       'Матрица «бизнес-способности × продукты» по целевой архитектуре. В ячейках — системы: зелёные в промышленной или опытной эксплуатации, оранжевые — новые или планируемые.',
     category: 'Бизнес-архитектура',
+    requires: [
+      'Реестр «Системы» (ar_systems)',
+      'Реестр «Бизнес-способности» (ar_business_functions, связи system_business_function)',
+      'Реестр «Продукты» (бизнес-сервисы, связи system_business_service)',
+      'Типы связей: system_business_function, system_business_service (payload source = architecture_capability_matrix)',
+      'Системные параметры: ARR_TARGET_MATRIX_ORDER (порядок колонок), ARR_TARGET_MATRIX_FUNCTION_ORDER (порядок строк)',
+    ],
     component: TargetArchitectureMatrixChart,
   },
   {
@@ -20,6 +27,9 @@ export const dashboards = [
     description:
       'Иерархия бизнес-функций из каталога. Площадь прямоугольника пропорциональна числу узлов в поддереве. Клик по блоку — drill-down, сверху хлебные крошки для возврата.',
     category: 'Бизнес-архитектура',
+    requires: [
+      'Реестр «Бизнес-способности» (ar_business_functions) с иерархией parent_id',
+    ],
     component: BusinessFunctionsTreemapChart,
   },
 ]

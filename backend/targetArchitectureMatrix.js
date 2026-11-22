@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Дашборд «Целевая архитектура: матрица» — данные только из целевой матрицы
- * (связи, созданные импортом `architecture_capability_matrix`).
+ * Дашборд «Карта ИТ ландшафта» (ранее «Целевая архитектура: матрица») — данные только
+ * из целевой матрицы (связи, созданные импортом `architecture_capability_matrix`).
  *
  * Матрица строится на пересечении двух типов связей:
  * - `system_business_function` — система реализует бизнес-функцию (строки);
@@ -15,10 +15,13 @@ const { getParam } = require('./settingsParams');
 
 const MATRIX_SOURCE = 'architecture_capability_matrix';
 const PRODUCT_ORDER_PARAM = 'ARR_TARGET_MATRIX_ORDER';
+/** Порядок строк (бизнес-способностей): JSON `[{"code":"...","order":1}]` (issue #127). */
+const FUNCTION_ORDER_PARAM = 'ARR_TARGET_MATRIX_FUNCTION_ORDER';
 
 const SQL_FUNCTIONS = `
   SELECT DISTINCT
     bf.id,
+    bf.code,
     bf.name,
     bf.parent_id,
     parent.name AS parent_name
@@ -158,6 +161,71 @@ function sortProductsByParam(products, rawOrder) {
     .map((item) => item.product);
 }
 
+/** Разобрать параметр порядка строк: массив строк или объектов `{code|name, order}`. */
+function parseFunctionOrder(raw) {
+  let value = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      value = [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  const entries = [];
+  value.forEach((item, index) => {
+    if (item == null) return;
+    if (typeof item === 'string') {
+      const key = item.trim();
+      if (key) entries.push({ key, rank: index });
+      return;
+    }
+    if (typeof item === 'object') {
+      const key = String(item.code ?? item.name ?? '').trim();
+      if (!key) return;
+      const order = Number(item.order);
+      entries.push({ key, rank: Number.isFinite(order) ? order : index });
+    }
+  });
+  return entries;
+}
+
+/**
+ * Порядок строк из системного параметра `ARR_TARGET_MATRIX_FUNCTION_ORDER`
+ * (issue #127): JSON-массив `[{"code":"...","order":1}]`; допускаются строки (код/название).
+ * Способности вне списка идут после, сохраняя порядок backend-запроса.
+ *
+ * @param {object[]} functions
+ * @param {*} rawOrder
+ * @returns {object[]}
+ */
+function sortFunctionsByParam(functions, rawOrder) {
+  const entries = parseFunctionOrder(rawOrder);
+  if (!entries.length) return [...(functions || [])];
+
+  const rank = new Map();
+  for (const entry of entries) rank.set(entry.key.toLowerCase(), entry.rank);
+
+  const rankOf = (fn) => {
+    const code = String(fn?.code || '').trim();
+    const name = String(fn?.name || '').trim();
+    if (code && rank.has(code.toLowerCase())) return rank.get(code.toLowerCase());
+    if (name && rank.has(name.toLowerCase())) return rank.get(name.toLowerCase());
+    return null;
+  };
+
+  return (functions || [])
+    .map((fn, index) => ({ fn, index, rank: rankOf(fn) }))
+    .sort((a, b) => {
+      if (a.rank == null && b.rank == null) return a.index - b.index;
+      if (a.rank == null) return 1;
+      if (b.rank == null) return -1;
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.index - b.index;
+    })
+    .map((item) => item.fn);
+}
+
 /**
  * @param {import('pg').Pool} pool
  */
@@ -176,7 +244,7 @@ async function buildTargetArchitectureMatrix(pool) {
 
   return {
     source: MATRIX_SOURCE,
-    functions: functions.rows || [],
+    functions: sortFunctionsByParam(functions.rows || [], getParam(FUNCTION_ORDER_PARAM, [])),
     products: sortProductsByParam(products.rows || [], getParam(PRODUCT_ORDER_PARAM, [])),
     systems: (systems.rows || []).map((row) => ({
       ...row,
@@ -190,6 +258,7 @@ async function buildTargetArchitectureMatrix(pool) {
 module.exports = {
   MATRIX_SOURCE,
   PRODUCT_ORDER_PARAM,
+  FUNCTION_ORDER_PARAM,
   SQL_FUNCTIONS,
   SQL_PRODUCTS,
   SQL_SYSTEMS,
@@ -197,5 +266,6 @@ module.exports = {
   SQL_PRODUCT_RELATIONS,
   classifySystemStatus,
   sortProductsByParam,
+  sortFunctionsByParam,
   buildTargetArchitectureMatrix,
 };

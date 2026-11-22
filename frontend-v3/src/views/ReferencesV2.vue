@@ -568,6 +568,28 @@
         </table>
         <p v-if="infrastructureObjectTypes.length === 0" class="empty">Нет записей</p>
       </template>
+      <!-- Дашборды: реестр метаданных из кода (перенесено из «Настроек», issue #127) -->
+      <template v-else-if="activeTab === 'dashboards'">
+        <table class="table">
+          <thead><tr><th>Наименование</th><th>Категория</th><th>Описание</th><th>Необходимые данные</th><th>Код</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="d in dashboardsFiltered" :key="d.slug">
+              <td>{{ d.title }}</td>
+              <td>{{ d.category }}</td>
+              <td>{{ d.description }}</td>
+              <td>
+                <ul v-if="d.requires?.length" class="requires">
+                  <li v-for="item in d.requires" :key="item">{{ item }}</li>
+                </ul>
+                <span v-else>—</span>
+              </td>
+              <td><code>{{ d.slug }}</code></td>
+              <td><router-link :to="`/dashboards/full/${d.slug}`" class="link">Открыть</router-link></td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="dashboardsFiltered.length === 0" class="empty">Нет записей</p>
+      </template>
     </div>
 
     <!-- Modals: simple prompt for add/edit -->
@@ -940,6 +962,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api/client'
 import { togafApi } from '../api'
+import { dashboards } from '../dashboards/registry'
 import TableToolbar from '../components/TableToolbar.vue'
 import { downloadBlob } from '../utils/downloadBlob'
 import { usePermissions } from '../composables/usePermissions'
@@ -951,7 +974,20 @@ const { canWrite: canWriteMetamodelCatalog } = usePermissions('metamodel_catalog
 
 const activeTab = ref('statuses')
 
+/** Реестр дашбордов живёт в коде (`src/dashboards/registry.js`): поиск по метаданным — локально. */
+const dashboardsFiltered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return dashboards
+  return dashboards.filter((d) =>
+    [d.title, d.category, d.description, d.slug, ...(d.requires || [])]
+      .join(' ')
+      .toLowerCase()
+      .includes(q),
+  )
+})
+
 function canMutateTab(tabKey) {
+  if (tabKey === 'dashboards') return false
   if (tabKey === 'vendors') return canWritePartner.value
   if (tabKey === 'employees') return canWriteEmployee.value
   if (tabKey === 'metamodelEntityTypes' || tabKey === 'metamodelRelationTypes') {
@@ -1001,6 +1037,7 @@ const tabs = [
   { id: 'infrastructureObjectTypes', label: 'Типы объектов инфраструктуры' },
   { id: 'metamodelEntityTypes', label: 'Типы сущностей метамодели' },
   { id: 'metamodelRelationTypes', label: 'Типы связей метамодели' },
+  { id: 'dashboards', label: 'Дашборды' },
 ]
 const search = ref('')
 const loading = ref(true)
@@ -1110,7 +1147,7 @@ async function exportExcel() {
     else if (activeTab.value === 'adrRelationStatuses') blob = await api.getAdrRelationStatuses(q)
     else if (activeTab.value === 'integrationFlowEventTypes') blob = await api.getIntegrationFlowEventTypes(q)
     else if (activeTab.value === 'integrationFlowStatuses') blob = await api.getIntegrationFlowStatuses(q)
-    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'domainStatuses', 'businessServiceStatuses', 'infrastructureObjectTypes', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes'].includes(activeTab.value)) { excelLoading.value = false; return }
+    else if (['orgUnitCategories', 'actorTypes', 'webResourceStatuses', 'webResourceCategories', 'webResourceStageTypes', 'domainStatuses', 'businessServiceStatuses', 'infrastructureObjectTypes', 'adrStatuses', 'gapTypes', 'impactLevelTypes', 'gapStates', 'metamodelEntityTypes', 'metamodelRelationTypes', 'dashboards'].includes(activeTab.value)) { excelLoading.value = false; return }
     if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
   } finally {
     excelLoading.value = false
@@ -1553,6 +1590,11 @@ async function deleteRelationType(id) { if (confirm('Удалить тип св�
   color: var(--ar-muted);
   font-size: 0.9rem;
   margin-bottom: 0.75rem;
+}
+.requires {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.4;
 }
 .modal-overlay {
   position: fixed;

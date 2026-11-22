@@ -17,6 +17,7 @@
             <th>Наименование</th>
             <th>Категория</th>
             <th>Описание</th>
+            <th>Необходимые данные</th>
             <th>Код (slug)</th>
             <th></th>
           </tr>
@@ -26,6 +27,12 @@
             <td>{{ d.title }}</td>
             <td>{{ d.category }}</td>
             <td class="desc">{{ d.description }}</td>
+            <td class="requires">
+              <ul v-if="d.requires?.length">
+                <li v-for="item in d.requires" :key="item">{{ item }}</li>
+              </ul>
+              <span v-else>—</span>
+            </td>
             <td><code>{{ d.slug }}</code></td>
             <td>
               <router-link :to="`/dashboards/full/${d.slug}`" class="link">Открыть</router-link>
@@ -57,6 +64,11 @@ import { dashboards } from '../dashboards/registry'
 }
 .desc {
   max-width: 28rem;
+  line-height: 1.4;
+}
+.requires ul {
+  margin: 0;
+  padding-left: 1.1rem;
   line-height: 1.4;
 }
 code {

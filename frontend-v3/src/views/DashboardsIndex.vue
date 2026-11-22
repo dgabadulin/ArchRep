@@ -2,10 +2,9 @@
   <div class="page">
     <div class="page-head">
       <h1>Дашборды</h1>
-      <router-link to="/dashboards/catalog" class="btn btn-secondary">Справочник дашбордов</router-link>
     </div>
     <p class="lead">
-      Визуализации на Apache ECharts. В карточке — превью; кнопка открывает дашборд на всю рабочую область. Назад — из шапки полноэкранного вида или хлебные крошки.
+      Визуализации на Apache ECharts. В карточке — превью; кнопка открывает дашборд на всю рабочую область. Назад — из шапки полноэкранного вида или хлебные крошки. Справочник дашбордов — «Настройки → Справочники → вкладка „Дашборды“».
     </p>
 
     <div class="dashboard-grid">
@@ -52,15 +51,24 @@ import { dashboards } from '../dashboards/registry'
   max-width: 56rem;
 }
 .dashboard-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
-  align-items: flex-start;
+  align-items: start;
 }
-/* Карточка по ширине превью — без пустой «белой полосы» справа на весь экран */
+/* Карточки в две колонки; при сужении рабочей области (в т.ч. открытая панель ИИ-архитектора)
+   сетка перестраивается в одну колонку, а графики масштабируются вместе с карточкой. */
+.page {
+  container-type: inline-size;
+}
+@container (max-width: 980px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .dashboard-card {
   box-sizing: border-box;
-  width: min(100%, max(22rem, 50vw));
+  width: 100%;
   padding: 1rem 1.25rem;
   background: var(--ar-surface);
   border-radius: var(--ar-radius-lg);
@@ -94,10 +102,10 @@ import { dashboards } from '../dashboards/registry'
   color: var(--ar-muted);
   line-height: 1.4;
 }
-/* Превью на всю ширину карточки; высота — половина окна */
+/* Превью масштабируется с высотой окна: две карточки в ряд помещаются на экран. */
 .preview-wrap {
   width: 100%;
-  height: 50vh;
+  height: clamp(220px, 32vh, 420px);
   min-height: 220px;
   max-height: 85vh;
   border: 1px solid var(--ar-border);

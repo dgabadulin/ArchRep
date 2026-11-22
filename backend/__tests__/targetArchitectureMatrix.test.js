@@ -7,6 +7,7 @@ const {
   MATRIX_SOURCE,
   classifySystemStatus,
   sortProductsByParam,
+  sortFunctionsByParam,
   buildTargetArchitectureMatrix,
 } = require('../targetArchitectureMatrix');
 
@@ -26,6 +27,25 @@ test('sortProductsByParam: порядок из системного параме
     ['bs-b', 'bs-a', 'bs-c'],
   );
   assert.deepEqual(sortProductsByParam(products, []).map((p) => p.code), ['bs-a', 'bs-b', 'bs-c']);
+});
+
+test('sortFunctionsByParam: порядок строк из JSON {code, order} (issue #127)', () => {
+  const functions = [
+    { id: 1, code: 'BF-C', name: 'В' },
+    { id: 2, code: 'BF-A', name: 'А' },
+    { id: 3, code: 'BF-B', name: 'Б' },
+  ];
+
+  assert.deepEqual(
+    sortFunctionsByParam(functions, [{ code: 'BF-B', order: 1 }, { code: 'BF-C', order: 2 }]).map((f) => f.code),
+    ['BF-B', 'BF-C', 'BF-A'],
+  );
+  assert.deepEqual(
+    sortFunctionsByParam(functions, '[{"code":"BF-A","order":10}]').map((f) => f.code),
+    ['BF-A', 'BF-C', 'BF-B'],
+  );
+  // Пустой параметр — порядок backend-запроса не меняется.
+  assert.deepEqual(sortFunctionsByParam(functions, '[]').map((f) => f.code), ['BF-C', 'BF-A', 'BF-B']);
 });
 
 test('classifySystemStatus: промышленная и опытная эксплуатация — green', () => {

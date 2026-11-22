@@ -63,7 +63,6 @@ export const menuItems = [
     icon: 'settings',
     children: [
       { label: 'Справочники', path: '/references', icon: 'book', requiredPermission: 'references:read' },
-      { label: 'Справочник дашбордов', path: '/dashboards/catalog', icon: 'book', requiredPermission: 'dashboard:read' },
       { label: 'Параметры', path: '/settings/parameters', icon: 'settings', requiredPermission: 'settings_parameters:read' },
       { label: 'Управление заданиями', path: '/settings/jobs', icon: 'clock', requiredPermission: 'jobs:read' },
       { label: 'Сервисные операции', path: '/settings/service-operations', icon: 'wrench', requiredPermission: 'service_operations:execute' },
