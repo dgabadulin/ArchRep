@@ -4,7 +4,7 @@
   Использование: GapForm, SystemForm (технологии), дальше — другие формы с тем же UX.
 -->
 <template>
-  <div class="entity-links-card">
+  <div class="entity-links-card" ref="cardRef">
     <div v-if="$slots.hint" class="tab-hint">
       <slot name="hint" />
     </div>
@@ -16,6 +16,8 @@
       <div
         class="relations-split"
         :class="{ 'relations-split--no-graph': !relationCount }"
+        :style="splitStyle"
+        ref="splitRef"
       >
         <div class="relations-split__table">
           <slot name="table" />
@@ -26,7 +28,7 @@
             <AnalyzerGraph
               ref="graphRef"
               variant="embed"
-              :graph-height="graphHeight"
+              :graph-height="autoGraphHeight"
               :show-export-buttons="true"
               :nodes="graphNodes"
               :edges="graphEdges"
@@ -42,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, computed } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount, computed } from 'vue'
 import AnalyzerGraph from './AnalyzerGraph.vue'
 import { relationsToGraphData, fetchEntity } from '../api/graphApi'
 import { parseNodeId } from '../utils/entityTypeConfig'
@@ -64,7 +66,13 @@ const props = defineProps({
    */
   nodeNames: { type: Object, default: () => ({}) },
   graphTitle: { type: String, default: 'Граф связей' },
+  /** Fallback-высота графа, если авто-высота недоступна (узкий экран, нет измерения). */
   graphHeight: { type: String, default: '780px' },
+  /**
+   * Авто-высота области (issue #125): сплит занимает всё доступное место до липкой панели
+   * сохранения, чтобы граф не уходил под неё и не требовал прокрутки страницы.
+   */
+  autoHeight: { type: Boolean, default: true },
 })
 
 const graphRef = ref(null)
@@ -72,6 +80,79 @@ const graphNodes = ref({})
 const graphEdges = ref({})
 
 const relationCount = computed(() => (Array.isArray(props.relations) ? props.relations.length : 0))
+
+/** Минимальная высота области: ниже граф нечитаем на типовых экранах. */
+const MIN_AREA_HEIGHT = 360
+/** Узкие экраны: сплит превращается в колонку, авто-высота отключается (fallback `graphHeight`). */
+const AUTO_HEIGHT_MAX_WIDTH = 1024
+
+const areaHeight = ref(0)
+const cardRef = ref(null)
+const splitRef = ref(null)
+
+/** В авто-режиме граф растягивается по высоте области сплита. */
+const autoGraphHeight = computed(() => (areaHeight.value ? '100%' : props.graphHeight))
+const splitStyle = computed(() => (areaHeight.value ? { height: `${areaHeight.value}px` } : null))
+
+/**
+ * Высота области = доступное место до липкой панели сохранения.
+ * Считаем от низа контейнера прокрутки `.main`: разница top'ов не зависит от скролла,
+ * поэтому размер не «прыгает» при прокрутке страницы. Высота `.save-bar` измеряется
+ * фактически (кнопки могут переноситься на узких экранах).
+ */
+function measureArea() {
+  if (!props.autoHeight || typeof window === 'undefined') return
+  if (window.innerWidth <= AUTO_HEIGHT_MAX_WIDTH) {
+    areaHeight.value = 0
+    return
+  }
+  const el = splitRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const scrollEl = el.closest('.main')
+  const scrollRect = scrollEl ? scrollEl.getBoundingClientRect() : null
+  const viewTop = scrollRect ? scrollRect.top : 0
+  const viewHeight = scrollRect ? scrollRect.height : window.innerHeight
+  const offsetTop = Math.max(0, rect.top - viewTop)
+  const saveBar = document.querySelector('.save-bar')
+  const saveBarHeight = saveBar ? saveBar.getBoundingClientRect().height : 0
+  // Зазор: padding карточки снизу + отступ до липкой панели сохранения.
+  const BOTTOM_RESERVE = 28
+  const available = Math.floor(viewHeight - offsetTop - saveBarHeight - BOTTOM_RESERVE)
+  areaHeight.value = Math.max(MIN_AREA_HEIGHT, available)
+}
+
+let areaRaf = 0
+let areaObserver = null
+
+function scheduleMeasure() {
+  if (!props.autoHeight) return
+  if (typeof requestAnimationFrame !== 'function') {
+    measureArea()
+    return
+  }
+  if (areaRaf) cancelAnimationFrame(areaRaf)
+  areaRaf = requestAnimationFrame(() => {
+    areaRaf = 0
+    measureArea()
+  })
+}
+
+/**
+ * Пересчёт при изменении контейнера прокрутки (ресайз окна) и карточки
+ * (баннеры, перенос подсказки, появление тулбара).
+ */
+function observeArea() {
+  if (typeof ResizeObserver === 'undefined') return
+  areaObserver = new ResizeObserver(() => scheduleMeasure())
+  const scrollEl = cardRef.value?.closest('.main')
+  if (scrollEl) areaObserver.observe(scrollEl)
+  if (cardRef.value) areaObserver.observe(cardRef.value)
+}
+
+// Сплит рендерится только после загрузки — пересчитываем, когда он появился.
+watch(() => props.loading, () => nextTick(scheduleMeasure))
+watch(relationCount, () => nextTick(scheduleMeasure))
 
 /** Копия для графа (AnalyzerGraph не мутирует) */
 const relationsNormalized = computed(() => props.relations || [])
@@ -151,6 +232,16 @@ watch(
 
 onMounted(() => {
   rebuildGraph()
+  observeArea()
+  scheduleMeasure()
+  window.addEventListener('resize', scheduleMeasure)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', scheduleMeasure)
+  if (areaRaf) cancelAnimationFrame(areaRaf)
+  areaObserver?.disconnect()
+  areaObserver = null
 })
 </script>
 
@@ -190,13 +281,18 @@ onMounted(() => {
   flex: 0 0 40%;
   max-width: 40%;
   min-width: 0;
+  /* Таблица прокручивается внутри своей колонки и не выезжает под карточку графа. */
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .relations-split__graph {
   flex: 1 1 60%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  min-height: 780px;
+  min-height: 0;
+  height: 100%;
 }
 .relations-split__graph-inner {
   flex: 1;

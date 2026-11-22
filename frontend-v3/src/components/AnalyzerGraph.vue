@@ -1536,6 +1536,8 @@ defineExpose({
 }
 .analyzer-wrap--embed {
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 .analyzer-wrap--embed .analyzer-graph-wrap {
   height: 420px;
