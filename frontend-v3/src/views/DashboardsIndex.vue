@@ -12,7 +12,6 @@
         <div class="card-top">
           <div class="card-titles">
             <h2 class="card-title">{{ d.title }}</h2>
-            <span class="card-category">{{ d.category }}</span>
           </div>
           <router-link :to="`/dashboards/full/${d.slug}`" class="btn btn-primary btn-sm">На весь экран</router-link>
         </div>
@@ -90,11 +89,6 @@ import { dashboards } from '../dashboards/registry'
   margin: 0 0 0.25rem;
   font-size: 1.1rem;
   color: var(--ar-text);
-}
-.card-category {
-  font-size: 0.8rem;
-  color: var(--ar-link);
-  font-weight: 600;
 }
 .card-desc {
   margin: 0 0 0.75rem;
