@@ -663,6 +663,13 @@ const layouts = ref({ nodes: {} })
  * Позиции сохраняем, чтобы при повторном показе вернуть узел на место, а не перекладывать граф (issue #134).
  */
 const layoutCache = ref({})
+/**
+ * Узлы, координаты которых выставлены НАШИМИ алгоритмами (applyLayout / relayoutHubAroundNode /
+ * placeRevealedModules). Проверка по `layouts` для этого не годится: v-network-graph сам присваивает
+ * координаты только что добавленным узлам, и они попадают в layoutCache раньше нашего relayout —
+ * из-за этого раскрытие не переносило хаб (issue #134).
+ */
+const laidOutNodeIds = new Set()
 watch(
   () => layouts.value?.nodes,
   (nodes) => {
@@ -1159,9 +1166,11 @@ function computeLayoutNodes(layoutType, centerNodeId = null) {
 function applyLayout(layoutType, centerNodeId = null) {
   lastLayoutType.value = layoutType
   lastLayoutCenterId.value = centerNodeId ?? null
-  // Полная раскладка пересчитывает позиции — кэш прежних координат больше не актуален.
+  // Полная раскладка пересчитывает позиции — кэш прежних координат и набор «разложенных» узлов не актуальны.
   layoutCache.value = {}
+  laidOutNodeIds.clear()
   layouts.value = { nodes: computeLayoutNodes(layoutType, centerNodeId) }
+  for (const id of Object.keys(layouts.value.nodes || {})) laidOutNodeIds.add(id)
   // Новая раскладка — вписываем граф в область заново (а не только уменьшаем масштаб).
   nextTick(() => fitToContents({ reset: true }))
 }
@@ -1238,14 +1247,10 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
   if (!expandedNodeId) return false
   const toPlaceAll = [...new Set((nodesToPlaceOnRing || []).filter((id) => id && id !== expandedNodeId))]
   const current = { ...layoutCache.value, ...(layouts.value?.nodes ?? {}) }
-  const isPlaced = (id) => {
-    const p = current[id]
-    return Boolean(p) && Number.isFinite(p.x) && Number.isFinite(p.y)
-  }
-  // Раскладываем только при появлении действительно новых узлов: повторное включение уже показанных
-  // типов не должно двигать граф и «удлинять» рёбра (issue #134). При новых узлах двигаем хаб и
-  // раскладываем все возвращаемые узлы звездой — как было до стабилизации.
-  const fresh = toPlaceAll.filter((id) => !isPlaced(id))
+  // Раскладываем только при появлении узлов, которые ещё не разложены нашими алгоритмами: повторное
+  // включение уже показанных типов не должно двигать граф (issue #134). Наличие координат в layouts
+  // здесь не показатель — библиотека присваивает их новым узлам автоматически.
+  const fresh = toPlaceAll.filter((id) => !laidOutNodeIds.has(id))
   if (fresh.length === 0) return false
   const toPlace = toPlaceAll
 
@@ -1375,6 +1380,8 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
   const nextLayouts = { ...current }
   Object.assign(nextLayouts, result)
   layouts.value = { nodes: nextLayouts }
+  laidOutNodeIds.add(expandedNodeId)
+  for (const id of toPlace) laidOutNodeIds.add(id)
   return true
 }
 
@@ -1436,6 +1443,7 @@ function placeRevealedModules(parentId, revealedNodeIds) {
     const nextLayouts = { ...current }
     for (let i = 0; i < L; i++) {
       nextLayouts[revealed[i]] = { x: cand[i].x, y: cand[i].y }
+      laidOutNodeIds.add(revealed[i])
     }
     layouts.value = { nodes: nextLayouts }
   }
