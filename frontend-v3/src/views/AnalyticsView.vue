@@ -468,9 +468,29 @@ async function resolveNodeNames(nodesObj) {
   }
 }
 
-function edgeMatchesRelationFilter(edge, relationType) {
+/** relationId связей выбранного узла (опционально — только указанного типа). */
+function relationIdsOfTypeAtNode(nid, relationType = null) {
+  const ids = new Set()
+  for (const r of relations.value || []) {
+    if (!r) continue
+    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
+    const toId = `${r.to_entity_type}:${r.to_entity_id}`
+    if (fromId !== nid && toId !== nid) continue
+    if (relationType != null && String(r.relation_type || '') !== relationType) continue
+    ids.add(String(r.id))
+  }
+  return ids
+}
+
+/**
+ * Ребро соответствует типу связи узла; пакетное ребро интеграционных потоков — если в нём есть
+ * связи этого типа (memberRelationIds). Иначе скрытие/раскрытие типа не работало бы для пучков.
+ */
+function edgeMatchesNodeRelationType(edge, relationType, relationIds) {
   if (relationType == null) return true
-  return String(edge?.relationType || '') === relationType
+  if (String(edge?.relationType || '') === relationType) return true
+  return Array.isArray(edge?.memberRelationIds)
+    && edge.memberRelationIds.some((rid) => relationIds.has(String(rid)))
 }
 
 function incidentRelationTypeCodesForNode(nid) {
@@ -552,15 +572,15 @@ function relayoutHubForNode(nid, nodesToPlaceOnRing = []) {
 function hideRelationsAtNode(nid, relationType) {
   removeActiveRelationType(nid, relationType)
   const nextHidden = new Set(hiddenEdgeIds.value)
+  const typeRelationIds = relationIdsOfTypeAtNode(nid, relationType)
   for (const [eid, e] of Object.entries(graphEdges.value)) {
     if (!e) continue
     if (e.source !== nid && e.target !== nid) continue
-    if (!edgeMatchesRelationFilter(e, relationType)) continue
+    if (!edgeMatchesNodeRelationType(e, relationType, typeRelationIds)) continue
     nextHidden.add(eid)
   }
   hiddenEdgeIds.value = nextHidden
   pruneOrphanVisibleNodes(nid)
-  nextTick(() => analyzerRef.value?.fitToContents?.())
 }
 
 function expandRelationsAtNode(nid, relationType) {
@@ -571,10 +591,11 @@ function expandRelationsAtNode(nid, relationType) {
   const edges = graphEdges.value
   const incidentNodeIds = new Set([nid])
   const incidentEdgeIds = new Set()
+  const typeRelationIds = relationIdsOfTypeAtNode(nid, relationType)
   Object.entries(edges).forEach(([eid, e]) => {
     if (!e) return
     if (e.source !== nid && e.target !== nid) return
-    if (!edgeMatchesRelationFilter(e, relationType)) return
+    if (!edgeMatchesNodeRelationType(e, relationType, typeRelationIds)) return
     incidentEdgeIds.add(eid)
     if (e.source) incidentNodeIds.add(e.source)
     if (e.target) incidentNodeIds.add(e.target)
@@ -637,7 +658,6 @@ function onLayout(layoutType) {
 function onHideNode(nodeId) {
   hiddenNodeIds.value = new Set(hiddenNodeIds.value).add(nodeId)
   pruneOrphanVisibleNodes()
-  nextTick(() => analyzerRef.value?.fitToContents?.())
 }
 
 function onHideEdge(edgeId) {
@@ -652,7 +672,6 @@ function onHideEdge(edgeId) {
   }
   hiddenEdgeIds.value = next
   pruneOrphanVisibleNodes()
-  nextTick(() => analyzerRef.value?.fitToContents?.())
 }
 
 function resetGraph() {

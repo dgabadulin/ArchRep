@@ -244,7 +244,7 @@
             <button
               type="button"
               class="relation-action"
-              :disabled="selectedNodeShownOptionCount >= selectedNodeRelationTypeOptions.length"
+              :disabled="selectedNodeFullyShownOptionCount >= selectedNodeRelationTypeOptions.length"
               @click="showAllSelectedRelations"
             >
               Выбрать все
@@ -252,7 +252,7 @@
             <button
               type="button"
               class="relation-action"
-              :disabled="selectedNodeShownOptionCount === 0"
+              :disabled="selectedNodeVisibleOptionCount === 0"
               @click="hideAllSelectedRelations"
             >
               Отменить все
@@ -261,7 +261,7 @@
           <label v-for="row in selectedNodeRelationTypeOptions" :key="row.code" class="relation-row">
             <input
               type="checkbox"
-              :checked="selectedNodeShownRelationTypes.has(row.code)"
+              :checked="selectedNodeFullyShownRelationTypes.has(row.code)"
               @change="toggleSelectedRelationType(row.code)"
             />
             <span class="relation-label">{{ row.label }}</span>
@@ -506,25 +506,72 @@ function incidentRelationTypeOptions(nid) {
   return out
 }
 
-/** Типы связей, у которых у узла есть видимое ребро (состояние чекбоксов панели «Связи»). */
-function shownRelationTypesAtNode(nid) {
-  const set = new Set()
-  if (!nid) return set
+/** relationId видимых рёбер (у пакетных рёбер интеграционных потоков — memberRelationIds). */
+function visibleRelationIdsAtGraph() {
+  const ids = new Set()
   for (const e of Object.values(props.edges || {})) {
     if (!e) continue
-    if (e.source !== nid && e.target !== nid) continue
-    const t = String(e.relationType || '').trim()
-    if (t) set.add(t)
+    if (e.relationId != null) ids.add(String(e.relationId))
+    if (Array.isArray(e.memberRelationIds)) {
+      for (const rid of e.memberRelationIds) ids.add(String(rid))
+    }
+  }
+  return ids
+}
+
+/**
+ * Статистика типов связей узла по полному набору `relations`:
+ * total — сколько связей этого типа инцидентно узлу, visible — сколько из них видно на графе.
+ */
+function relationTypeStatsAtNode(nid) {
+  const stats = new Map()
+  if (!nid) return stats
+  const visibleIds = visibleRelationIdsAtGraph()
+  for (const r of props.relations || []) {
+    if (!r) continue
+    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
+    const toId = `${r.to_entity_type}:${r.to_entity_id}`
+    if (fromId !== nid && toId !== nid) continue
+    const code = String(r.relation_type || '').trim()
+    if (!code) continue
+    const row = stats.get(code) || { total: 0, visible: 0 }
+    row.total += 1
+    if (visibleIds.has(String(r.id))) row.visible += 1
+    stats.set(code, row)
+  }
+  return stats
+}
+
+/** Типы, у которых у узла показаны ВСЕ связи — галочка «тип раскрыт полностью» (issue #134). */
+function fullyShownRelationTypesAtNode(nid) {
+  const set = new Set()
+  for (const [code, row] of relationTypeStatsAtNode(nid)) {
+    if (row.total > 0 && row.visible >= row.total) set.add(code)
+  }
+  return set
+}
+
+/** Типы, у которых у узла есть хотя бы одна видимая связь (для доступности «Отменить все»). */
+function visibleRelationTypesAtNode(nid) {
+  const set = new Set()
+  for (const [code, row] of relationTypeStatsAtNode(nid)) {
+    if (row.visible > 0) set.add(code)
   }
   return set
 }
 
 const selectedNodeRelationTypeOptions = computed(() => incidentRelationTypeOptions(activeNodeId.value))
-const selectedNodeShownRelationTypes = computed(() => shownRelationTypesAtNode(activeNodeId.value))
-/** Сколько типов из списка панели реально показаны (синтетические рёбра пучков не учитываем). */
-const selectedNodeShownOptionCount = computed(() => {
-  const shown = selectedNodeShownRelationTypes.value
+const selectedNodeFullyShownRelationTypes = computed(() => fullyShownRelationTypesAtNode(activeNodeId.value))
+const selectedNodeVisibleRelationTypes = computed(() => visibleRelationTypesAtNode(activeNodeId.value))
+/** Сколько типов из списка панели раскрыто полностью (синтетические рёбра пучков не учитываем). */
+const selectedNodeFullyShownOptionCount = computed(() => {
+  const shown = selectedNodeFullyShownRelationTypes.value
   return selectedNodeRelationTypeOptions.value.filter((o) => shown.has(o.code)).length
+})
+/** Сколько типов из списка панели имеют хоть одну видимую связь. */
+const selectedNodeVisibleOptionCount = computed(() => {
+  const visible = selectedNodeVisibleRelationTypes.value
+  return selectedNodeRelationTypeOptions.value.filter((o) => visible.has(o.code)).length
 })
 
 /** Чекбокс типа: раскрыть/скрыть связи этого типа у выбранного узла (как ПКМ «Показать связи»). */
@@ -534,7 +581,8 @@ function toggleSelectedRelationType(code) {
   emit('toggle-relations', {
     nodeId: nid,
     relationType: code,
-    show: !selectedNodeShownRelationTypes.value.has(code),
+    // Частично раскрытый тип (не все инцидентные связи видны) — дораскрываем, а не скрываем.
+    show: !selectedNodeFullyShownRelationTypes.value.has(code),
   })
 }
 
@@ -636,7 +684,6 @@ const GRAPH_NODE_MIN_CENTER_DIST = 92
 
 const configs = computed(() => ({
   view: {
-    autoPanAndZoomOnLoad: 'fit-content',
     fitContentMargin: 40,
     panEnabled: true,
     zoomEnabled: true,
@@ -745,7 +792,7 @@ function relationTypeMenuLabel(rt) {
   return name
 }
 
-const ctxShownRelationTypesForNode = computed(() => shownRelationTypesAtNode(contextMenu.value?.node))
+const ctxShownRelationTypesForNode = computed(() => fullyShownRelationTypesAtNode(contextMenu.value?.node))
 
 const ctxIncidentRelationTypeOptions = computed(() => incidentRelationTypeOptions(contextMenu.value?.node))
 
@@ -1183,7 +1230,8 @@ function hubDistanceFromParentStar(d0, R_star, R_ring, margin, paddingFactor = 1
 }
 
 /**
- * Инкрементальное раскрытие: сдвинуть хаб X и разместить на кольце только впервые показанные узлы.
+ * Инкрементальное раскрытие: при появлении новых узлов сдвинуть хаб X по оси связи
+ * и разложить возвращаемые узлы звездой; если новых узлов нет — геометрию не менять.
  * @param {object} [layoutContext] — { parentStarCenterId, rootNodeId }
  */
 function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext = {}) {
@@ -1194,10 +1242,12 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
     const p = current[id]
     return Boolean(p) && Number.isFinite(p.x) && Number.isFinite(p.y)
   }
-  // Уже размещённые узлы не перекладываем: повторное включение типа связи не должно двигать граф
-  // и «удлинять» рёбра (issue #134). Раскладываем только действительно новые узлы.
-  const toPlace = toPlaceAll.filter((id) => !isPlaced(id))
-  if (toPlace.length === 0) return false
+  // Раскладываем только при появлении действительно новых узлов: повторное включение уже показанных
+  // типов не должно двигать граф и «удлинять» рёбра (issue #134). При новых узлах двигаем хаб и
+  // раскладываем все возвращаемые узлы звездой — как было до стабилизации.
+  const fresh = toPlaceAll.filter((id) => !isPlaced(id))
+  if (fresh.length === 0) return false
+  const toPlace = toPlaceAll
 
   const centerX = current[expandedNodeId]?.x ?? 0
   const centerY = current[expandedNodeId]?.y ?? 0
@@ -1296,19 +1346,7 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
   const result = {}
   let placed = false
 
-  // 1) Сначала кольцо вокруг текущего положения хаба — без сдвига: возврат ранее скрытых узлов
-  //    не должен двигать граф и удлинять рёбра (issue #134).
-  for (let R = baseR; R <= maxR && !placed; R += stepR) {
-    const cand = ringCandidates(centerX, centerY, R)
-    if (!candidatesPass(cand)) continue
-    for (let i = 0; i < L; i++) {
-      result[toPlace[i]] = cand[i]
-    }
-    placed = true
-  }
-
-  // 2) Не поместилось — сдвигаем хаб наружу и раскладываем кольцо вокруг него (прежнее поведение).
-  /** Сдвиг и кольцо с одним и тем же R: d_new = f(R★, R, m). */
+  // Сдвигаем хаб наружу по оси связи и раскладываем кольцо вокруг него: d_new = f(R★, R, m).
   for (let R = baseR; R <= maxR && !placed; R += stepR) {
     const centerDistance = hubDistanceFromParentStar(d0, R_star, R, margin)
     const hubX = sx + dirX * centerDistance
@@ -1550,7 +1588,10 @@ function watchGraphAreaSize() {
     if (sizeRaf) cancelAnimationFrame(sizeRaf)
     sizeRaf = requestAnimationFrame(() => {
       sizeRaf = 0
-      if (Object.keys(props.nodes || {}).length) fitToContents({ reset: true })
+      // Авто-вписывание при изменении размера — только во встройке (вкладки форм, issue #125).
+      // В анализаторе после первичного построения вьюпорт не трогаем (issue #134): ПКМ/выделение/ресайз
+      // не должны сбрасывать масштаб и позицию, выбранные пользователем.
+      if (isEmbed.value && Object.keys(props.nodes || {}).length) fitToContents({ reset: true })
     })
   })
   sizeObserver.observe(el)
