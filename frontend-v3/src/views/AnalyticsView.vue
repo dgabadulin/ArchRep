@@ -535,14 +535,17 @@ function edgeMatchesActiveTypesAtNode(nid, relationTypeCode) {
 
 function relayoutHubForNode(nid, nodesToPlaceOnRing = []) {
   nextTick(() => {
+    let changed = false
     if (nodesToPlaceOnRing.length > 0) {
       const parentStarCenterId = expandedFrom.value[nid] || rootNodeId.value || null
-      analyzerRef.value?.relayoutHubAroundNode?.(nid, nodesToPlaceOnRing, {
+      changed = analyzerRef.value?.relayoutHubAroundNode?.(nid, nodesToPlaceOnRing, {
         parentStarCenterId,
         rootNodeId: rootNodeId.value,
-      })
+      }) === true
     }
-    analyzerRef.value?.fitToContents?.()
+    // Вписываем только когда геометрия реально изменилась: повторное включение уже показанных
+    // узлов не должно менять масштаб (issue #134).
+    if (changed) analyzerRef.value?.fitToContents?.()
   })
 }
 

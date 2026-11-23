@@ -10,8 +10,8 @@
       :layout-options="layoutOptions"
       :selected-node-id="activeNodeId"
       :selected-edge-id="activeEdgeId"
-      :nodes="graphNodes"
-      :edges="graphEdges"
+      :nodes="nodes"
+      :edges="edges"
       :relations="relations"
       :relation-types="relationTypes"
       @layout="onPaletteLayout"
@@ -24,8 +24,8 @@
       v-model:zoom-level="zoomLevel"
       v-model:selected-nodes="selectedNodeIds"
       v-model:selected-edges="selectedEdgeIds"
-      :nodes="graphNodes"
-      :edges="graphEdges"
+      :nodes="nodes"
+      :edges="edges"
       :configs="configs"
       :event-handlers="eventHandlers"
       class="analyzer-graph"
@@ -238,16 +238,35 @@
         <p v-if="!activeNodeId" class="graph-panel-empty">
           Выберите объект на графе (ЛКМ) — здесь появятся типы его связей.
         </p>
-        <p v-else-if="selectedNodeRelationTypes.length === 0" class="graph-panel-empty">У объекта нет связей.</p>
-        <label v-for="row in selectedNodeRelationTypes" :key="row.code" class="relation-row">
-          <input
-            type="checkbox"
-            :checked="!hiddenRelationTypes.has(row.code)"
-            @change="toggleRelationType(row.code)"
-          />
-          <span class="relation-label">{{ row.label }}</span>
-          <span class="relation-count">{{ row.count }}</span>
-        </label>
+        <p v-else-if="selectedNodeRelationTypeOptions.length === 0" class="graph-panel-empty">У объекта нет связей.</p>
+        <template v-else>
+          <div class="relation-actions">
+            <button
+              type="button"
+              class="relation-action"
+              :disabled="selectedNodeShownOptionCount >= selectedNodeRelationTypeOptions.length"
+              @click="showAllSelectedRelations"
+            >
+              Выбрать все
+            </button>
+            <button
+              type="button"
+              class="relation-action"
+              :disabled="selectedNodeShownOptionCount === 0"
+              @click="hideAllSelectedRelations"
+            >
+              Отменить все
+            </button>
+          </div>
+          <label v-for="row in selectedNodeRelationTypeOptions" :key="row.code" class="relation-row">
+            <input
+              type="checkbox"
+              :checked="selectedNodeShownRelationTypes.has(row.code)"
+              @change="toggleSelectedRelationType(row.code)"
+            />
+            <span class="relation-label">{{ row.label }}</span>
+          </label>
+        </template>
       </div>
     </div>
     </div>
@@ -442,9 +461,8 @@ const showAllEdgesCascadeLocal = computed({
 
 const showLegend = ref(false)
 
-/** Панель «Связи»: видимость и глобальный фильтр типов связей (скрытые коды типов). */
+/** Панель «Связи»: видимость (фильтр типов — контекстный, как ПКМ; состояние живёт в AnalyticsView). */
 const showRelations = ref(false)
-const hiddenRelationTypes = ref(new Set())
 
 /**
  * Выделение на графе (issue #116). Библиотека ведёт узлы и связи отдельными наборами,
@@ -461,92 +479,75 @@ function isNodeActive(nodeId) {
   return selectedNodeIds.value.includes(nodeId)
 }
 
-/** Рёбра с учётом фильтра типов связей (панель «Связи»): скрытый тип убирает все рёбра этого типа. */
-const graphEdges = computed(() => {
-  const hidden = hiddenRelationTypes.value
-  const out = {}
-  for (const [id, edge] of Object.entries(props.edges || {})) {
-    if (!edge) continue
-    const code = String(edge.relationType || '').trim()
-    if (code && hidden.has(code)) continue
-    out[id] = edge
+/** Опции типов связей узла — как в ПКМ: из полного набора `relations`, включая ещё не показанные. */
+function incidentRelationTypeOptions(nid) {
+  if (!nid) return []
+  const uniqueCodes = new Set()
+  for (const r of props.relations || []) {
+    if (!r) continue
+    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
+    const toId = `${r.to_entity_type}:${r.to_entity_id}`
+    if (fromId !== nid && toId !== nid) continue
+    const code = String(r.relation_type || '').trim()
+    if (code) uniqueCodes.add(code)
   }
-  return out
-})
-
-/**
- * Узлы с учётом фильтра: узел скрывается, только если до фильтра у него были рёбра, а после — не осталось.
- * Не скрываются: корень графа (`centerNodeId`) и текущий выбранный узел — иначе из панели нельзя
- * было бы вернуть скрытый тип. Изначально изолированные узлы остаются видимыми.
- */
-const graphNodes = computed(() => {
-  const all = props.nodes || {}
-  if (hiddenRelationTypes.value.size === 0) return all
-  const connectedBefore = new Set()
-  for (const edge of Object.values(props.edges || {})) {
-    if (!edge) continue
-    connectedBefore.add(edge.source)
-    connectedBefore.add(edge.target)
-  }
-  const connectedAfter = new Set()
-  for (const edge of Object.values(graphEdges.value)) {
-    connectedAfter.add(edge.source)
-    connectedAfter.add(edge.target)
-  }
-  const root = props.centerNodeId
-  const selected = activeNodeId.value
-  const out = {}
-  for (const [id, node] of Object.entries(all)) {
-    if (
-      id === root ||
-      id === selected ||
-      connectedAfter.has(id) ||
-      !connectedBefore.has(id)
-    ) {
-      out[id] = node
-    }
-  }
-  return out
-})
-
-/** Наименования типов связей из справочника метамодели (fallback — код). */
-const relationTypeLabels = computed(() => {
-  const map = new Map()
+  const byCode = new Map()
   for (const rt of props.relationTypes || []) {
     const code = String(rt?.code || '').trim()
     if (!code) continue
-    map.set(code, String(rt.display_name || rt.name || code).trim() || code)
+    byCode.set(code, rt)
   }
-  return map
+  const out = []
+  for (const code of uniqueCodes) {
+    const rt = byCode.get(code)
+    out.push({ code, label: relationTypeMenuLabel(rt) || code })
+  }
+  out.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+  return out
+}
+
+/** Типы связей, у которых у узла есть видимое ребро (состояние чекбоксов панели «Связи»). */
+function shownRelationTypesAtNode(nid) {
+  const set = new Set()
+  if (!nid) return set
+  for (const e of Object.values(props.edges || {})) {
+    if (!e) continue
+    if (e.source !== nid && e.target !== nid) continue
+    const t = String(e.relationType || '').trim()
+    if (t) set.add(t)
+  }
+  return set
+}
+
+const selectedNodeRelationTypeOptions = computed(() => incidentRelationTypeOptions(activeNodeId.value))
+const selectedNodeShownRelationTypes = computed(() => shownRelationTypesAtNode(activeNodeId.value))
+/** Сколько типов из списка панели реально показаны (синтетические рёбра пучков не учитываем). */
+const selectedNodeShownOptionCount = computed(() => {
+  const shown = selectedNodeShownRelationTypes.value
+  return selectedNodeRelationTypeOptions.value.filter((o) => shown.has(o.code)).length
 })
 
-/** Типы связей выбранного узла — по полному набору рёбер (скрытые типы тоже видны, чтобы включить обратно). */
-const selectedNodeRelationTypes = computed(() => {
+/** Чекбокс типа: раскрыть/скрыть связи этого типа у выбранного узла (как ПКМ «Показать связи»). */
+function toggleSelectedRelationType(code) {
   const nid = activeNodeId.value
-  if (!nid) return []
-  const groups = new Map()
-  for (const edge of Object.values(props.edges || {})) {
-    if (!edge) continue
-    if (edge.source !== nid && edge.target !== nid) continue
-    const code = String(edge.relationType || '').trim()
-    if (!code) continue
-    const row = groups.get(code) || {
-      code,
-      label: relationTypeLabels.value.get(code) || code,
-      count: 0,
-    }
-    row.count += 1
-    groups.set(code, row)
-  }
-  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'))
-})
+  if (!nid) return
+  emit('toggle-relations', {
+    nodeId: nid,
+    relationType: code,
+    show: !selectedNodeShownRelationTypes.value.has(code),
+  })
+}
 
-/** Чекбокс типа связи: глобально скрыть/показать все рёбра этого типа. */
-function toggleRelationType(code) {
-  const next = new Set(hiddenRelationTypes.value)
-  if (next.has(code)) next.delete(code)
-  else next.add(code)
-  hiddenRelationTypes.value = next
+/** «Выбрать все» — раскрыть все типы связей узла (как ПКМ «Все типы» вкл). */
+function showAllSelectedRelations() {
+  if (!activeNodeId.value) return
+  emit('toggle-relations', { nodeId: activeNodeId.value, relationType: null, show: true })
+}
+
+/** «Отменить все» — скрыть все инцидентные связи узла (как ПКМ «Все типы» выкл). */
+function hideAllSelectedRelations() {
+  if (!activeNodeId.value) return
+  emit('toggle-relations', { nodeId: activeNodeId.value, relationType: null, show: false })
 }
 
 /** Сделать объект единственным активным: очищаем «чужой» набор (узлы ↔ связи). */
@@ -568,10 +569,10 @@ function selectOnly(kind, id) {
   }
 }
 
-/** Сбросить выделение, если объект исчез с графа (скрытие, свёртка модулей, фильтр связей, новый граф). */
+/** Сбросить выделение, если объект исчез с графа (скрытие, свёртка модулей, новый граф). */
 function pruneSelection() {
-  const visibleNodes = graphNodes.value
-  const visibleEdges = graphEdges.value
+  const visibleNodes = props.nodes || {}
+  const visibleEdges = props.edges || {}
   if (selectedNodeIds.value.some((id) => !visibleNodes[id])) {
     selectedNodeIds.value = selectedNodeIds.value.filter((id) => visibleNodes[id])
   }
@@ -582,7 +583,25 @@ function pruneSelection() {
 
 watch(() => Object.keys(props.nodes || {}).join('|'), pruneSelection)
 watch(() => Object.keys(props.edges || {}).join('|'), pruneSelection)
-watch(() => [...hiddenRelationTypes.value].sort().join('|'), pruneSelection)
+
+// Возврат ранее скрытых узлов (issue #134): если библиотека убрала их из `layouts`,
+// восстанавливаем сохранённые координаты — граф не «переезжает» при повторном включении типа.
+watch(
+  () => Object.keys(props.nodes || {}).join('|'),
+  () => {
+    const cache = layoutCache.value
+    if (!cache || Object.keys(cache).length === 0) return
+    const current = layouts.value?.nodes || {}
+    const next = { ...current }
+    let changed = false
+    for (const id of Object.keys(props.nodes || {})) {
+      if (next[id] || !cache[id]) continue
+      next[id] = { ...cache[id] }
+      changed = true
+    }
+    if (changed) layouts.value = { nodes: next }
+  }
+)
 
 const containerRef = ref(null)
 const graphWrapRef = ref(null)
@@ -591,6 +610,20 @@ const contextMenuRef = ref(null)
 const ctxSubmenuPanelRef = ref(null)
 const ctxSubmenuFlipLeft = ref(false)
 const layouts = ref({ nodes: {} })
+/**
+ * Кэш координат: скрытые фильтром узлы исчезают из `nodes`, и библиотека может убрать их из `layouts`.
+ * Позиции сохраняем, чтобы при повторном показе вернуть узел на место, а не перекладывать граф (issue #134).
+ */
+const layoutCache = ref({})
+watch(
+  () => layouts.value?.nodes,
+  (nodes) => {
+    if (nodes && typeof nodes === 'object') {
+      layoutCache.value = { ...layoutCache.value, ...nodes }
+    }
+  },
+  { deep: false }
+)
 const zoomLevel = ref(1)
 
 /** Последняя выбранная раскладка (для размещения вновь показанных модулей). */
@@ -712,50 +745,9 @@ function relationTypeMenuLabel(rt) {
   return name
 }
 
-const ctxShownRelationTypesForNode = computed(() => {
-  const nid = contextMenu.value?.node
-  const set = new Set()
-  if (!nid) return set
-  for (const e of Object.values(props.edges || {})) {
-    if (!e) continue
-    if (e.source !== nid && e.target !== nid) continue
-    const t = String(e.relationType || '').trim()
-    if (t) set.add(t)
-  }
-  return set
-})
+const ctxShownRelationTypesForNode = computed(() => shownRelationTypesAtNode(contextMenu.value?.node))
 
-const ctxIncidentRelationTypeOptions = computed(() => {
-  const nid = contextMenu.value?.node
-  if (!nid) return []
-  const uniqueCodes = new Set()
-  for (const r of props.relations || []) {
-    if (!r) continue
-    const fromId = `${r.from_entity_type}:${r.from_entity_id}`
-    const toId = `${r.to_entity_type}:${r.to_entity_id}`
-    if (fromId !== nid && toId !== nid) continue
-    const code = String(r.relation_type || '').trim()
-    if (code) uniqueCodes.add(code)
-  }
-
-  const byCode = new Map()
-  for (const rt of props.relationTypes || []) {
-    const code = String(rt?.code || '').trim()
-    if (!code) continue
-    byCode.set(code, rt)
-  }
-
-  const out = []
-  for (const code of uniqueCodes) {
-    const rt = byCode.get(code)
-    out.push({
-      code,
-      label: relationTypeMenuLabel(rt) || code,
-    })
-  }
-  out.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
-  return out
-})
+const ctxIncidentRelationTypeOptions = computed(() => incidentRelationTypeOptions(contextMenu.value?.node))
 
 const ctxAllTypesChecked = computed(() => {
   const opts = ctxIncidentRelationTypeOptions.value
@@ -1120,6 +1112,8 @@ function computeLayoutNodes(layoutType, centerNodeId = null) {
 function applyLayout(layoutType, centerNodeId = null) {
   lastLayoutType.value = layoutType
   lastLayoutCenterId.value = centerNodeId ?? null
+  // Полная раскладка пересчитывает позиции — кэш прежних координат больше не актуален.
+  layoutCache.value = {}
   layouts.value = { nodes: computeLayoutNodes(layoutType, centerNodeId) }
   // Новая раскладка — вписываем граф в область заново (а не только уменьшаем масштаб).
   nextTick(() => fitToContents({ reset: true }))
@@ -1193,11 +1187,18 @@ function hubDistanceFromParentStar(d0, R_star, R_ring, margin, paddingFactor = 1
  * @param {object} [layoutContext] — { parentStarCenterId, rootNodeId }
  */
 function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext = {}) {
-  if (!expandedNodeId) return
-  const toPlace = [...new Set((nodesToPlaceOnRing || []).filter((id) => id && id !== expandedNodeId))]
-  if (toPlace.length === 0) return
+  if (!expandedNodeId) return false
+  const toPlaceAll = [...new Set((nodesToPlaceOnRing || []).filter((id) => id && id !== expandedNodeId))]
+  const current = { ...layoutCache.value, ...(layouts.value?.nodes ?? {}) }
+  const isPlaced = (id) => {
+    const p = current[id]
+    return Boolean(p) && Number.isFinite(p.x) && Number.isFinite(p.y)
+  }
+  // Уже размещённые узлы не перекладываем: повторное включение типа связи не должно двигать граф
+  // и «удлинять» рёбра (issue #134). Раскладываем только действительно новые узлы.
+  const toPlace = toPlaceAll.filter((id) => !isPlaced(id))
+  if (toPlace.length === 0) return false
 
-  const current = layouts.value?.nodes ?? {}
   const centerX = current[expandedNodeId]?.x ?? 0
   const centerY = current[expandedNodeId]?.y ?? 0
   const L = toPlace.length
@@ -1295,6 +1296,18 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
   const result = {}
   let placed = false
 
+  // 1) Сначала кольцо вокруг текущего положения хаба — без сдвига: возврат ранее скрытых узлов
+  //    не должен двигать граф и удлинять рёбра (issue #134).
+  for (let R = baseR; R <= maxR && !placed; R += stepR) {
+    const cand = ringCandidates(centerX, centerY, R)
+    if (!candidatesPass(cand)) continue
+    for (let i = 0; i < L; i++) {
+      result[toPlace[i]] = cand[i]
+    }
+    placed = true
+  }
+
+  // 2) Не поместилось — сдвигаем хаб наружу и раскладываем кольцо вокруг него (прежнее поведение).
   /** Сдвиг и кольцо с одним и тем же R: d_new = f(R★, R, m). */
   for (let R = baseR; R <= maxR && !placed; R += stepR) {
     const centerDistance = hubDistanceFromParentStar(d0, R_star, R, margin)
@@ -1324,6 +1337,7 @@ function relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing, layoutContext
   const nextLayouts = { ...current }
   Object.assign(nextLayouts, result)
   layouts.value = { nodes: nextLayouts }
+  return true
 }
 
 /** @deprecated Используйте relayoutHubAroundNode(expandedNodeId, nodesToPlaceOnRing). */
@@ -1762,6 +1776,29 @@ defineExpose({
   font-size: 0.82rem;
   color: var(--ar-muted);
 }
+.relation-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.relation-action {
+  flex: 1;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--ar-border);
+  border-radius: 4px;
+  background: var(--ar-surface);
+  color: var(--ar-text);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.relation-action:hover:not(:disabled) {
+  background: var(--ar-row-hover);
+}
+.relation-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .relation-row {
   display: flex;
   align-items: center;
@@ -1776,10 +1813,6 @@ defineExpose({
 .relation-label {
   flex: 1;
   line-height: 1.25;
-}
-.relation-count {
-  color: var(--ar-muted);
-  font-size: 0.75rem;
 }
 .legend-row {
   display: flex;
