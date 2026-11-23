@@ -292,6 +292,8 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Скроллбар блока «Свойства» не должен менять ширину содержимого палитры (issue #134). */
+  scrollbar-gutter: stable;
   padding: 0.55rem;
   display: flex;
   flex-direction: column;

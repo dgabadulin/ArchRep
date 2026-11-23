@@ -69,10 +69,10 @@
       </template>
       <template #edge-label="{ edge, config, area }">
         <v-edge-label
-          v-if="(edge.name || edge.relationType)"
+          v-if="edgeLabelText(edge)"
           :area="area"
           :config="config"
-          :text="edge.name || edge.relationType || ''"
+          :text="edgeLabelText(edge)"
           align="center"
           vertical-align="center"
         />
@@ -689,6 +689,26 @@ const lastLayoutCenterId = ref(null)
 /** Минимум между центрами узлов: 48×48 + подпись снизу + зазор (см. #override-node-label). */
 const GRAPH_NODE_MIN_CENTER_DIST = 92
 
+/** Максимум символов в строке подписи ребра на графе: длинные подписи не помещаются в ребро (issue #134). */
+const EDGE_LABEL_MAX_CHARS = 50
+
+/** Обрезка одной строки подписи: итоговая длина ≤ EDGE_LABEL_MAX_CHARS, в конце многоточие. */
+function truncateLabelLine(line) {
+  const s = String(line == null ? '' : line)
+  if (s.length <= EDGE_LABEL_MAX_CHARS) return s
+  return `${s.slice(0, EDGE_LABEL_MAX_CHARS - 1).replace(/\s+$/, '')}…`
+}
+
+/**
+ * Подпись ребра для отрисовки на графе. Полный текст остаётся в данных и в блоке «Свойства»;
+ * на графе строки длиннее лимита обрезаются, и радиус звезды считается уже по обрезанной длине.
+ */
+function edgeLabelText(edge) {
+  const raw = String(edge?.name || edge?.relationType || '')
+  if (!raw) return ''
+  return raw.split(/\r?\n/).map(truncateLabelLine).join('\n')
+}
+
 const configs = computed(() => ({
   view: {
     fitContentMargin: 40,
@@ -764,7 +784,7 @@ const configs = computed(() => ({
       margin: 4,
       padding: 8,
       fontSize: (getConfig().GRAPH_EDGE_FONTSZ ?? 10) | 0,
-      text: (edge) => edge.name || edge.relationType || '',
+      text: (edge) => edgeLabelText(edge),
     },
   },
 }))
@@ -1019,9 +1039,10 @@ function onPaletteLayout(layoutType) {
 function getMinEdgeLengthForLabels(edgesObj) {
   let maxChars = 0
   for (const e of Object.values(edgesObj || {})) {
-    const text = (e.name || e.relationType || '').toString()
+    // Длину берём по обрезанной подписи — той же, что рисуется на графе (issue #134).
+    const text = edgeLabelText(e)
     // Для многострочной подписи учитываем самую длинную строку.
-    const lines = text.split(/\r?\n|\/n/g)
+    const lines = text.split(/\r?\n/)
     for (const ln of lines) {
       const len = ln.length
       if (len > maxChars) maxChars = len
@@ -1719,6 +1740,15 @@ defineExpose({
   display: flex;
   gap: 0.75rem;
   align-items: stretch;
+}
+/*
+ * Высота строки анализатора = высоте графа (issue #134). Иначе длинный блок «Свойства»
+ * растягивает палитру, строка становится выше графа, у `.main` появляется скроллбар —
+ * ширина контента меняется и граф «дёргается» на несколько пикселей при выделении.
+ * Свойства скроллятся внутри `.palette-body`.
+ */
+.analyzer-wrap:not(.analyzer-wrap--embed) {
+  height: 780px;
 }
 .analyzer-wrap--embed {
   flex-direction: column;
