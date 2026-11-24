@@ -208,10 +208,21 @@ API (search) → rows в памяти → column filters (AND) → sort → от
 - Серверная фильтрация по колонкам в SQL/API.
 - Пагинация с server-side filters.
 - Текстовые фильтры кроме «содержит»; иерархический фильтр дат.
-- **`ReferencesV2`** (22 вкладки, фиксированные колонки) — группа D, отдельный issue.
+- **`ReferencesV2`** (фиксированный набор вкладок; простые справочники — через `SIMPLE_REF_TABS`, issue #133) — группа D, отдельный issue.
 - **Админка:** `AdminUsersView`, `AdminRolesView`, `SettingsParametersView`, `SettingsJobsView` — группа E.
 - Сохранение column-filters в URL query.
 - Глобальная кнопка «Сбросить фильтры».
+
+---
+
+## Пагинация и возврат из карточки (issue #135)
+
+- Текущая страница реестра хранится в URL: `?page=N`. `RegistryDataTable` синхронизирует `currentPage`
+  с query (страница 1 не пишется, `router.replace` — без истории); смена поиска сбрасывает на первую.
+- Ссылки на карточки (`useListSearch.linkTo`) и возврат (`useFormListReturn`) переносят `search` + `page`,
+  поэтому «Отмена/К списку» и «Сохранить и закрыть» открывают ту же страницу реестра, откуда был переход.
+- Работает для всех реестров на `RegistryDataTable`; отдельные экраны править не нужно.
+- `ReferencesV2` не использует `RegistryDataTable` (фиксированные вкладки) — там страницы нет.
 
 ---
 

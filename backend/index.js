@@ -1890,9 +1890,51 @@ app.put('/api/decisions/applied/:id/full', async (req, res) => {
 
 app.get('/api/adr-increment-types', async (req, res) => {
   try {
-    const r = await pool.query(queries.adr_increment_types_select);
-    res.json(r.rows);
+    const search = (req.query.search || '').trim();
+    const excel = req.query.excel === '1' || req.query.excel === 'true';
+    const q = search ? queries.adr_increment_types_select_search : queries.adr_increment_types_select;
+    const params = search ? ['%' + search + '%'] : [];
+    const r = await pool.query(q, params);
+    const rows = r.rows;
+    if (excel) {
+      const buf = buildExcelBuffer(rows, 'Типы инкрементов');
+      res.setHeader('Content-Disposition', 'attachment; filename=adr-increment-types.xlsx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buf);
+    }
+    res.json(rows);
   } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.post('/api/adr-increment-types', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.adr_increment_types_insert, [name, description]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Failed to create' }); }
+});
+app.put('/api/adr-increment-types/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await pool.query(queries.adr_increment_types_update, [name, description, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).send('Server error'); }
+});
+app.delete('/api/adr-increment-types/:id', async (req, res) => {
+  try {
+    const r = await pool.query(queries.adr_increment_types_delete, [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.status(204).send();
+  } catch (err) {
+    // На тип ссылаются инкременты решений — удаление запрещено (RESTRICT)
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Тип инкремента используется в архитектурных решениях' });
+    }
+    console.error(err);
+    res.status(500).send('Server error');
+  }
 });
 
 app.get('/api/decisions/applied/:id/increments', async (req, res) => {

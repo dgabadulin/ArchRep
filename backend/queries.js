@@ -482,6 +482,10 @@ module.exports = {
   adrs_applied_delete: `DELETE FROM archrep.ar_adrs_applied WHERE id = $1`,
 
   adr_increment_types_select: `SELECT id, name, description FROM archrep.ar_adr_increment_types ORDER BY id`,
+  adr_increment_types_select_search: `SELECT id, name, description FROM archrep.ar_adr_increment_types WHERE name ILIKE $1 OR COALESCE(description,'') ILIKE $1 ORDER BY id`,
+  adr_increment_types_insert: `INSERT INTO archrep.ar_adr_increment_types (name, description) VALUES ($1, NULLIF($2,'')) RETURNING *`,
+  adr_increment_types_update: `UPDATE archrep.ar_adr_increment_types SET name = $1, description = NULLIF($2,'') WHERE id = $3 RETURNING *`,
+  adr_increment_types_delete: `DELETE FROM archrep.ar_adr_increment_types WHERE id = $1`,
 
   adr_increments_by_applied: `SELECT inc.id, inc.ar_adrs_applied_id, inc.order_index, inc.name, inc.ar_adr_increment_types_id, t.name as type_name FROM archrep.ar_adr_increments inc LEFT JOIN archrep.ar_adr_increment_types t ON inc.ar_adr_increment_types_id = t.id WHERE inc.ar_adrs_applied_id = $1 ORDER BY inc.order_index, inc.id`,
   // BIGINT из JSON приходит числом: NULLIF($n,'')::BIGINT в PG даёт ошибку сравнения с '' — приводим через text

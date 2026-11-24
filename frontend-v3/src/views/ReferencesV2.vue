@@ -614,9 +614,52 @@
         </table>
         <p v-if="dashboardsFiltered.length === 0" class="empty">Нет записей</p>
       </template>
+      <!-- Простые справочники (issue #133): таблица и модалка по конфигу SIMPLE_REF_TABS -->
+      <template v-else-if="simpleRefConfig">
+        <div class="table-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-sm btn-primary" @click="openSimpleRefForm()">Добавить</button>
+          <button type="button" class="btn btn-sm btn-excel" :disabled="excelLoading" @click="exportExcel">Экспорт в Excel</button>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th v-for="f in simpleRefConfig.fields" :key="f.key">{{ f.label }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in simpleRefRows" :key="r.id">
+              <td>{{ r.id }}</td>
+              <td v-for="f in simpleRefConfig.fields" :key="f.key">{{ r[f.key] || '—' }}</td>
+              <td>
+                <button type="button" class="btn-link" @click="openSimpleRefForm(r)">{{ canMutateActive ? 'Изменить' : 'Открыть' }}</button>
+                <button v-if="canMutateActive" type="button" class="btn-link danger" @click="deleteSimpleRef(r.id)">Удалить</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="simpleRefRows.length === 0" class="empty">Нет записей</p>
+      </template>
     </div>
 
     <!-- Modals: simple prompt for add/edit -->
+    <div v-if="simpleRefForm && simpleRefConfig" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ simpleRefForm.id ? 'Изменить запись' : 'Новая запись' }} — {{ simpleRefConfig.title }}</h3>
+        <fieldset class="form-fieldset" :disabled="!canMutateActive">
+          <div v-for="f in simpleRefConfig.fields" :key="f.key" class="form-row">
+            <label>{{ f.label }} <span v-if="f.required" class="req">*</span></label>
+            <input v-model="simpleRefForm[f.key]" />
+          </div>
+        </fieldset>
+        <p v-if="simpleRefError" class="form-error">{{ simpleRefError }}</p>
+        <div class="modal-actions">
+          <button v-if="canMutateActive" type="button" class="btn btn-primary" @click="saveSimpleRef">Сохранить</button>
+          <button type="button" class="btn btn-secondary" @click="simpleRefForm = null">{{ canMutateActive ? 'Отмена' : 'Закрыть' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="statusForm" class="modal-overlay">
       <div class="modal">
         <h3>{{ statusForm.id ? 'Изменить статус' : 'Новый статус' }}</h3>
@@ -1054,14 +1097,20 @@ const tabs = [
   { id: 'statuses', label: 'Статусы систем' },
   { id: 'hosting', label: 'Типы хостинга' },
   { id: 'interfaceTypes', label: 'Типы интерфейса ИС' },
+  { id: 'systemAssignments', label: 'Назначения систем' },
+  { id: 'classificators', label: 'Классификаторы' },
   { id: 'owners', label: 'Функциональные вертикали' },
   { id: 'vendors', label: 'Партнёры / вендоры' },
   { id: 'employees', label: 'Сотрудники' },
+  { id: 'technologyClasses', label: 'Классы технологий' },
+  { id: 'technologyTypes', label: 'Типы технологий' },
+  { id: 'technologyStatuses', label: 'Статусы технологий' },
   { id: 'adrSystemStatuses', label: 'Системы в решении (статусы)' },
   { id: 'adrRelationStatuses', label: 'Интеграции в решении (статусы)' },
   { id: 'adrSystemFunctionStatuses', label: 'Функции в решении (статусы)' },
   { id: 'systemFunctionStatuses', label: 'Статусы функций (реестр)' },
   { id: 'adrStatuses', label: 'Статус утверждения' },
+  { id: 'adrIncrementTypes', label: 'Типы инкрементов' },
   { id: 'gapTypes', label: 'Типы арх.долга' },
   { id: 'impactLevelTypes', label: 'Степени влияния' },
   { id: 'gapStates', label: 'Состояния арх.долга' },
@@ -1135,10 +1184,134 @@ const metamodelRelationTypes = ref([])
 const infrastructureObjectTypes = ref([])
 const infrastructureObjectTypeForm = ref(null)
 
+/**
+ * Простые справочники без отдельного шаблона (issue #133): таблица и модальная форма рисуются
+ * по конфигу. Так добавлены «Классификаторы», «Назначения систем», справочники технологий
+ * и «Типы инкрементов» — без шести копий одного и того же блока.
+ */
+const SIMPLE_REF_TABS = {
+  systemAssignments: {
+    title: 'Назначение системы',
+    list: (q) => api.getSystemAssignments(q),
+    create: (body) => api.createSystemAssignment(body),
+    update: (id, body) => api.updateSystemAssignment(id, body),
+    remove: (id) => api.deleteSystemAssignment(id),
+    fields: [
+      { key: 'name', label: 'Наименование', required: true },
+      { key: 'description', label: 'Описание' },
+    ],
+  },
+  classificators: {
+    title: 'Классификатор',
+    list: (q) => api.getClassificators(q),
+    create: (body) => api.createClassificator(body),
+    update: (id, body) => api.updateClassificator(id, body),
+    remove: (id) => api.deleteClassificator(id),
+    fields: [{ key: 'name', label: 'Наименование', required: true }],
+  },
+  technologyClasses: {
+    title: 'Класс технологии',
+    list: (q) => api.getTechnologyClasses(q),
+    create: (body) => api.createTechnologyClass(body),
+    update: (id, body) => api.updateTechnologyClass(id, body),
+    remove: (id) => api.deleteTechnologyClass(id),
+    fields: [
+      { key: 'name', label: 'Наименование', required: true },
+      { key: 'description', label: 'Описание' },
+    ],
+  },
+  technologyTypes: {
+    title: 'Тип технологии',
+    list: (q) => api.getTechnologyTypes(q),
+    create: (body) => api.createTechnologyType(body),
+    update: (id, body) => api.updateTechnologyType(id, body),
+    remove: (id) => api.deleteTechnologyType(id),
+    fields: [
+      { key: 'name', label: 'Наименование', required: true },
+      { key: 'description', label: 'Описание' },
+    ],
+  },
+  technologyStatuses: {
+    title: 'Статус технологии',
+    list: (q) => api.getTechnologyStatuses(q),
+    create: (body) => api.createTechnologyStatus(body),
+    update: (id, body) => api.updateTechnologyStatus(id, body),
+    remove: (id) => api.deleteTechnologyStatus(id),
+    fields: [
+      { key: 'name', label: 'Краткое наименование', required: true },
+      { key: 'fullname', label: 'Полное наименование', required: true },
+      { key: 'description', label: 'Описание' },
+    ],
+  },
+  adrIncrementTypes: {
+    title: 'Тип инкремента',
+    list: (q) => api.getAdrIncrementTypes(q),
+    create: (body) => api.createAdrIncrementType(body),
+    update: (id, body) => api.updateAdrIncrementType(id, body),
+    remove: (id) => api.deleteAdrIncrementType(id),
+    fields: [
+      { key: 'name', label: 'Наименование', required: true },
+      { key: 'description', label: 'Описание' },
+    ],
+  },
+}
+
+const simpleRefConfig = computed(() => SIMPLE_REF_TABS[activeTab.value] || null)
+const simpleRefRows = ref([])
+const simpleRefForm = ref(null)
+const simpleRefError = ref('')
+
+function openSimpleRefForm(row) {
+  const cfg = simpleRefConfig.value
+  if (!cfg) return
+  simpleRefError.value = ''
+  const values = Object.fromEntries(cfg.fields.map((f) => [f.key, row?.[f.key] ?? '']))
+  simpleRefForm.value = row ? { id: row.id, ...values } : values
+}
+
+async function saveSimpleRef() {
+  const cfg = simpleRefConfig.value
+  const form = simpleRefForm.value
+  if (!cfg || !form) return
+  simpleRefError.value = ''
+  for (const field of cfg.fields) {
+    if (field.required && !String(form[field.key] ?? '').trim()) {
+      simpleRefError.value = `Заполните поле «${field.label}»`
+      return
+    }
+  }
+  try {
+    const payload = Object.fromEntries(cfg.fields.map((f) => [f.key, form[f.key] ?? '']))
+    if (form.id) await cfg.update(form.id, payload)
+    else await cfg.create(payload)
+    simpleRefForm.value = null
+    await loadTab()
+  } catch (e) {
+    simpleRefError.value = e.message || 'Ошибка сохранения'
+  }
+}
+
+async function deleteSimpleRef(id) {
+  const cfg = simpleRefConfig.value
+  if (!cfg) return
+  if (!confirm(`Удалить запись «${cfg.title}»?`)) return
+  try {
+    await cfg.remove(id)
+    await loadTab()
+  } catch (e) {
+    alert(e.message || 'Ошибка')
+  }
+}
+
 async function loadTab() {
   loading.value = true
   try {
     const q = search.value ? { search: search.value } : {}
+    const simple = simpleRefConfig.value
+    if (simple) {
+      simpleRefRows.value = await simple.list(q)
+      return
+    }
     if (activeTab.value === 'statuses') statuses.value = await api.getSystemStatuses(q)
     else if (activeTab.value === 'hosting') hostingTypes.value = await api.getHostingTypes(q)
     else if (activeTab.value === 'interfaceTypes') interfaceTypes.value = await api.getSystemInterfaceTypes(q)
@@ -1181,6 +1354,12 @@ async function exportExcel() {
   excelLoading.value = true
   try {
     const q = { search: search.value || undefined, excel: true }
+    const simple = simpleRefConfig.value
+    if (simple) {
+      const blob = await simple.list(q)
+      if (blob) downloadBlob(blob, activeTab.value + '.xlsx')
+      return
+    }
     let blob
     if (activeTab.value === 'statuses') blob = await api.getSystemStatuses(q)
     else if (activeTab.value === 'hosting') blob = await api.getHostingTypes(q)
@@ -1728,6 +1907,11 @@ async function deleteRelationType(id) { if (confirm('Удалить тип св�
   margin-top: 1rem;
   display: flex;
   gap: 0.5rem;
+}
+.form-error {
+  margin: 0.6rem 0 0;
+  color: var(--ar-danger);
+  font-size: 0.85rem;
 }
 .modal-actions .btn {
   min-height: 40px;
