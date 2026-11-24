@@ -20,7 +20,7 @@
     </div>
 
     <div v-if="!collapsed" class="palette-body">
-      <section class="palette-block">
+      <section class="palette-block palette-block--settings">
         <h3 class="palette-block-title">Настройки</h3>
         <dl class="palette-kv">
           <div class="palette-row">
@@ -292,17 +292,33 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Скроллбар блока «Свойства» не должен менять ширину содержимого палитры (issue #134). */
+  /* Колесо у края палитры не «проваливается» на страницу: граф остаётся на месте. */
+  overscroll-behavior: contain;
+  /* Скроллбар палитры не должен менять ширину содержимого (issue #134). */
   scrollbar-gutter: stable;
   padding: 0.55rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
+/*
+ * Блоки не сжимаются: иначе флексбокс вместо прокрутки ужимает «Настройки» и «Свойства»
+ * (overflow: hidden обнуляет их min-height), и часть информации исчезает без скроллбара.
+ * Прокручивается вся палитра одним скроллом (issue #116).
+ */
 .palette-block {
+  flex: 0 0 auto;
+  /* Фон обязателен: при sticky «Свойства» прокручиваются под блоком «Настройки». */
+  background: var(--ar-surface);
   border: 1px solid var(--ar-border);
   border-radius: var(--ar-radius-sm);
   overflow: hidden;
+}
+/* «Настройки» закреплены сверху: остаются видимыми при прокрутке длинных свойств. */
+.palette-block--settings {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 .palette-block-title {
   margin: 0;
