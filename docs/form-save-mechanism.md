@@ -29,7 +29,7 @@ GitHub: https://github.com/dgabadulin/ArchRep/issues/111
 | `frontend-v3/src/composables/useSaveStatus.js` | `useSaveStatus({ dirty })` → `{ saving, savedOk, submitError, startSaving, markSaved, markError }`. Держит таймер «Сохранено ✓» и снимает отметку при новой правке. |
 | `frontend-v3/src/composables/useUnsavedGuard.js` | `useUnsavedGuard(isDirtyRef, saveFn)`: при уходе предлагает сохранить; при ошибке (`saveFn` бросает) переход отменяется. |
 | `frontend-v3/src/composables/useCollectionDraft.js` | Локальный черновик коллекции вкладки (связи, техстек): копится в памяти и применяется тем же сохранением. |
-| `frontend-v3/src/composables/useFormListReturn.js` | Возврат к списку с сохранением `?search=` и переходы `routeWithListSearch()`. |
+| `frontend-v3/src/composables/useFormListReturn.js` | Возврат к списку с сохранением `?search=` и `?page=` (страница пагинации, issue #135) и переходы `routeWithListSearch()`. |
 
 ## Шаблон формы
 

@@ -68,9 +68,14 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import TableHeaderCell from './TableHeaderCell.vue'
 import ColumnFilterMenu from './ColumnFilterMenu.vue'
 import { getConfig } from '@/config/params'
+import { pageFromQuery } from '../utils/listSearchQuery'
+
+const route = useRoute()
+const router = useRouter()
 
 const headerRefs = ref({})
 
@@ -110,8 +115,11 @@ const props = defineProps({
  * `rows` — уже отфильтрованные и отсортированные строки (useRegistryTable); таблица режет их
  * на страницы только для отображения. Экспорт и колоночные фильтры продолжают работать по
  * полному набору строк, поэтому в `useRegistryTable` пагинация не дублируется.
+ *
+ * Текущая страница хранится в URL (`?page=`), чтобы возврат из карточки приводил на ту же
+ * страницу реестра (issue #135).
  */
-const currentPage = ref(1)
+const currentPage = ref(pageFromQuery(route.query))
 const effectivePageSize = computed(() => {
   const configured = props.pageSize > 0 ? props.pageSize : Number(getConfig().ARR_TABLE_PAGE_SIZE)
   const size = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 50
@@ -140,6 +148,33 @@ watch(
   () => {
     if (currentPage.value > pageCount.value) currentPage.value = pageCount.value
     if (currentPage.value < 1) currentPage.value = 1
+  },
+)
+
+// Страница реестра — в URL (`?page=`): возврат из карточки открывает ту же страницу (issue #135).
+let syncingPageFromUrl = false
+watch(
+  () => route.query.page,
+  () => {
+    syncingPageFromUrl = true
+    currentPage.value = pageFromQuery(route.query)
+    syncingPageFromUrl = false
+  },
+)
+watch(currentPage, (page) => {
+  if (syncingPageFromUrl) return
+  const next = { ...route.query }
+  if (page > 1) next.page = String(page)
+  else delete next.page
+  if (String(next.page || '') === String(route.query.page || '')) return
+  router.replace({ query: next })
+})
+
+// Новый поиск — с первой страницы (иначе можно остаться на «пустой» странице).
+watch(
+  () => route.query.search,
+  () => {
+    if (currentPage.value !== 1) currentPage.value = 1
   },
 )
 </script>

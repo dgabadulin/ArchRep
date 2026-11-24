@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { searchFromQuery, listQueryWithSearch, listRoute } from '../utils/listSearchQuery'
+import { searchFromQuery, pageFromQuery, listQueryWithSearch, listRoute } from '../utils/listSearchQuery'
 
 /**
  * Поиск списка, синхронизированный с `?search=` в URL.
@@ -31,7 +31,11 @@ export function useListSearch() {
   })
 
   function linkTo(path, extraQuery = {}) {
-    return listRoute(path, search.value, extraQuery)
+    // Страница реестра (issue #135): ссылки на карточку должны нести текущую страницу,
+    // чтобы возврат из карточки приводил туда же, откуда был переход.
+    const page = pageFromQuery(route.query)
+    const withPage = page > 1 && extraQuery.page == null ? { page, ...extraQuery } : { ...extraQuery }
+    return listRoute(path, search.value, withPage)
   }
 
   return { search, linkTo }
