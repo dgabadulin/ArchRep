@@ -62,7 +62,7 @@
         <template v-if="columnKey === 'actions'">
           <router-link
             v-if="canRead"
-            :to="linkTo(`/decisions/principle/${row.id}/edit`)"
+            :to="linkTo(`/decisions/principle/${row.id}/edit`, { focus: row.id })"
             class="link"
           >
             {{ canWrite ? 'Изменить' : 'Открыть' }}

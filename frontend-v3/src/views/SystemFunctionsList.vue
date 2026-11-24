@@ -67,7 +67,7 @@
     >
       <template #cell="{ row, columnKey }">
         <template v-if="columnKey === 'actions'">
-          <router-link v-if="canRead" :to="linkTo(`/system-functions/${row.id}/edit`)" class="link">
+          <router-link v-if="canRead" :to="linkTo(`/system-functions/${row.id}/edit`, { focus: row.id })" class="link">
             {{ canWrite ? 'Изменить' : 'Открыть' }}
           </router-link>
         </template>

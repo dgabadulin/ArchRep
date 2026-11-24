@@ -1,5 +1,5 @@
 <template>
-  <div class="card table-wrap">
+  <div ref="rootEl" class="card table-wrap">
     <table class="table">
       <thead>
         <tr>
@@ -23,7 +23,12 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in pagedRows" :key="row[rowKey] ?? row.id">
+        <tr
+          v-for="row in pagedRows"
+          :key="row[rowKey] ?? row.id"
+          :data-row-id="row[rowKey] ?? row.id"
+          :class="{ 'row-focus': String(row[rowKey] ?? row.id) === focusedRowId }"
+        >
           <td v-for="key in visibleCols" :key="key" :class="{ 'col-actions': key === 'actions' }">
             <slot name="cell" :row="row" :column-key="key">
               {{ cellValue(row, key) }}
@@ -67,15 +72,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TableHeaderCell from './TableHeaderCell.vue'
 import ColumnFilterMenu from './ColumnFilterMenu.vue'
 import { getConfig } from '@/config/params'
-import { pageFromQuery } from '../utils/listSearchQuery'
+import { pageFromQuery, focusFromQuery } from '../utils/listSearchQuery'
 
 const route = useRoute()
 const router = useRouter()
+const rootEl = ref(null)
 
 const headerRefs = ref({})
 
@@ -177,9 +183,63 @@ watch(
     if (currentPage.value !== 1) currentPage.value = 1
   },
 )
+
+/**
+ * Возврат к записи (issue #135): `?focus=<id>` из карточки. Прокручиваем строку в центр и
+ * подсвечиваем её, чтобы после возврата было видно, какую запись редактировали.
+ */
+const focusedRowId = ref('')
+const focusScrolledKey = ref('')
+const rowIdOf = (row) => String(row?.[props.rowKey] ?? row?.id ?? '')
+
+async function scrollToFocus() {
+  const focus = focusFromQuery(route.query)
+  if (!focus) {
+    focusedRowId.value = ''
+    focusScrolledKey.value = ''
+    return
+  }
+  if (focusScrolledKey.value === focus) return
+  // Ищем запись по всему набору строк: локальная сортировка могла сместить её на другую страницу.
+  const index = props.rows.findIndex((row) => rowIdOf(row) === focus)
+  if (index < 0) return
+  if (props.paginate) {
+    const targetPage = Math.floor(index / effectivePageSize.value) + 1
+    if (targetPage !== currentPage.value) {
+      currentPage.value = targetPage
+      return
+    }
+  }
+  focusScrolledKey.value = focus
+  focusedRowId.value = focus
+  await nextTick()
+  const escaped = focus.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const el = rootEl.value?.querySelector(`tbody tr[data-row-id="${escaped}"]`)
+  el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  setTimeout(() => {
+    if (focusedRowId.value === focus) focusedRowId.value = ''
+  }, 2500)
+}
+
+watch(
+  [pagedRows, () => focusFromQuery(route.query)],
+  () => { scrollToFocus() },
+  { flush: 'post' },
+)
+onMounted(() => { scrollToFocus() })
+
+// При смене страницы разрешаем повторную прокрутку к записи, если пользователь вернулся на её страницу.
+watch(currentPage, () => {
+  focusScrolledKey.value = ''
+})
 </script>
 
 <style scoped>
+/* Возврат к записи (issue #135): подсветка строки, к которой вернулись из карточки. */
+.table tbody tr.row-focus td {
+  background: var(--ar-row-hover);
+  transition: background-color 0.4s ease;
+}
 .table-pager {
   display: flex;
   flex-wrap: wrap;
