@@ -12,6 +12,46 @@
 («Что сделать администратору», пояснения). Ручная правка `CHANGELOG.md` — только в релизном PR по запросу
 владельца (после последнего прогона Release Please и сразу мерж).
 
+## [4.7.0](https://github.com/dgabadulin/ArchRep/compare/v4.6.0...v4.7.0) (2026-11-24)
+
+
+### Новое
+
+* **dashboards:** добавлен дашборд матрицы целевой архитектуры с цветовой легендой ([c94dcc0](https://github.com/dgabadulin/ArchRep/commit/c94dcc0732bbdf58a14876627066c0c4eb4ce446))
+* **dashboards:** карта ИТ ландшафта, порядок строк и справочник в «Справочниках» ([#127](https://github.com/dgabadulin/ArchRep/issues/127)) ([e87abf5](https://github.com/dgabadulin/ArchRep/commit/e87abf5e2d12bd67654931c5cc58f2a2d76189b4))
+* **employee:** добавлена полная синхронизация справочника сотрудников из CSV ([fd85d9a](https://github.com/dgabadulin/ArchRep/commit/fd85d9ac5fc56c409c758b3b61d9e56782639d73))
+* **infrastructure:** исключены служебные ВМ с префиксом vm- из синхронизации каталога ([58e3c36](https://github.com/dgabadulin/ArchRep/commit/58e3c36e4d8147fcf87af9b30470c7f8203877d5))
+* **owners:** добавлена дополнительная классификация функциональных вертикалей ([c22b795](https://github.com/dgabadulin/ArchRep/commit/c22b7950a4c822883f8dba47c21e835793083504))
+* **references:** добавлена доп. классификация статусов систем ([#130](https://github.com/dgabadulin/ArchRep/issues/130)) ([0fd6388](https://github.com/dgabadulin/ArchRep/commit/0fd6388b0060fb751b73d2d723c7424d678ed0b6))
+* **references:** добавлены отсутствовавшие справочники в «Справочниках» ([#133](https://github.com/dgabadulin/ArchRep/issues/133)) ([fcce729](https://github.com/dgabadulin/ArchRep/commit/fcce7292b103744322c204fc1d0417e5e6619f52))
+* **systems:** добавлена вкладка «Инфраструктура» на карточке ИС ([#125](https://github.com/dgabadulin/ArchRep/issues/125)) ([696c86c](https://github.com/dgabadulin/ArchRep/commit/696c86cd402677f48ff68ebe764137913cafa34b))
+* **systems:** добавлено поле «Организация-владелец», импорт и схема метамодели 2.1 ([#126](https://github.com/dgabadulin/ArchRep/issues/126)) ([b336fae](https://github.com/dgabadulin/ArchRep/commit/b336fae8c7a7f510323a606cda2a6609d077cbdc))
+* **system:** добавлен множественный выбор типа интерфейса ИС со справочником ([#129](https://github.com/dgabadulin/ArchRep/issues/129)) ([b1f54d0](https://github.com/dgabadulin/ArchRep/commit/b1f54d04c9ccfd6167d8d22dabd6064a65f497d3))
+* добавлены фильтр служебных ВМ vm* и панель «Связи» в анализаторе ([5d488f1](https://github.com/dgabadulin/ArchRep/commit/5d488f1553fa64d99a609d2c427edae36b44eed6))
+
+
+### Исправлено
+
+* **analytics:** возвращён перенос хаба при раскрытии новых узлов в анализаторе ([#134](https://github.com/dgabadulin/ArchRep/issues/134)) ([82f4342](https://github.com/dgabadulin/ArchRep/commit/82f434214e0eac4f941b28857ab575d5d0638a95))
+* **analytics:** исправлены масштаб, раскрытие связей и раскладка хаба в анализаторе ([#134](https://github.com/dgabadulin/ArchRep/issues/134)) ([c5c4149](https://github.com/dgabadulin/ArchRep/commit/c5c4149cdba07c4117180e54b962bd463f0a8532))
+* **analytics:** палитра анализатора прокручивается целиком, «Настройки» закреплены сверху ([#116](https://github.com/dgabadulin/ArchRep/issues/116)) ([42c59ab](https://github.com/dgabadulin/ArchRep/commit/42c59abda1729161bd9d9dcd9286ac9b5714356f))
+* **analytics:** панель «Связи» синхронизирована с ПКМ и устранён дрейф масштаба ([#134](https://github.com/dgabadulin/ArchRep/issues/134)) ([17d91e0](https://github.com/dgabadulin/ArchRep/commit/17d91e0bb94c5b77e8f1618053500c5f230d916e))
+* **analytics:** стабилизирована ширина графа и обрезаны длинные подписи связей ([#134](https://github.com/dgabadulin/ArchRep/issues/134)) ([23ec74d](https://github.com/dgabadulin/ArchRep/commit/23ec74dd1fc0dc0ba34ca761b1769d932a8aec00))
+* **analyzer:** добавлено закрытие контекстного меню при выборе другого узла или связи ([7e61697](https://github.com/dgabadulin/ArchRep/commit/7e61697ce377c8a3de15f97e5b3129c4796caa86))
+* **dashboards:** убран подзаголовок категории на карточках дашбордов ([2d02b38](https://github.com/dgabadulin/ArchRep/commit/2d02b38bd4fa33094258b8201d0322592e3bbb78))
+* **db:** применённые SQL-скрипты возвращены к исходному виду ([b497aa6](https://github.com/dgabadulin/ArchRep/commit/b497aa604a40fc4fba5059f61985f6dc4355ed33))
+* **db:** устранено неоднозначное сравнение версии в upsert маркера схемы ([958406d](https://github.com/dgabadulin/ArchRep/commit/958406d1e84c3ff3bbbe4fab363708fb699b7411))
+* **db:** устранено отставание маркера версии схемы при накате миграций ([8f23a4e](https://github.com/dgabadulin/ArchRep/commit/8f23a4e552782de83e5d1f3101bf569802a519e0))
+* **graph:** исправлена высота области графа на вкладках карточки ИС ([4e2c9f1](https://github.com/dgabadulin/ArchRep/commit/4e2c9f1ad848713e197880ef5279438da6776c81))
+* **graph:** исправлено вписывание графа в область на вкладках карточки ИС ([42bce3e](https://github.com/dgabadulin/ArchRep/commit/42bce3ee48d3046b3044dcdc1b7223f592c75916))
+* **owners:** уточнены правила классификации функциональных вертикалей ([0ea0d07](https://github.com/dgabadulin/ArchRep/commit/0ea0d0771dc483e613d81ab998f32447975630a8))
+* **refs:** исправлен поиск во всех справочниках ([#124](https://github.com/dgabadulin/ArchRep/issues/124)) ([307c087](https://github.com/dgabadulin/ArchRep/commit/307c08774a6adbcd1e16e7096bb7d227a67723fe))
+* **registry:** возврат в реестр восстанавливает первую видимую строку ([#135](https://github.com/dgabadulin/ArchRep/issues/135)) ([0c41c2d](https://github.com/dgabadulin/ArchRep/commit/0c41c2dae33dbe8f25900dbba7584835496306f1))
+* **registry:** исправлен возврат из карточки на исходную страницу реестра ([#135](https://github.com/dgabadulin/ArchRep/issues/135)) ([fa70262](https://github.com/dgabadulin/ArchRep/commit/fa70262d31400dbe2b08699a7d8fc47097d7bfe0))
+* **registry:** при возврате из карточки прокручивается нужная запись реестра ([#135](https://github.com/dgabadulin/ArchRep/issues/135)) ([bd52e97](https://github.com/dgabadulin/ArchRep/commit/bd52e97b5e401824684fe8d79093703ffee03965))
+* **systems:** убраны колонки «Кластер» и «Платформа» во вкладке «Инфраструктура» ([8a73a9c](https://github.com/dgabadulin/ArchRep/commit/8a73a9c072bf000e34c9af263a3cd382b593bcac))
+* **system:** устранено неотображение выбранных типов интерфейса в карточке ИС ([#129](https://github.com/dgabadulin/ArchRep/issues/129)) ([621caa1](https://github.com/dgabadulin/ArchRep/commit/621caa12c6dd634ee3996bb3f224959d3c0809c4))
+
 ## [4.6.0](https://github.com/dgabadulin/ArchRep/compare/v4.5.0...v4.6.0) (2026-11-20)
 
 
