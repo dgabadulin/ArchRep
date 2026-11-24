@@ -72,16 +72,19 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TableHeaderCell from './TableHeaderCell.vue'
 import ColumnFilterMenu from './ColumnFilterMenu.vue'
 import { getConfig } from '@/config/params'
-import { pageFromQuery, focusFromQuery } from '../utils/listSearchQuery'
+import { pageFromQuery, focusFromQuery, searchFromQuery } from '../utils/listSearchQuery'
 
 const route = useRoute()
 const router = useRouter()
 const rootEl = ref(null)
+/** Путь реестра фиксируем при монтировании: при уходе в карточку route.path уже другой. */
+const listPath = route.path
+let listSearchValue = searchFromQuery(route.query)
 
 const headerRefs = ref({})
 
@@ -126,6 +129,43 @@ const props = defineProps({
  * страницу реестра (issue #135).
  */
 const currentPage = ref(pageFromQuery(route.query))
+
+/**
+ * Якорь прокрутки реестра (issue #135): при уходе из реестра запоминаем первую видимую строку,
+ * при возврате делаем её первой. Состояние эфемерное (не для ссылок), поэтому sessionStorage,
+ * а не query: ключ — путь реестра, значение — { topId, page, search }.
+ */
+const VIEWPORT_STORAGE_PREFIX = 'ar:registry-viewport:'
+function viewportStorageKey() {
+  return VIEWPORT_STORAGE_PREFIX + listPath
+}
+function readSavedViewport() {
+  try {
+    const raw = sessionStorage.getItem(viewportStorageKey())
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+function clearSavedViewport() {
+  try {
+    sessionStorage.removeItem(viewportStorageKey())
+  } catch {
+    /* приватный режим — якорь не сохраняется */
+  }
+}
+const savedViewport = readSavedViewport()
+const pendingTopRowId = ref(
+  savedViewport && savedViewport.page === currentPage.value && savedViewport.search === listSearchValue
+    ? String(savedViewport.topId || '')
+    : '',
+)
+const pendingTopOffset = ref(
+  savedViewport && savedViewport.page === currentPage.value && savedViewport.search === listSearchValue
+    ? Math.round(Number(savedViewport.offset) || 0)
+    : 0,
+)
+if (savedViewport && !pendingTopRowId.value) clearSavedViewport()
 const effectivePageSize = computed(() => {
   const configured = props.pageSize > 0 ? props.pageSize : Number(getConfig().ARR_TABLE_PAGE_SIZE)
   const size = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 50
@@ -180,28 +220,81 @@ watch(currentPage, (page) => {
 watch(
   () => route.query.search,
   () => {
+    listSearchValue = searchFromQuery(route.query)
+    pendingTopRowId.value = ''
+    pendingTopOffset.value = 0
+    clearSavedViewport()
     if (currentPage.value !== 1) currentPage.value = 1
   },
 )
 
 /**
- * Возврат к записи (issue #135): `?focus=<id>` из карточки. Прокручиваем строку в центр и
- * подсвечиваем её, чтобы после возврата было видно, какую запись редактировали.
+ * Возврат в реестр (issue #135): якорь — первая видимая строка, сохранённая при уходе из реестра.
+ * При возврате она становится первой (`scrollIntoView` block:'start'); запись, из которой вернулись
+ * (`?focus=`), подсвечивается. Если якоря нет — прокручиваем к записи по центру (старое поведение).
  */
 const focusedRowId = ref('')
-const focusScrolledKey = ref('')
+const positionRestoredKey = ref('')
 const rowIdOf = (row) => String(row?.[props.rowKey] ?? row?.id ?? '')
 
-async function scrollToFocus() {
+/** Ближайший действительно прокручиваемый по вертикали предок таблицы (в LayoutV3 прокрутка внутренняя, не window). */
+function scrollParentOf(el) {
+  let node = el?.parentElement
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node)
+    // Порог отсекает горизонтальный скроллбар у .table-wrap (overflow-y там auto, но вертикальной прокрутки нет).
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight - node.clientHeight > 32) return node
+    node = node.parentElement
+  }
+  return null
+}
+
+/** Первая видимая строка и её смещение относительно верха прокручиваемой области. */
+function viewportAnchor() {
+  const rowsEls = rootEl.value?.querySelectorAll('tbody tr[data-row-id]')
+  if (!rowsEls?.length) return null
+  const scroller = scrollParentOf(rowsEls[0])
+  const top = scroller ? scroller.getBoundingClientRect().top : 0
+  for (const tr of rowsEls) {
+    const rect = tr.getBoundingClientRect()
+    if (rect.bottom > top + 1) {
+      return { topId: tr.getAttribute('data-row-id') || '', offset: Math.round(rect.top - top) }
+    }
+  }
+  return null
+}
+
+function saveViewportAnchor() {
+  const anchor = viewportAnchor()
+  if (!anchor?.topId) return
+  try {
+    sessionStorage.setItem(viewportStorageKey(), JSON.stringify({
+      topId: anchor.topId,
+      offset: anchor.offset,
+      page: currentPage.value,
+      search: listSearchValue,
+    }))
+  } catch {
+    /* приватный режим — якорь не сохраняется */
+  }
+}
+
+async function restoreListPosition() {
   const focus = focusFromQuery(route.query)
-  if (!focus) {
+  let topId = pendingTopRowId.value
+  if (topId && !props.rows.some((row) => rowIdOf(row) === topId)) {
+    topId = ''
+    pendingTopRowId.value = ''
+    clearSavedViewport()
+  }
+  const anchorId = topId || focus
+  if (!anchorId) {
     focusedRowId.value = ''
-    focusScrolledKey.value = ''
+    positionRestoredKey.value = ''
     return
   }
-  if (focusScrolledKey.value === focus) return
-  // Ищем запись по всему набору строк: локальная сортировка могла сместить её на другую страницу.
-  const index = props.rows.findIndex((row) => rowIdOf(row) === focus)
+  // Ищем по всему набору строк: локальная сортировка могла сместить запись на другую страницу.
+  const index = props.rows.findIndex((row) => rowIdOf(row) === anchorId)
   if (index < 0) return
   if (props.paginate) {
     const targetPage = Math.floor(index / effectivePageSize.value) + 1
@@ -210,27 +303,53 @@ async function scrollToFocus() {
       return
     }
   }
-  focusScrolledKey.value = focus
-  focusedRowId.value = focus
+  const restoreKey = `${anchorId}|${topId ? 'top' : 'focus'}`
+  if (positionRestoredKey.value === restoreKey) return
+  positionRestoredKey.value = restoreKey
+
+  if (focus) {
+    focusedRowId.value = focus
+    setTimeout(() => {
+      if (focusedRowId.value === focus) focusedRowId.value = ''
+    }, 2500)
+  }
+
   await nextTick()
-  const escaped = focus.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const escaped = anchorId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
   const el = rootEl.value?.querySelector(`tbody tr[data-row-id="${escaped}"]`)
-  el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  setTimeout(() => {
-    if (focusedRowId.value === focus) focusedRowId.value = ''
-  }, 2500)
+  if (!el) return
+  if (topId) {
+    // Возвращаем сохранённый вид: первая видимая строка — на том же месте (если была первой — становится первой).
+    const offset = pendingTopOffset.value
+    const scroller = scrollParentOf(el)
+    if (scroller) {
+      const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset
+      scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + delta), behavior: 'smooth' })
+    } else {
+      window.scrollTo({
+        top: Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset),
+        behavior: 'smooth',
+      })
+    }
+    pendingTopRowId.value = ''
+    pendingTopOffset.value = 0
+    clearSavedViewport()
+  } else {
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
 }
 
 watch(
   [pagedRows, () => focusFromQuery(route.query)],
-  () => { scrollToFocus() },
+  () => { restoreListPosition() },
   { flush: 'post' },
 )
-onMounted(() => { scrollToFocus() })
+onMounted(() => { restoreListPosition() })
+onBeforeUnmount(() => { saveViewportAnchor() })
 
-// При смене страницы разрешаем повторную прокрутку к записи, если пользователь вернулся на её страницу.
+// При смене страницы разрешаем повторное позиционирование (якорь ещё не применён или запись на другой странице).
 watch(currentPage, () => {
-  focusScrolledKey.value = ''
+  positionRestoredKey.value = ''
 })
 </script>
 
@@ -239,6 +358,10 @@ watch(currentPage, () => {
 .table tbody tr.row-focus td {
   background: var(--ar-row-hover);
   transition: background-color 0.4s ease;
+}
+/* Якорь возврата (issue #135): строка-якорь встаёт первой с небольшим отступом. */
+.table tbody tr {
+  scroll-margin-top: 0.5rem;
 }
 .table-pager {
   display: flex;
